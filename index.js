@@ -12,7 +12,7 @@
     function injectStyles() {
         if ($('#tts-style-injection').length > 0) return;
         const css = `
-        /* === 1. 设置按钮样式 (你之前修复的部分) === */
+        /* === 1. 设置按钮样式 === */
         #tts-manager-btn {
             position: fixed; top: 10px; right: 100px; z-index: 20000;
             background: rgba(0,0,0,0.7); color: #fff; padding: 6px 12px;
@@ -21,7 +21,7 @@
         }
         #tts-manager-btn:hover { background: rgba(0,0,0,0.9); }
 
-        /* === 2. 气泡样式 (原有的) === */
+
         .voice-bubble {
             display: inline-flex; vertical-align: text-bottom; align-items: center; gap: 6px;
             padding: 1px 6px; background: #c6e2b8; border-radius: 4px; cursor: pointer;
@@ -30,14 +30,21 @@
             box-shadow: 0 1px 1px rgba(0,0,0,0.1); white-space: nowrap; font-size: 13px;
         }
         .voice-bubble:hover { filter: brightness(0.95); }
-        .voice-bubble.playing .fw-voice-bar { animation: fw-wechat-wave 1.2s infinite ease-in-out; }
-        .fw-voice-waves { display: flex; align-items: center; justify-content: flex-end; gap: 2px; width: 18px; height: 16px; }
-        .fw-voice-bar { width: 3px; background: #333; border-radius: 1.5px; opacity: 0.8; height: 6px; }
-        @keyframes fw-wechat-wave { 0%, 100% { height: 6px; opacity: 0.5; } 50% { height: 14px; opacity: 1; } }
+
+
+        .voice-bubble.playing .sovits-voice-bar { animation: sovits-wave-anim 1.2s infinite ease-in-out; }
+        .sovits-voice-waves { display: flex; align-items: center; justify-content: flex-end; gap: 2px; width: 18px; height: 16px; }
+        .sovits-voice-bar { width: 3px; background: #333; border-radius: 1.5px; opacity: 0.8; height: 6px; }
+
+        @keyframes sovits-wave-anim {
+            0%, 100% { height: 6px; opacity: 0.5; }
+            50% { height: 14px; opacity: 1; }
+        }
+
         .voice-bubble.error { background: #ffcccc !important; border: 1px solid #ffaaaa; }
         .voice-bubble.loading { opacity: 0.6; filter: grayscale(0.5); cursor: wait; }
 
-        /* === 3. 缺失的控制面板样式 (必须补上这里！) === */
+        /* === 3. 控制面板样式 (完全保持原样) === */
         .tts-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.6); z-index: 20001;
@@ -449,7 +456,7 @@
                     const d = Math.max(1, Math.ceil(cleanText.length * 0.25));
                     const prefix = spaceChars ? '&nbsp;' : '';
 
-                    return `${prefix}<span class="voice-bubble ${loadingClass}" style="width: ${Math.min(220, 60+d*10)}px" data-status="${status}" ${dataUrl} data-text="${cleanText}" data-voice-name="${cleanName}" data-voice-emotion="${emotion.trim()}"><span class="fw-voice-waves"><span class="fw-voice-bar"></span><span class="fw-voice-bar"></span><span class="fw-voice-bar"></span></span><span class="fw-voice-duration">${d}"</span></span>`;
+                    return `${prefix}<span class="voice-bubble ${loadingClass}" style="width: ${Math.min(220, 60+d*10)}px" data-status="${status}" ${dataUrl} data-text="${cleanText}" data-voice-name="${cleanName}" data-voice-emotion="${emotion.trim()}"><span class="sovits-voice-waves"><span class="sovits-voice-bar"></span><span class="sovits-voice-bar"></span><span class="sovits-voice-bar"></span></span><span class="sovits-voice-duration">${d}"</span></span>`;
                 });
 
                 $this.html(newHtml);
