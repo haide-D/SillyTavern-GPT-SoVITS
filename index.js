@@ -362,7 +362,7 @@
                         </div>
                         <div class="tts-sub-row">
                             <small>新建资源包：</small>
-                            <input type="text" id="tts-create-folder-name" placeholder="文件夹名 (英文)">
+                            <input type="text" id="tts-create-folder-name" placeholder="文件夹名">
                             <button id="tts-btn-create-folder" class="btn-blue">创建</button>
                         </div>
                     </div>
