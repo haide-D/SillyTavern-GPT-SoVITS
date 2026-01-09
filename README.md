@@ -80,16 +80,42 @@
 
 ## 📂 模型文件结构
 
-为了让插件识别模型，请在插件目录下的 `MyCharacters` 文件夹中按以下结构组织文件（或者在设置面板中指定你的模型库绝对路径）：
+为了让插件识别模型，请在插件目录下的 `MyCharacters` 文件夹中按以下结构组织文件（或者在设置面板中指定你的模型库绝对路径）。
+
+**⚠️ 注意：参考音频文件夹必须命名为 `reference_audios`，或者你直接用TTS设置生成文件格式的就行**
+
+## 📝 音频命名规则
+为了让插件自动识别“情感”和“参考文本”，请严格按照以下格式命名音频文件：
+
+格式：情感_提示词内容.wav
+
+示例：
+
+happy_你好我是测试.wav 👉 情感识别为 happy，提示词为 你好我是测试
+
+sad_我好难过.mp3 👉 情感识别为 sad，提示词为 我好难过
+
+普通对话.wav 👉 (无下划线) 情感识别为 default，提示词为文件名本身
 
 ```text
 MyCharacters/
-├── 角色A/
-│   ├── some_model.ckpt      (GPT 权重)
-│   ├── some_model.pth       (SoVITS 权重)
-│   └── ref_audio/           (参考音频文件夹)
-│       ├── default_prompt.wav      (默认参考音频)
-│       ├── sad_prompt.wav          (文件名格式推荐: 情感_提示词.wav)
-│       └── happy_prompt.wav
-├── 角色B/
-│   ├── ...
+├── 你的角色名/
+│   ├── gpt_weights.ckpt           (GPT 权重文件)
+│   ├── sovits_weights.pth         (SoVITS 权重文件)
+│   └── reference_audios/          (必须叫这个名字!)
+│       │
+│       ├── (方式A：简单模式 - 直接放在根目录)
+│       ├── default_提示词文本.wav
+│       ├── happy_提示词文本.wav
+│       │
+│       └── (方式B：多语言模式 - 推荐)
+│           ├── Chinese/
+│           │   └── emotions/      (代码会自动创建 emotions 子目录)
+│           │       ├── happy_中文提示词.wav
+│           │       └── sad_中文提示词.wav
+│           ├── Japanese/
+│           │   └── emotions/
+│           │       └── default_日语提示词.wav
+│           └── English/
+│               └── ...
+

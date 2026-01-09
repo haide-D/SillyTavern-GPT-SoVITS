@@ -47,40 +47,38 @@ def save_json(filename, data):
 
 def init_settings():
     global BASE_DIR, CACHE_DIR
-    settings = load_json(SETTINGS_FILE) # 如果文件不存在，这里返回 {}
-
+    settings = load_json(SETTINGS_FILE)
     dirty = False
 
-    # 1. 检查总开关
-    if settings.get("enabled") is None: # 使用 is None 判断，防止 False 被覆盖
+    if settings.get("enabled") is None:
         settings["enabled"] = True
         dirty = True
 
-    # 2. 检查自动生成开关
     if settings.get("auto_generate") is None:
         settings["auto_generate"] = True
         dirty = True
 
-    # 3. 关键修复：如果 base_dir 不存在，或者它是空字符串 ""
-    # 这样既解决了新安装没有配置文件的问题，也解决了配置文件里是空值的问题
     if not settings.get("base_dir"):
         settings["base_dir"] = DEFAULT_BASE_DIR
         dirty = True
 
-    # 4. 关键修复：同上
     if not settings.get("cache_dir"):
         settings["cache_dir"] = DEFAULT_CACHE_DIR
         dirty = True
 
-    # 如果有改动（或者是新生成），立刻写回硬盘
+    # === 新增：默认语言设置 ===
+    if not settings.get("default_lang"):
+        settings["default_lang"] = "Chinese" # 默认设为中文，或者你喜欢的 "default"
+        dirty = True
+    # ========================
+
     if dirty:
         save_json(SETTINGS_FILE, settings)
 
-    # 更新全局变量
     BASE_DIR = settings["base_dir"]
     CACHE_DIR = settings["cache_dir"]
 
-    # 确保文件夹物理存在
+    # 确保物理路径存在
     if not os.path.exists(CACHE_DIR): os.makedirs(CACHE_DIR, exist_ok=True)
     if not os.path.exists(BASE_DIR): os.makedirs(BASE_DIR, exist_ok=True)
 
@@ -124,16 +122,31 @@ class CreateModelRequest(BaseModel):
     folder_name: str
 
 # 3. 修复设置请求：增加 enabled 字段，并将所有字段设为可选(Optional)
+# manager.py 里的 SettingsRequest 类
 class SettingsRequest(BaseModel):
-    enabled: Optional[bool] = None       # 新增：对应总开关
-    auto_generate: Optional[bool] = None # 对应自动生成
-    base_dir: Optional[str] = None       # 对应路径设置
+    enabled: Optional[bool] = None
+    auto_generate: Optional[bool] = None
+    base_dir: Optional[str] = None
     cache_dir: Optional[str] = None
+    default_lang: Optional[str] = None
 
 # --- 接口 ---
+
+# --- 提取一个扫描文件夹内音频的辅助函数 ---
+def scan_audio_files(directory):
+    refs = []
+    if not os.path.exists(directory): return refs
+    for f in os.listdir(directory):
+        if f.lower().endswith(('.wav', '.mp3')):
+            name = os.path.splitext(f)[0]
+            # 兼容处理文件名： emotion_text.wav 或 text.wav
+            parts = name.split('_', 1) if "_" in name else ["default", name]
+            # 为了防止路径问题，这里存相对路径可能更好，但为了兼容旧逻辑，我们存绝对路径
+            refs.append({"emotion": parts[0], "text": parts[1], "path": os.path.join(directory, f)})
+    return refs
 @app.get("/get_data")
 def get_data():
-    settings = init_settings() # 每次获取数据时重新加载一次配置，确保最新
+    settings = init_settings()
     models_data = {}
 
     if os.path.exists(BASE_DIR):
@@ -141,30 +154,48 @@ def get_data():
             folder_path = os.path.join(BASE_DIR, folder_name)
             if not os.path.isdir(folder_path): continue
 
-            # 扫描逻辑
             gpt = glob.glob(os.path.join(folder_path, "*.ckpt"))
             sovits = glob.glob(os.path.join(folder_path, "*.pth"))
 
-            # 如果没找到模型文件，跳过展示，或者是空模型文件夹
-            # if not gpt and not sovits: continue
+            ref_dir = os.path.join(folder_path, "reference_audios")
 
-            ref_dir = os.path.join(folder_path, "ref_audio")
-            refs = []
+            # === 修改开始：支持多语言层级结构 ===
+            # 结构目标: reference_audios -> [Language] -> emotions -> [files]
+
+            languages_map = {} # 格式: {"Chinese": [ref_list], "Japanese": [ref_list]}
+
             if os.path.exists(ref_dir):
-                for f in os.listdir(ref_dir):
-                    if f.lower().endswith(('.wav', '.mp3')):
-                        name = os.path.splitext(f)[0]
-                        # 兼容处理文件名： emotion_text.wav 或 text.wav
-                        parts = name.split('_', 1) if "_" in name else ["default", name]
-                        refs.append({"emotion": parts[0], "text": parts[1], "path": os.path.join(ref_dir, f)})
+                # 1. 扫描根目录 (兼容旧模式，归为 "default")
+                root_refs = scan_audio_files(ref_dir)
+                if root_refs:
+                    languages_map["default"] = root_refs
 
-            default_ref = next((r for r in refs if r["emotion"] == "default"), refs[0] if refs else None)
+                # 2. 扫描子文件夹 (视为语言)
+                with os.scandir(ref_dir) as it:
+                    for entry in it:
+                        if entry.is_dir():
+                            lang_name = entry.name
+                            # 按照你的要求，音频必须在 语言文件夹/emotions 下
+                            emotions_subdir = os.path.join(entry.path, "emotions")
+
+                            if os.path.exists(emotions_subdir):
+                                lang_refs = scan_audio_files(emotions_subdir)
+                                if lang_refs:
+                                    languages_map[lang_name] = lang_refs
+                            else:
+                                # 如果没有 emotions 文件夹，直接扫语言文件夹本身 (可选的容错)
+                                lang_refs_direct = scan_audio_files(entry.path)
+                                if lang_refs_direct:
+                                    languages_map[lang_name] = lang_refs_direct
+
+            # 决定前端默认显示的列表 (如果有 default 用 default，否则用第一个语言)
+            # 前端现在会接收整个 languages_map
+            # === 修改结束 ===
 
             models_data[folder_name] = {
                 "gpt_path": gpt[0] if gpt else "",
                 "sovits_path": sovits[0] if sovits else "",
-                "default_ref": default_ref,
-                "emotion_refs": refs
+                "languages": languages_map # 新增字段：返回所有语言数据
             }
 
     mappings = load_json(MAPPINGS_FILE)
@@ -249,38 +280,43 @@ def unbind(req: UnbindRequest):
 
 @app.post("/create_model_folder")
 def create(req: CreateModelRequest):
-    # 使用 folder_name 匹配前端
-    # 简单的安全过滤，防止路径遍历
+    # 简单的安全过滤
     safe_name = "".join([c for c in req.folder_name if c.isalnum() or c in (' ','_','-')]).strip()
     if not safe_name: return {"status": "error", "msg": "Invalid name"}
 
     target_path = os.path.join(BASE_DIR, safe_name)
-    os.makedirs(os.path.join(target_path, "ref_audio"), exist_ok=True)
+
+    # === 修改部分：自动创建多语言目录结构 ===
+    # 1. 创建基础目录
+    ref_root = os.path.join(target_path, "reference_audios")
+
+    # 2. 预创建常用语言包结构，省去手动新建文件夹的麻烦
+    # 你可以在这里添加更多默认语言
+    for lang in ["Chinese", "Japanese", "English"]:
+        os.makedirs(os.path.join(ref_root, lang, "emotions"), exist_ok=True)
+
+    # 3. 如果需要，也可以保留旧的根目录模式（可选）
+    os.makedirs(ref_root, exist_ok=True)
+    # === 修改结束 ===
+
     return {"status": "success"}
 
 @app.post("/update_settings")
 def update(req: SettingsRequest):
     s = load_json(SETTINGS_FILE)
 
-    # 逐个检查字段是否更新
-    if req.enabled is not None:
-        s["enabled"] = req.enabled
+    if req.enabled is not None: s["enabled"] = req.enabled
+    if req.auto_generate is not None: s["auto_generate"] = req.auto_generate
+    if req.base_dir and req.base_dir.strip(): s["base_dir"] = req.base_dir.strip()
+    if req.cache_dir and req.cache_dir.strip(): s["cache_dir"] = req.cache_dir.strip()
 
-    if req.auto_generate is not None:
-        s["auto_generate"] = req.auto_generate
-
-    if req.base_dir and req.base_dir.strip():
-        s["base_dir"] = req.base_dir.strip()
-
-    if req.cache_dir and req.cache_dir.strip():
-        s["cache_dir"] = req.cache_dir.strip()
+    # === 新增 ===
+    if req.default_lang is not None:
+        s["default_lang"] = req.default_lang
+    # ===========
 
     save_json(SETTINGS_FILE, s)
-
-    # 立即更新全局变量
-    init_settings()
-
+    init_settings() # 刷新全局变量
     return {"status": "success", "settings": s}
-
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=3000)

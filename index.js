@@ -181,17 +181,17 @@
         // === 新增：模型完整性校验函数 ===
         validateModel(modelName, config) {
             let missing = [];
-            // 检查后端返回的数据中，路径是否为空
-            if (!config.gpt_path) missing.push("GPT权重(.ckpt)");
-            if (!config.sovits_path) missing.push("SoVITS权重(.pth)");
-            // 检查是否有参考音频 (既没有默认音频，也没有情感音频列表)
-            if (!config.default_ref && (!config.emotion_refs || config.emotion_refs.length === 0)) {
-                missing.push("参考音频(.wav/.mp3)");
+            if (!config.gpt_path) missing.push("GPT权重");
+            if (!config.sovits_path) missing.push("SoVITS权重");
+
+            // 检查是否有任意一种语言的音频
+            const langs = config.languages || {};
+            if (Object.keys(langs).length === 0) {
+                missing.push("参考音频(reference_audios)");
             }
 
             if (missing.length > 0) {
-                // 使用上一轮添加的顶部提示条
-                showNotification(`❌ 模型 "${modelName}" 文件缺失: ${missing.join(', ')}`, 'error');
+                showNotification(`❌ 模型 "${modelName}" 缺失: ${missing.join(', ')}`, 'error');
                 return false;
             }
             return true;
@@ -280,8 +280,34 @@
         },
         async checkCache(task, modelConfig) {
             try {
-                let ref = modelConfig.emotion_refs.find(r => r.emotion === task.emotion) || modelConfig.default_ref;
+                // === 修改：获取当前设置的语言 ===
+                const currentLang = CACHE.settings.default_lang || 'default';
+
+                // 从 models[name].languages 中尝试获取
+                // 如果找不到选定的语言，回退到 'default'，如果还没有，取第一个可用的语言
+                let availableLangs = modelConfig.languages || {};
+                let targetRefs = availableLangs[currentLang];
+
+                if (!targetRefs) {
+                    if (availableLangs['default']) targetRefs = availableLangs['default'];
+                    else {
+                        const keys = Object.keys(availableLangs);
+                        if (keys.length > 0) targetRefs = availableLangs[keys[0]];
+                    }
+                }
+
+                if (!targetRefs || targetRefs.length === 0) return false;
+
+                // 在目标语言列表中查找情感
+                let ref = targetRefs.find(r => r.emotion === task.emotion);
+                // 如果找不到对应情感，找该语言下的 default
+                if (!ref) ref = targetRefs.find(r => r.emotion === 'default');
+                // 如果还找不到，取该语言下的第一个
+                if (!ref) ref = targetRefs[0];
+
                 if (!ref) return false;
+                // === 修改结束 ===
+
                 const params = new URLSearchParams({ text: task.text, text_lang: "zh", ref_audio_path: ref.path, prompt_text: ref.text, prompt_lang: "zh", streaming_mode: "true", check_only: "true" });
                 const res = await fetch(`${MANAGER_API}/tts_proxy?${params}`);
                 return (await res.json()).cached === true;
@@ -295,10 +321,46 @@
         },
         async processSingleTask(task, modelConfig) {
             const { text, emotion, key, $btn } = task;
-            let ref = modelConfig.emotion_refs.find(r => r.emotion === emotion) || modelConfig.default_ref;
+
+            // === 修改：同样的逻辑获取 ref ===
+            const currentLang = CACHE.settings.default_lang || 'default';
+            let availableLangs = modelConfig.languages || {};
+            let targetRefs = availableLangs[currentLang];
+
+            if (!targetRefs) {
+                // 找不到指定语言，尝试回退
+                if (availableLangs['default']) targetRefs = availableLangs['default'];
+                else {
+                    const keys = Object.keys(availableLangs);
+                    if (keys.length > 0) targetRefs = availableLangs[keys[0]];
+                }
+            }
+
+            if (!targetRefs) throw new Error("No ref audios found in any language");
+
+            let ref = targetRefs.find(r => r.emotion === emotion);
+            if (!ref) ref = targetRefs.find(r => r.emotion === 'default');
+            if (!ref) ref = targetRefs[0];
+
             if (!ref) throw new Error("No ref audio");
+            // === 修改结束 ===
+
             try {
-                const params = new URLSearchParams({ text: text, text_lang: "zh", ref_audio_path: ref.path, prompt_text: ref.text, prompt_lang: "zh", streaming_mode: "true" });
+                // 注意：prompt_lang 这里暂时写死 zh，如果你想更高级，
+                // 可以根据 currentLang 来决定 prompt_lang (例如: Japanese -> ja, Chinese -> zh)
+                // 简单的映射逻辑：
+                let promptLangCode = "zh";
+                if (currentLang === "Japanese" || currentLang === "日语") promptLangCode = "ja";
+                if (currentLang === "English" || currentLang === "英语") promptLangCode = "en";
+
+                const params = new URLSearchParams({
+                    text: text,
+                    text_lang: "zh", // 目标生成的文本语言，通常保持 zh 或根据实际情况
+                    ref_audio_path: ref.path,
+                    prompt_text: ref.text,
+                    prompt_lang: promptLangCode, // 参考音频的语言
+                    streaming_mode: "true"
+                });
                 const response = await fetch(`${MANAGER_API}/tts_proxy?${params}`);
                 if (!response.ok) throw new Error("Err");
                 const blob = await response.blob();
@@ -352,6 +414,16 @@
                         </div>
                     </div>
 
+                    <div class="tts-row-input" style="margin-top:10px; border-top:1px solid #444; padding-top:10px;">
+                        <small>🗣️ 参考音频语言 (对应 reference_audios 下的文件夹):</small>
+                        <select id="tts-lang-select" style="width:100%; margin-top:5px; background:#333; color:white; border:1px solid #555;">
+                            <option value="default">Default (根目录)</option>
+                            <option value="Chinese">Chinese (中文)</option>
+                            <option value="Japanese">Japanese (日语)</option>
+                            <option value="English">English (英语)</option>
+                            </select>
+                    </div>
+
                     <div class="tts-add-zone">
                         <h4>➕ 新增绑定 / 创建资源</h4>
                         <div class="tts-row">
@@ -383,6 +455,21 @@
         // 绑定事件
         $('#tts-master-switch').change(function() { toggleMasterSwitch($(this).is(':checked')); });
         $('#tts-toggle-auto').change(function() { toggleAutoGenerate($(this).is(':checked')); });
+        // 设置当前选中的语言
+        $('#tts-lang-select').val(CACHE.settings.default_lang || 'default');
+
+        // 绑定变更事件，保存设置
+        $('#tts-lang-select').change(async function() {
+            const lang = $(this).val();
+            CACHE.settings.default_lang = lang; // 临时更新本地
+            await fetch(`${MANAGER_API}/update_settings`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ default_lang: lang })
+            });
+            // 语言改变后，可能需要刷新一下数据或者清空某些状态，这里简单处理
+            console.log("Language changed to:", lang);
+        });
 
         $('#tts-btn-save-paths').click(async function() {
             const btn = $(this);
