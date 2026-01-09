@@ -1,0 +1,6 @@
+{
+    "enabled": true,
+    "auto_generate": true,
+    "base_dir": "./MyCharacters",
+    "cache_dir": "./Cache"
+}

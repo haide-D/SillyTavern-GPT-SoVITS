@@ -1,0 +1,30 @@
+# --- Python 垃圾文件 ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# --- 系统文件 ---
+.DS_Store
+Thumbs.db
+
+# --- 插件运行生成的缓存与设置 ---
+# 不上传生成的音频缓存
+Cache/*
+!Cache/.gitkeep
+
+# 不上传你的个人设置（只保留默认模版）
+system_settings.json
+
+# --- 模型文件 (防止上传几个G的大文件) ---
+# 忽略 MyCharacters 下的所有内容，但保留文件夹结构
+MyCharacters/*
+!MyCharacters/.gitkeep
+# 再次确保不上传具体的模型权重文件
+*.pth
+*.ckpt
+*.safetensors
+
+# --- 日志 ---
+*.log
