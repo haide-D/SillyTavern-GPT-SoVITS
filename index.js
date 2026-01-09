@@ -21,6 +21,15 @@
         }
         #tts-manager-btn:hover { background: rgba(0,0,0,0.9); }
 
+        /* === 新增：顶部错误提示条样式 === */
+        #tts-notification-bar {
+            position: fixed; top: -50px; left: 50%; transform: translateX(-50%);
+            z-index: 20005; background: #d32f2f; color: white;
+            padding: 8px 20px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            font-size: 14px; transition: top 0.5s ease; pointer-events: none;
+            display: flex; align-items: center; gap: 8px;
+        }
+        #tts-notification-bar.show { top: 20px; }
 
         .voice-bubble {
             display: inline-flex; vertical-align: text-bottom; align-items: center; gap: 6px;
@@ -91,18 +100,51 @@
     `;
         $('head').append(`<style id="tts-style-injection">${css}</style>`);
     }
+    // 新增：显示顶部提示
+    function showNotification(msg, type = 'error') {
+        let $bar = $('#tts-notification-bar');
+        if ($bar.length === 0) {
+            $('body').append(`<div id="tts-notification-bar"></div>`);
+            $bar = $('#tts-notification-bar');
+        }
+
+        const bgColor = type === 'error' ? '#d32f2f' : '#43a047';
+        $bar.text(msg).css('background', bgColor).addClass('show');
+
+        // 3秒后自动消失
+        setTimeout(() => { $bar.removeClass('show'); }, 4000);
+    }
 
     async function refreshData() {
         try {
             injectStyles();
+            // 尝试连接后端
             const res = await fetch(`${MANAGER_API}/get_data`);
+
+            // 如果连接成功，恢复按钮样式（如果是红色的话）
+            $('#tts-manager-btn').css({ 'border-color': 'rgba(255,255,255,0.3)', 'color': '#fff' }).text('🔊 TTS配置');
+
             const data = await res.json();
             CACHE.models = data.models; CACHE.mappings = data.mappings;
             if (data.settings) CACHE.settings = { ...CACHE.settings, ...data.settings };
             CACHE.pendingTasks.clear();
+
             // 只有开启总开关时，才进行自动扫描
             if (CACHE.settings.enabled !== false && CACHE.settings.auto_generate) BatchScheduler.scanAndSchedule();
-        } catch (e) { console.error(e); }
+
+            // 连接成功提示 (可选，为了不打扰用户通常只提示错误，这里可以注释掉)
+            // showNotification("TTS 后端连接成功", "success");
+
+        } catch (e) {
+            console.error("TTS Backend Error:", e);
+
+            // === 这里是新增的错误处理 ===
+            // 1. 弹出顶部提示
+            showNotification("❌ 连接失败：未检测到 TTS 后端服务！请检查是否已运行 main.py", "error");
+
+            // 2. 将右上角按钮标红，警示用户
+            $('#tts-manager-btn').css({ 'border-color': '#ff5252', 'color': '#ff5252' }).text('⚠️ TTS断开');
+        }
     }
 
     // 切换总开关

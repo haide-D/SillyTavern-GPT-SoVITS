@@ -16,7 +16,7 @@ Cache/*
 
 # 不上传你的个人设置（只保留默认模版）
 system_settings.json
-
+character_mappings.json
 # --- 模型文件 (防止上传几个G的大文件) ---
 # 忽略 MyCharacters 下的所有内容，但保留文件夹结构
 MyCharacters/*
