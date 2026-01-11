@@ -962,8 +962,20 @@
                         body.data('tts-event-bound', true);
                     }
 
-                    // [C] 替换文本
-                    const targets = body.find('.reading-content p:contains("[TTSVoice"), .log-content p:contains("[TTSVoice"), .mes_text:contains("[TTSVoice")');
+                    const targets = body.find('*').filter(function() {
+                        if (['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT'].includes(this.tagName)) return false;
+                        if ($(this).find('.voice-bubble').length > 0) return false;
+
+                        let hasTargetText = false;
+                        $(this).contents().each(function() {
+                            // nodeType 3 代表文本节点
+                            if (this.nodeType === 3 && this.nodeValue && this.nodeValue.indexOf("[TTSVoice") !== -1) {
+                                hasTargetText = true;
+                                return false; // 找到就停止遍历子节点
+                            }
+                        });
+                        return hasTargetText;
+                    });
                     targets.each(function() {
                         const $p = $(this);
                         if ($p.html().indexOf("voice-bubble") !== -1) return;
