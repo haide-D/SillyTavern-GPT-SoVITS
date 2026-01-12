@@ -2,7 +2,6 @@ console.log("🔵 [UI] TTS_UI.js 开始加载...");
 window.TTS_UI = window.TTS_UI || {};
 
 (function(scope) {
-    // 内部变量
     let CTX = {
         CACHE: null,
         API_URL: "",
@@ -10,48 +9,31 @@ window.TTS_UI = window.TTS_UI || {};
         Callbacks: {}
     };
 
-    // ===========================================
-    // 1. 初始化 (配合看门狗的核心入口)
-    // ===========================================
     scope.init = function(context) {
-        // 实时更新上下文 (确保获取到最新的 CACHE 和 Callbacks)
         CTX = context;
-
-        // 【配合看门狗优化】
-        // 只有当按钮真的不存在时，才视为"完全初始化"，否则只是"更新数据引用"
         if ($('#tts-manager-btn').length === 0) {
             console.log("✅ [UI] UI模块挂载/重置");
             scope.initFloatingButton();
         }
     };
 
-    // 2. 初始化悬浮球 (幂等设计：存在就不加)
     scope.initFloatingButton = function() {
-        // 双重检查，防止重复添加
         if ($('#tts-manager-btn').length > 0) return;
-
         $('body').append(`<div id="tts-manager-btn">🔊 TTS配置</div>`);
-
-        // 使用 Utils 的拖拽功能
-        // 注意：Utils 必须在 index.js 里保证已加载
         if (CTX.Utils && CTX.Utils.makeDraggable) {
             CTX.Utils.makeDraggable($('#tts-manager-btn'), scope.showDashboard);
         } else {
-            // 降级处理：如果没有拖拽功能，至少保证能点
             $('#tts-manager-btn').click(scope.showDashboard);
         }
     };
 
-    // 3. 渲染配置面板
     scope.showDashboard = function() {
-        // 每次打开都先销毁旧的，保证状态全新 (这也是一种幂等)
         $('#tts-dashboard-overlay').remove();
 
-        const settings = CTX.CACHE.settings;
-        // 防御性编程：防止 settings 为 undefined
-        const currentBase = (settings && settings.base_dir) || "";
-        const currentCache = (settings && settings.cache_dir) || "";
-        const isEnabled = (settings && settings.enabled) !== false;
+        const settings = CTX.CACHE.settings || {};
+        const currentBase = settings.base_dir || "";
+        const currentCache = settings.cache_dir || "";
+        const isEnabled = settings.enabled !== false;
 
         const savedConfig = localStorage.getItem('tts_plugin_remote_config');
         const config = savedConfig ? JSON.parse(savedConfig) : { useRemote: false, ip: "" };
@@ -157,9 +139,8 @@ window.TTS_UI = window.TTS_UI || {};
         scope.bindEvents();
     };
 
-    // 4. 绑定事件逻辑
     scope.bindEvents = function() {
-        // [架构修正] 使用 API 模块，而不是 raw fetch
+        // Iframe 模式切换
         $('#tts-iframe-switch').change(async function() {
             const isChecked = $(this).is(':checked');
             const $label = $(this).parent();
@@ -167,7 +148,7 @@ window.TTS_UI = window.TTS_UI || {};
             $label.text("正在保存设置...");
 
             try {
-                // 【修改点】调用 api.js
+                // 调用 API
                 await window.TTS_API.updateSettings({ iframe_mode: isChecked });
 
                 CTX.CACHE.settings.iframe_mode = isChecked;
@@ -184,6 +165,7 @@ window.TTS_UI = window.TTS_UI || {};
             }
         });
 
+        // 远程连接开关
         $('#tts-remote-switch').change(function() {
             const checked = $(this).is(':checked');
             if(checked) $('#tts-remote-input-area').slideDown();
@@ -210,7 +192,6 @@ window.TTS_UI = window.TTS_UI || {};
         $('#tts-lang-select').change(async function() {
             const lang = $(this).val();
             CTX.CACHE.settings.default_lang = lang;
-            // 【修改点】调用 api.js
             await window.TTS_API.updateSettings({ default_lang: lang });
         });
 
@@ -231,51 +212,58 @@ window.TTS_UI = window.TTS_UI || {};
             btn.text(oldText).prop('disabled', false);
         });
 
-        // 注意：以下几个操作 (绑定/创建)，目前 API.js 里还没封装专门的方法。
-        // 为了架构统一，建议后续在 API.js 里加上 bindCharacter, createFolder 等方法。
-        // 暂时保持 fetch，或者你可以使用 CTX.API_URL 拼接。
+        // ===========================================
+        // 【优化】以下 3 个操作改为调用 window.TTS_API
+        // ===========================================
+
+        // 1. 绑定新角色
         $('#tts-btn-bind-new').click(async function() {
             const charName = $('#tts-new-char').val().trim();
             const modelName = $('#tts-new-model').val();
             if(!charName || !modelName) { alert('请填写角色名并选择模型'); return; }
 
-            await fetch(`${CTX.API_URL}/bind_character`, {
-                method: 'POST', body: JSON.stringify({ char_name: charName, model_folder: modelName }),
-                headers: {'Content-Type':'application/json'}
-            });
-            await CTX.Callbacks.refreshData();
-            scope.renderDashboardList();
-            $('#tts-new-char').val('');
+            try {
+                await window.TTS_API.bindCharacter(charName, modelName);
+                await CTX.Callbacks.refreshData();
+                scope.renderDashboardList();
+                $('#tts-new-char').val('');
+            } catch(e) {
+                console.error(e);
+                alert("绑定失败，请检查后端日志");
+            }
         });
 
+        // 2. 创建新文件夹
         $('#tts-btn-create-folder').click(async function() {
             const fName = $('#tts-create-folder-name').val().trim();
             if(!fName) return;
-            const res = await fetch(`${CTX.API_URL}/create_model_folder`, {
-                method: 'POST', body: JSON.stringify({ folder_name: fName }),
-                headers: {'Content-Type':'application/json'}
-            });
-            if(res.ok) { alert('创建成功！'); CTX.Callbacks.refreshData().then(scope.renderModelOptions); $('#tts-create-folder-name').val(''); }
-            else alert('创建失败，可能文件夹已存在。');
+
+            try {
+                await window.TTS_API.createModelFolder(fName);
+                alert('创建成功！');
+                CTX.Callbacks.refreshData().then(scope.renderModelOptions);
+                $('#tts-create-folder-name').val('');
+            } catch(e) {
+                console.error(e);
+                alert('创建失败，可能文件夹已存在。');
+            }
         });
     };
 
-    // 5. 渲染下拉框
     scope.renderModelOptions = function() {
         const $select = $('#tts-new-model');
         const currentVal = $select.val();
         $select.empty().append('<option disabled value="">选择模型...</option>');
-        const models = CTX.CACHE.models || {}; // 防空保护
+        const models = CTX.CACHE.models || {};
         if (Object.keys(models).length === 0) { $select.append('<option disabled>暂无模型文件夹</option>'); return; }
         Object.keys(models).forEach(k => { $select.append(`<option value="${k}">${k}</option>`); });
         if(currentVal) $select.val(currentVal);
         else $select.find('option:first').next().prop('selected', true);
     };
 
-    // 6. 渲染已绑定列表
     scope.renderDashboardList = function() {
         const c = $('#tts-mapping-list').empty();
-        const mappings = CTX.CACHE.mappings || {}; // 防空保护
+        const mappings = CTX.CACHE.mappings || {};
         if (Object.keys(mappings).length === 0) { c.append('<div class="tts-empty">暂无绑定记录</div>'); return; }
         Object.keys(mappings).forEach(k => {
             c.append(`
@@ -288,15 +276,20 @@ window.TTS_UI = window.TTS_UI || {};
         });
     };
 
-    // 7. 解绑操作
+    // 3. 解绑操作 (优化后)
     scope.handleUnbind = async function(c) {
-        await fetch(`${CTX.API_URL}/unbind_character`, {
-            method: 'POST', body: JSON.stringify({ char_name: c }), headers: {'Content-Type':'application/json'}
-        });
-        await CTX.Callbacks.refreshData();
-        scope.renderDashboardList();
-        // 重置状态
-        $(`.voice-bubble[data-voice-name="${c}"]`).attr('data-status', 'waiting').removeClass('error playing ready');
+        if(!confirm(`确定要解绑角色 "${c}" 吗？`)) return;
+
+        try {
+            await window.TTS_API.unbindCharacter(c);
+            await CTX.Callbacks.refreshData();
+            scope.renderDashboardList();
+            // 重置状态
+            $(`.voice-bubble[data-voice-name="${c}"]`).attr('data-status', 'waiting').removeClass('error playing ready');
+        } catch(e) {
+            console.error(e);
+            alert("解绑失败");
+        }
     };
 
 })(window.TTS_UI);
