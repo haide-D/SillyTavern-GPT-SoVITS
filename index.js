@@ -30,7 +30,87 @@
     };
 
     let CURRENT_LOADED = { gpt_path: null, sovits_path: null };
+    // === 新增：Iframe 样式配置 (修复闪烁版) ===
+    // === 新增：Iframe 样式配置 (新UI容器 + 旧版波动条) ===
+    const IFRAME_CSS = `
+        .voice-bubble {
+            display: inline-flex !important; align-items: center; vertical-align: middle; margin-left: 6px;
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 16px; padding: 4px 12px; cursor: pointer;
+            height: 28px; box-sizing: border-box;
+            transition: all 0.2s ease;
+            font-family: sans-serif; user-select: none;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            backdrop-filter: blur(2px);
 
+            min-width: 85px;
+            justify-content: space-between;
+            white-space: nowrap;
+        }
+
+
+        .sovits-voice-waves { display: flex; align-items: center; height: 16px; margin-right: 6px; gap: 2px; }
+        .sovits-voice-bar {
+            width: 3px; border-radius: 2px;
+            height: 6px; /* 默认静止高度 */
+            transition: background 0.3s, height 0.2s;
+        }
+
+        /* 3. 时间文字 */
+        .sovits-voice-duration { font-size: 12px; font-weight: 600; line-height: 1; color: #666; }
+
+        /* === 状态 A: 未生成 (Waiting) - 灰色条 === */
+        .voice-bubble[data-status="waiting"] { background: #f3f4f6; border-color: #e5e7eb; color: #888; }
+        .voice-bubble[data-status="waiting"] .sovits-voice-bar { background: #bdbdbd; height: 4px; }
+        .voice-bubble[data-status="waiting"]:hover { background: #e0e0e0; }
+
+        /* === 状态 B: 加载中 (Loading) - 呼吸灯 === */
+        .voice-bubble.loading {
+            background: #fff8e1; border-color: #ffe0b2; cursor: wait;
+            animation: tts-pulse 1.5s infinite;
+        }
+        .voice-bubble.loading .sovits-voice-bar { background: #ffb74d; height: 6px; }
+        @keyframes tts-pulse { 0% {opacity:0.6;} 50% {opacity:1;} 100% {opacity:0.6;} }
+
+        /* === 状态 C: 生成完毕 (Ready) - 绿色静止条 === */
+        .voice-bubble[data-status="ready"] {
+            background: #e8f5e9 !important;
+            border-color: #81c784 !important;
+            color: #2e7d32 !important;
+            box-shadow: 0 2px 5px rgba(76, 175, 80, 0.15);
+            animation: none !important; cursor: pointer !important; opacity: 1 !important;
+        }
+        /* 关键：把条变成绿色 */
+        .voice-bubble[data-status="ready"] .sovits-voice-bar { background: #4caf50; height: 8px; }
+        .voice-bubble[data-status="ready"]:hover {
+            transform: translateY(-1px); background: #c8e6c9 !important;
+        }
+
+        /* === 状态 D: 播放中 (Playing) - 粉色律动条 === */
+        .voice-bubble.playing {
+            background: #fff0f5 !important; border-color: #ff80ab !important;
+            color: #c2185b !important;
+            box-shadow: 0 0 12px rgba(255, 64, 129, 0.4) !important;
+            transform: scale(1.05); cursor: default;
+        }
+        /* 条变粉色，并开始跳动 */
+        .voice-bubble.playing .sovits-voice-bar {
+            background: #e91e63;
+            animation: sovits-wave-anim 1s infinite ease-in-out;
+        }
+        /* 错开动画时间，更灵动 */
+        .voice-bubble.playing .sovits-voice-bar:nth-child(1) { animation-delay: 0.0s; }
+        .voice-bubble.playing .sovits-voice-bar:nth-child(2) { animation-delay: 0.15s; }
+        .voice-bubble.playing .sovits-voice-bar:nth-child(3) { animation-delay: 0.3s; }
+
+        /* 定义波动动画 */
+        @keyframes sovits-wave-anim {
+            0%, 100% { height: 6px; opacity: 0.6; }
+            50% { height: 16px; opacity: 1; }
+        }
+    `;
+    // ===========================
     function injectStyles() {
         if ($('#tts-style-injection').length > 0) return;
         const css = `
@@ -169,7 +249,10 @@
             injectStyles();
             // 尝试连接后端
             const res = await fetch(`${MANAGER_API}/get_data`);
-
+            // === 读取本地存储的美化卡开关 ===
+            const localIframeMode = localStorage.getItem('tts_plugin_iframe_mode');
+            // 如果本地有记录，则覆盖；否则默认 false (普通模式)
+            CACHE.settings.iframe_mode = localIframeMode === 'true';
             // 如果连接成功，恢复按钮样式（如果是红色的话）
             $('#tts-manager-btn').css({ 'border-color': 'rgba(255,255,255,0.3)', 'color': '#fff' }).text('🔊 TTS配置');
 
@@ -318,15 +401,42 @@
             if (this.queue.length > 0) this.run();
         },
         finishTask(key, audioUrl) {
-            CACHE.audioMemory[key] = audioUrl; CACHE.pendingTasks.delete(key);
-            $('.voice-bubble').each((_, el) => {
-                const $el = $(el);
-                if (this.getTaskKey($el.data('voice-name'), $el.data('text')) === key && $el.attr('data-status') !== 'ready') {
-                    // 强制写入 HTML 属性，防止被生图插件重写 DOM 后丢失
-                    $el.attr('data-audio-url', audioUrl);
-                    this.updateStatus($el, 'ready');
-                    if ($el.data('auto-play-after-gen')) { $el.click(); $el.removeData('auto-play-after-gen'); }
+            CACHE.audioMemory[key] = audioUrl;
+            CACHE.pendingTasks.delete(key);
+
+            // 定义通用的更新逻辑
+            const applyUpdate = ($el) => {
+                // 1. 尝试获取 key
+                let elKey = $el.attr('data-key');
+                // 2. 如果是普通卡没有 data-key，则通过内容计算
+                if (!elKey) {
+                    elKey = this.getTaskKey($el.data('voice-name'), $el.data('text'));
                 }
+
+                // 3. 如果 Key 匹配，且状态不是 ready，则进行更新
+                if (elKey === key && $el.attr('data-status') !== 'ready') {
+                    // 写入音频 URL
+                    $el.attr('data-audio-url', audioUrl);
+
+                    // 【关键】：更新状态，这会自动移除 .loading 类（参见 updateStatus 函数）
+                    this.updateStatus($el, 'ready');
+
+                    // 如果是自动播放触发的，点击它
+                    if ($el.data('auto-play-after-gen')) {
+                        $el.click();
+                        $el.removeData('auto-play-after-gen');
+                    }
+                }
+            };
+
+            // 范围 A: 更新主界面 (普通卡)
+            $('.voice-bubble').each((_, el) => applyUpdate($(el)));
+
+            // 范围 B: 更新 Iframe 内部 (美化卡修复核心)
+            $('iframe').each(function() {
+                try {
+                    $(this).contents().find('.voice-bubble').each((_, el) => applyUpdate($(el)));
+                } catch(e) {}
             });
         },
         async checkCache(task, modelConfig) {
@@ -409,9 +519,6 @@
             // === 修改结束 ===
 
             try {
-                // 注意：prompt_lang 这里暂时写死 zh，如果你想更高级，
-                // 可以根据 currentLang 来决定 prompt_lang (例如: Japanese -> ja, Chinese -> zh)
-                // 简单的映射逻辑：
                 let promptLangCode = "zh";
                 if (currentLang === "Japanese" || currentLang === "日语") promptLangCode = "ja";
                 if (currentLang === "English" || currentLang === "英语") promptLangCode = "en";
@@ -574,7 +681,12 @@
                         <div style="margin-bottom:8px;">
                             <label><input type="checkbox" id="tts-toggle-auto" ${CACHE.settings.auto_generate?'checked':''}> 收到消息时自动预加载语音</label>
                         </div>
-
+                        <div style="margin-bottom:8px;">
+                            <label style="cursor:pointer; color:#ffb74d;">
+                                <input type="checkbox" id="tts-iframe-switch" ${CACHE.settings.iframe_mode ? 'checked' : ''}>
+                                启用美化卡/Iframe模式 (普通卡请关闭此项)
+                            </label>
+                        </div>
                         <div class="tts-row-input">
                             <small>模型文件夹 (绝对路径):</small>
                             <input type="text" id="tts-base-path" value="${currentBase}" style="width:100%; font-family:monospace; font-size:12px;">
@@ -625,7 +737,14 @@
         $('body').append(html);
         renderDashboardList();
         renderModelOptions();
-
+        // === 绑定美化卡开关事件 ===
+        $('#tts-iframe-switch').change(function() {
+            const isChecked = $(this).is(':checked');
+            CACHE.settings.iframe_mode = isChecked;
+            localStorage.setItem('tts_plugin_iframe_mode', isChecked);
+            alert(`已${isChecked ? '开启' : '关闭'}美化卡模式。\n页面即将刷新以应用更改...`);
+            location.reload(); // 必须刷新以清除残留的 DOM 状态
+        });
         // 绑定事件
         $('#tts-master-switch').change(function() { toggleMasterSwitch($(this).is(':checked')); });
         $('#tts-toggle-auto').change(function() { toggleAutoGenerate($(this).is(':checked')); });
@@ -787,51 +906,282 @@
         }
     });
 
+    // ===========================================
+    // 最终修复版：事件代理 + 跨域通讯 + 状态同步
+    // ===========================================
+
+    // 定义正则（删除之前的重复定义，只保留这一次）
     const VOICE_TAG_REGEX = /(\s*)\[TTSVoice[:：]\s*([^:：]+)\s*[:：]\s*([^:：]*)\s*[:：]\s*(.*?)\]/gi;
 
+    // ===========================================
+    // 最终完整版：新UI容器 + 旧版波动条 + 双端统一样式
+    // ===========================================
     function processMessageContent() {
-        // 总开关拦截：如果关闭，不解析页面
+        // 1. 总开关拦截
         if (CACHE.settings.enabled === false) return;
 
-        $('.mes_text').each(function() {
-            const $this = $(this);
-            if ($this.find('.voice-bubble').length > 0) return;
-            const html = $this.html();
+        // 定义旧版波动条的 HTML 结构 (三个 span)
+        const BARS_HTML = `<span class='sovits-voice-waves'><span class='sovits-voice-bar'></span><span class='sovits-voice-bar'></span><span class='sovits-voice-bar'></span></span>`;
 
-            if (VOICE_TAG_REGEX.test(html)) {
-                VOICE_TAG_REGEX.lastIndex = 0;
-                const newHtml = html.replace(VOICE_TAG_REGEX, (match, spaceChars, name, emotion, text) => {
-                    const cleanName = name.trim();
-                    // 修改后的代码：先用正则去掉所有的 HTML 标签（比如 <q> 和 </q>），再去除首尾空格
-                    const cleanText = text.replace(/<[^>]+>/g, '').trim();
-                    const key = BatchScheduler.getTaskKey(cleanName, cleanText);
+        // 2. 获取当前模式
+        const isIframeMode = CACHE.settings.iframe_mode === true;
 
-                    let status = 'waiting';
-                    let dataUrl = '';
-                    let loadingClass = '';
+        if (isIframeMode) {
+            // ========================================
+            // 模式 A: 美化卡 (Iframe)
+            // ========================================
+            $('iframe').each(function() {
+                try {
+                    const $iframe = $(this);
+                    const doc = $iframe.contents();
+                    const head = doc.find('head');
+                    const body = doc.find('body');
 
-                    if (CACHE.audioMemory[key]) {
-                        status = 'ready';
-                        dataUrl = `data-audio-url="${CACHE.audioMemory[key]}"`;
-                    } else if (CACHE.pendingTasks.has(key)) {
-                        status = 'queued';
-                        loadingClass = 'loading';
+                    // [A] 注入新版 CSS
+                    if (head.length > 0 && head.find('#sovits-iframe-style').length === 0) {
+                        head.append(`<style id='sovits-iframe-style'>${IFRAME_CSS}</style>`);
                     }
 
-                    const d = Math.max(1, Math.ceil(cleanText.length * 0.25));
-                    const prefix = spaceChars ? '&nbsp;' : '';
+                    // [B] 绑定事件
+                    if (!body.data('tts-event-bound')) {
+                        body.on('click', '.voice-bubble', function(e) {
+                            e.stopPropagation();
+                            const $this = $(this);
+                            const payload = {
+                                type: 'play_tts',
+                                key: $this.attr('data-key'),
+                                text: $this.attr('data-text'),
+                                charName: $this.attr('data-voice-name'),
+                                emotion: $this.attr('data-voice-emotion')
+                            };
+                            window.top.postMessage(payload, '*');
+                        });
+                        body.data('tts-event-bound', true);
+                    }
 
-                    return `${prefix}<span class="voice-bubble ${loadingClass}" style="width: ${Math.min(220, 60+d*10)}px" data-status="${status}" ${dataUrl} data-text="${cleanText}" data-voice-name="${cleanName}" data-voice-emotion="${emotion.trim()}"><span class="sovits-voice-waves"><span class="sovits-voice-bar"></span><span class="sovits-voice-bar"></span><span class="sovits-voice-bar"></span></span><span class="sovits-voice-duration">${d}"</span></span>`;
-                });
+                    const targets = body.find('*').filter(function() {
+                        if (['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT'].includes(this.tagName)) return false;
+                        if ($(this).find('.voice-bubble').length > 0) return false;
 
-                $this.html(newHtml);
-                $this.attr('data-voice-processed', 'true');
-                if (CACHE.settings.auto_generate) setTimeout(() => BatchScheduler.scanAndSchedule(), 100);
+                        let hasTargetText = false;
+                        $(this).contents().each(function() {
+                            // nodeType 3 代表文本节点
+                            if (this.nodeType === 3 && this.nodeValue && this.nodeValue.indexOf("[TTSVoice") !== -1) {
+                                hasTargetText = true;
+                                return false; // 找到就停止遍历子节点
+                            }
+                        });
+                        return hasTargetText;
+                    });
+                    targets.each(function() {
+                        const $p = $(this);
+                        if ($p.html().indexOf("voice-bubble") !== -1) return;
+
+                        if (VOICE_TAG_REGEX.test($p.html())) {
+                            const newHtml = $p.html().replace(VOICE_TAG_REGEX, (match, spaceChars, name, emotion, text) => {
+                                const cleanName = name.trim();
+                                const cleanText = text.replace(/<[^>]+>|&lt;[^&]+&gt;/g, '').trim();
+                                const key = BatchScheduler.getTaskKey(cleanName, cleanText);
+
+                                let status = 'waiting';
+                                let dataUrlAttr = '';
+                                let loadingClass = '';
+                                if (CACHE.audioMemory[key]) {
+                                    status = 'ready';
+                                    dataUrlAttr = `data-audio-url='${CACHE.audioMemory[key]}'`;
+                                } else if (CACHE.pendingTasks.has(key)) {
+                                    status = 'queued';
+                                    loadingClass = 'loading';
+                                }
+
+                                const d = Math.max(1, Math.ceil(cleanText.length * 0.25));
+                                const bubbleWidth = Math.min(220, 75 + d * 10);
+
+                                return `${spaceChars}<span class='voice-bubble ${loadingClass}'
+                                    style='width: ${bubbleWidth}px; justify-content: space-between;'
+                                    data-key='${key}'
+                                    data-status='${status}' ${dataUrlAttr} data-text='${cleanText}'
+                                    data-voice-name='${cleanName}' data-voice-emotion='${emotion.trim()}'>
+                                    ${BARS_HTML}
+                                    <span class='sovits-voice-duration'>${d}"</span>
+                                </span>`;
+                            });
+                            $p.html(newHtml);
+                            if (CACHE.settings.auto_generate) setTimeout(() => BatchScheduler.scanAndSchedule(), 100);
+                        }
+                    });
+                } catch (e) { }
+            });
+
+        } else {
+            // ========================================
+            // 模式 B: 普通卡 (mes_text)
+            // ========================================
+
+            // [A] 确保普通界面也拥有新版 CSS (统一 UI)
+            if ($('#sovits-iframe-style-main').length === 0) {
+                $('head').append(`<style id='sovits-iframe-style-main'>${IFRAME_CSS}</style>`);
             }
-        });
-    }
 
+            $('.mes_text').each(function() {
+                const $this = $(this);
+                if ($this.find('iframe').length > 0) return;
+                if ($this.attr('data-voice-processed') === 'true' || $this.find('.voice-bubble').length > 0) return;
+
+                const html = $this.html();
+                if (VOICE_TAG_REGEX.test(html)) {
+                    VOICE_TAG_REGEX.lastIndex = 0;
+                    const newHtml = html.replace(VOICE_TAG_REGEX, (match, spaceChars, name, emotion, text) => {
+                        const cleanName = name.trim();
+                        const cleanText = text.replace(/<[^>]+>|&lt;[^&]+&gt;/g, '').trim();
+                        const key = BatchScheduler.getTaskKey(cleanName, cleanText);
+
+                        let status = 'waiting';
+                        let dataUrlAttr = '';
+                        let loadingClass = '';
+                        if (CACHE.audioMemory[key]) {
+                            status = 'ready';
+                            dataUrlAttr = `data-audio-url='${CACHE.audioMemory[key]}'`;
+                        } else if (CACHE.pendingTasks.has(key)) {
+                            status = 'queued';
+                            loadingClass = 'loading';
+                        }
+
+                        const d = Math.max(1, Math.ceil(cleanText.length * 0.25));
+                        const bubbleWidth = Math.min(220, 60 + d * 10);
+
+                        return `${spaceChars}<span class="voice-bubble ${loadingClass}"
+                            style="width: ${bubbleWidth}px"
+                            data-status="${status}" ${dataUrlAttr} data-text="${cleanText}"
+                            data-voice-name="${cleanName}" data-voice-emotion="${emotion.trim()}">
+                            ${BARS_HTML}
+                            <span class="sovits-voice-duration">${d}"</span>
+                        </span>`;
+                    });
+
+                    $this.html(newHtml);
+                    $this.attr('data-voice-processed', 'true');
+                    if (CACHE.settings.auto_generate) setTimeout(() => BatchScheduler.scanAndSchedule(), 100);
+                }
+            });
+        }
+    }
     initUI();
+
+    // ===========================================
+    // 核心监听器：处理播放 + 跨窗口生成 (最终修复版)
+    // ===========================================
+    // ===========================================
+    // 核心监听器：处理播放 + 跨窗口生成 (修复动画重置版)
+    // ===========================================
+    window.addEventListener('message', function(event) {
+        // 1. 安全校验
+        if (!event.data || event.data.type !== 'play_tts') return;
+
+        const { key, text, charName, emotion } = event.data;
+
+        // 检查绑定状态
+        if (!CACHE.mappings[charName]) {
+            showDashboard();
+            $('#tts-new-char').val(charName);
+            $('#tts-new-model').focus();
+            setTimeout(() => {
+                alert(`⚠️ 角色 "${charName}" 尚未绑定 TTS 模型。\n已为您自动填好角色名，请在右侧选择模型并点击“绑定”！`);
+            }, 100);
+            return;
+        }
+
+        // === 【核心修复点】 ===
+        // 在做任何事情之前，先停止当前音频，并强制重置所有气泡的动画
+        if (window.currentAudio) {
+            window.currentAudio.pause();
+            window.currentAudio = null;
+        }
+
+        // 暴力重置所有气泡样式：移除 playing 类
+        $('.voice-bubble').removeClass('playing'); // 主界面
+        $('iframe').each(function() { // 所有 Iframe 内部
+            try { $(this).contents().find('.voice-bubble').removeClass('playing'); } catch(e){}
+        });
+        // ===================
+
+        // 2. 检查缓存播放
+        if (CACHE.audioMemory[key]) {
+            const audio = new Audio(CACHE.audioMemory[key]);
+            window.currentAudio = audio;
+
+            // 定义动画控制函数
+            const setAnim = (active) => {
+                const func = active ? 'addClass' : 'removeClass';
+                // 更新主界面
+                $(`.voice-bubble[data-key='${key}']`)[func]('playing');
+                // 更新 Iframe
+                $('iframe').each(function(){
+                    try { $(this).contents().find(`.voice-bubble[data-key='${key}']`)[func]('playing'); } catch(e){}
+                });
+            };
+
+            // 开始播放动画
+            setAnim(true);
+
+            audio.onended = () => {
+                window.currentAudio = null;
+                setAnim(false); // 播放结束自动重置
+            };
+            audio.play();
+            return;
+        }
+
+        // 3. 缓存没有，准备生成
+        if (CACHE.settings.enabled === false) { alert('TTS 插件已关闭'); return; }
+
+        // 尝试定位按钮 DOM
+        let $realBtn = null;
+        $('iframe').each(function() {
+            try {
+                const b = $(this).contents().find(`.voice-bubble[data-key='${key}']`);
+                if(b.length) $realBtn = b;
+            } catch(e){}
+        });
+        if(!$realBtn || !$realBtn.length) $realBtn = $(`.voice-bubble[data-key='${key}']`);
+
+        // 4. 构建虚拟按钮对象 (如果找不到真实DOM)
+        const taskBtn = ($realBtn && $realBtn.length) ? $realBtn : {
+            attr: (k) => (k==='data-status' ? 'waiting' : ''),
+            data: (k) => {
+                if(k==='voice-name') return charName;
+                if(k==='voice-emotion') return emotion;
+                if(k==='text') return text;
+                return '';
+            },
+            addClass: () => {},
+            removeClass: () => {},
+        };
+
+        if ($realBtn && $realBtn.length) {
+            $realBtn.removeClass('error').attr('data-status', 'waiting');
+        }
+
+        // 5. 加入队列
+        if ($realBtn && $realBtn.length) {
+            BatchScheduler.addToQueue($realBtn);
+            BatchScheduler.run();
+        } else {
+            console.warn("[TTS] 按钮DOM丢失，等待DOM刷新后重试...");
+            setTimeout(() => { window.postMessage(event.data, '*'); }, 200);
+        }
+    });
+
+
+
+    // 初始运行
+    setTimeout(processMessageContent, 5000);
+
+
+    setInterval(processMessageContent, 1000);
+    if (typeof refreshData !== 'undefined') {
+        window.refreshTTS = refreshData;
+    }
     const observer = new MutationObserver(() => processMessageContent());
     const chatContainer = document.querySelector('#chat') || document.body;
     if (chatContainer) observer.observe(chatContainer, { childList: true, subtree: true });

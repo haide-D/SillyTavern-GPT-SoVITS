@@ -68,9 +68,13 @@ def init_settings():
 
     # === 新增：默认语言设置 ===
     if not settings.get("default_lang"):
-        settings["default_lang"] = "Chinese" # 默认设为中文，或者你喜欢的 "default"
+        settings["default_lang"] = "Chinese"
         dirty = True
-    # ========================
+    # === 新增：初始化美化卡模式设置 ===
+    if settings.get("iframe_mode") is None:
+        settings["iframe_mode"] = False  # 默认为 False (关闭)
+        dirty = True
+    # ================================
 
     if dirty:
         save_json(SETTINGS_FILE, settings)
@@ -129,6 +133,7 @@ class SettingsRequest(BaseModel):
     base_dir: Optional[str] = None
     cache_dir: Optional[str] = None
     default_lang: Optional[str] = None
+    iframe_mode: Optional[bool] = None
 
 # --- 接口 ---
 
@@ -350,6 +355,10 @@ def update(req: SettingsRequest):
     if req.default_lang is not None:
         s["default_lang"] = req.default_lang
     # ===========
+
+    # === 新增：保存美化卡模式 ===
+    if req.iframe_mode is not None:
+        s["iframe_mode"] = req.iframe_mode
 
     save_json(SETTINGS_FILE, s)
     init_settings() # 刷新全局变量
