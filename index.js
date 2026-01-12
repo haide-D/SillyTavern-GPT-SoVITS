@@ -21,45 +21,28 @@
     const MANAGER_API = `http://${apiHost}:3000`;
     // ================= 动态加载资源 =================
     const utilsURL = `${MANAGER_API}/static/js/utils.js`;
-    const uiURL = `${MANAGER_API}/static/js/ui.js`; // 新增
-    // 链式加载： Utils -> UI -> Init
-    $.getScript(utilsURL)
-        .done(function() {
-        console.log("✅ [Loader] utils.js 加载成功");
-        // 加载 UI
-        $.getScript(uiURL)
-            .done(function() {
-            console.log("✅ [Loader] ui.js 加载成功");
-            initPlugin(); // 全部加载完才启动
-        })
-            .fail(function() { console.error("❌ 无法加载 ui.js"); });
-    })
-        .fail(function() {
-        // 备用尝试 (兼容旧路径)
-        $.getScript(`${MANAGER_API}/static/utils.js`).done(() => initPlugin());
-    });
-
-
-    // ================= 动态加载 Utils =================
-    console.log("🔵 [Loader] 正在从 Python 后端加载 utils.js ...");
-
-    // 使用 jQuery 动态加载脚本
-    $.getScript(utilsURL)
-        .done(function() {
-        console.log("✅ [Loader] utils.js 加载成功，启动主逻辑。");
-        initPlugin(); // 加载成功后，才运行原来的逻辑
-    })
-        .fail(function(jqxhr, settings, exception) {
-        console.error("❌ [Loader] 无法加载 utils.js，请检查 manager.py 是否运行，以及文件路径是否正确。");
-        console.error("尝试的地址:", utilsURL);
-        // 备用尝试：如果文件不在 js 子文件夹里，尝试直接在 static 下找
-        $.getScript(`${MANAGER_API}/static/utils.js`).done(() => initPlugin());
+    const apiURL = `${MANAGER_API}/static/js/api.js`;
+    const uiURL = `${MANAGER_API}/static/js/ui.js`;
+    // 链式加载： Utils -> API -> UI -> Init
+    $.getScript(utilsURL).done(function() {
+        // [新增] 加载 API
+        $.getScript(apiURL).done(function() {
+            // 加载 UI
+            $.getScript(uiURL).done(function() {
+                console.log("✅ [Loader] 所有模块加载完毕");
+                initPlugin();
+            });
+        });
+    }).fail(function() {
+        // 简单的备用兼容逻辑
+        console.error("❌ 核心模块加载失败");
     });
 
     // ================================================
     // 将原本 index.js 的剩余所有逻辑包裹进这个主函数
     function initPlugin() {
         // 重新获取 Utils 对象 (此时它肯定存在了)
+        window.TTS_API.init(MANAGER_API);
         const TTS_Utils = window.TTS_Utils;
 
         // 【修改】使用 Utils 加载 CSS
@@ -90,13 +73,11 @@
         async function refreshData() {
             try {
                 TTS_Utils.injectStyles();
-                // 尝试连接后端
-                const res = await fetch(`${MANAGER_API}/get_data`);
 
                 // 1. 如果连接成功，恢复按钮样式（如果是红色的话）
                 $('#tts-manager-btn').css({ 'border-color': 'rgba(255,255,255,0.3)', 'color': '#fff' }).text('🔊 TTS配置');
 
-                const data = await res.json();
+                const data = await window.TTS_API.getData();
 
                 // 2. 更新核心数据
                 CACHE.models = data.models;
@@ -154,20 +135,23 @@
             if (checked) processMessageContent();
 
             try {
-                await fetch(`${MANAGER_API}/update_settings`, {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ enabled: checked })
-                });
+                await window.TTS_API.updateSettings({ enabled: checked });
             } catch(e) {}
         }
 
         async function toggleAutoGenerate(checked) {
             CACHE.settings.auto_generate = checked;
             try {
-                await fetch(`${MANAGER_API}/update_settings`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ auto_generate: checked }) });
-                if (checked && CACHE.settings.enabled !== false) BatchScheduler.scanAndSchedule();
-            } catch(e) {}
+                // [修改] 使用 API 模块更新设置
+                await window.TTS_API.updateSettings({ auto_generate: checked });
+
+                // 如果开启了自动生成，且总开关没关，立即扫描一次
+                if (checked && CACHE.settings.enabled !== false) {
+                    BatchScheduler.scanAndSchedule();
+                }
+            } catch(e) {
+                console.error("切换自动生成失败:", e);
+            }
         }
 
         const BatchScheduler = {
@@ -337,26 +321,30 @@
                     if (!ref) return false;
                     // === 修改结束 ===
 
-                    const params = new URLSearchParams({ text: task.text, text_lang: "zh", ref_audio_path: ref.path, prompt_text: ref.text, prompt_lang: "zh", streaming_mode: "true", check_only: "true" });
-                    const res = await fetch(`${MANAGER_API}/tts_proxy?${params}`);
-                    return (await res.json()).cached === true;
+                    // [修改] 构建参数对象，不再手动拼接 URL
+                    const params = {
+                        text: task.text,
+                        text_lang: "zh",
+                        ref_audio_path: ref.path,
+                        prompt_text: ref.text,
+                        prompt_lang: "zh"
+                        // check_only 会在 API 内部自动添加
+                    };
+                    // [修改] 调用 API
+                    return await window.TTS_API.checkCache(params);
                 } catch { return false; }
             },
-            async  switchModel(config) {
+            async switchModel(config) {
                 if (CURRENT_LOADED.gpt_path === config.gpt_path && CURRENT_LOADED.sovits_path === config.sovits_path) return;
 
-                // 修改：不再请求 SOVITS_API，而是请求 MANAGER_API 的代理接口
-                const safeSwitch = async (endpoint, path) => {
-                    // 注意这里使用的是 MANAGER_API
-                    await fetch(`${MANAGER_API}/${endpoint}?weights_path=${path}`);
-                };
-
                 if (CURRENT_LOADED.gpt_path !== config.gpt_path) {
-                    await safeSwitch('proxy_set_gpt_weights', config.gpt_path);
+                    // [修改]
+                    await window.TTS_API.switchWeights('proxy_set_gpt_weights', config.gpt_path);
                     CURRENT_LOADED.gpt_path = config.gpt_path;
                 }
                 if (CURRENT_LOADED.sovits_path !== config.sovits_path) {
-                    await safeSwitch('proxy_set_sovits_weights', config.sovits_path);
+                    // [修改]
+                    await window.TTS_API.switchWeights('proxy_set_sovits_weights', config.sovits_path);
                     CURRENT_LOADED.sovits_path = config.sovits_path;
                 }
             },
@@ -369,7 +357,6 @@
                 let targetRefs = availableLangs[currentLang];
 
                 if (!targetRefs) {
-                    // 找不到指定语言，尝试回退
                     if (availableLangs['default']) targetRefs = availableLangs['default'];
                     else {
                         const keys = Object.keys(availableLangs);
@@ -377,13 +364,15 @@
                     }
                 }
 
-                if (!targetRefs) throw new Error("No ref audios found in any language");
+                if (!targetRefs) {
+                    this.updateStatus($btn, 'error');
+                    CACHE.pendingTasks.delete(key);
+                    return; // 找不到参考音频，直接退出
+                }
 
                 let ref = targetRefs.find(r => r.emotion === emotion);
                 if (!ref) ref = targetRefs.find(r => r.emotion === 'default');
                 if (!ref) ref = targetRefs[0];
-
-                if (!ref) throw new Error("No ref audio");
                 // === 修改结束 ===
 
                 try {
@@ -391,36 +380,45 @@
                     if (currentLang === "Japanese" || currentLang === "日语") promptLangCode = "ja";
                     if (currentLang === "English" || currentLang === "英语") promptLangCode = "en";
 
-                    const params = new URLSearchParams({
+                    // [修改] 构造纯参数对象
+                    const params = {
                         text: text,
-                        text_lang: promptLangCode, // 目标生成的文本语言，通常保持 zh 或根据实际情况
+                        text_lang: promptLangCode,
                         ref_audio_path: ref.path,
                         prompt_text: ref.text,
-                        prompt_lang: promptLangCode, // 参考音频的语言
-                        streaming_mode: "true"
-                    });
-                    const response = await fetch(`${MANAGER_API}/tts_proxy?${params}`);
-                    if (!response.ok) throw new Error("Err");
-                    const blob = await response.blob();
-                    this.finishTask(key, URL.createObjectURL(blob));
-                } catch (e) { this.updateStatus($btn, 'error'); CACHE.pendingTasks.delete(key); }
-            }
-        };
+                        prompt_lang: promptLangCode
+                        // streaming_mode 会在 API 内部自动添加
+                    };
 
-        // index.js 中原来的 saveSettings 改为接收参数
+                    // [修改] 调用 API 获取 Blob
+                    const blob = await window.TTS_API.generateAudio(params);
+
+                    this.finishTask(key, URL.createObjectURL(blob));
+
+                } catch (e) {
+                    console.error("生成失败:", e);
+                    this.updateStatus($btn, 'error');
+                    CACHE.pendingTasks.delete(key);
+                }
+            } // 结束 processSingleTask 函数
+        }; // 结束 BatchScheduler 对象
+
         async function saveSettings(base, cache) {
             // 如果没传参（旧逻辑），就去 DOM 找（兼容性），如果传了就用传的
             const b = base !== undefined ? base : $('#tts-base-path').val().trim();
             const c = cache !== undefined ? cache : $('#tts-cache-path').val().trim();
 
             try {
-                await fetch(`${MANAGER_API}/update_settings`, {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ base_dir: b, cache_dir: c })
+                // [修改] 使用 API 模块提交路径设置
+                await window.TTS_API.updateSettings({
+                    base_dir: b,
+                    cache_dir: c
                 });
                 return true;
-            } catch(e) { console.error(e); return false; }
+            } catch(e) {
+                console.error("保存设置失败:", e);
+                return false;
+            }
         }
 
         $(document).on('click', '.voice-bubble', function() {
