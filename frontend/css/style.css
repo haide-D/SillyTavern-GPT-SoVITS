@@ -368,6 +368,141 @@ body[data-bubble-style="steampunk"] {
     --wave-bar-color: #5d4037;
     --wave-bar-playing: #bf360c;
 }
+/* --- 10. 魅影 · 微醺 (Velvet Rouge) --- */
+/* 适用场景：深夜情感、吸血鬼、成年人的恋爱、诱惑、豪门
+   设计理念：红酒、天鹅绒、玫瑰。强调“危险的迷人感”。
+   暗红底色配合金色光泽，营造低调奢华的暧昧氛围。
+*/
+body[data-bubble-style="rouge"] {
+    --bubble-height: 24px;
+    --bubble-radius: 8px; /* 适中的弧度 */
+    --bubble-padding: 0 12px;
+    --bubble-margin: 0 4px;
+    --bubble-font-family: "Georgia", serif; /* 优雅衬线体 */
+    --bubble-backdrop: blur(5px);
+
+    /* Waiting: 丝绸灰 */
+    --s-wait-bg: #2d2d2d;
+    --s-wait-color: #9e9e9e;
+    --s-wait-border: 1px solid #444;
+
+    /* Loading: 玫瑰金 */
+    --s-load-bg: #2a1a1a;
+    --s-load-color: #e57373;
+    --s-load-border: 1px solid #d32f2f;
+
+    /* Ready: 勃艮第红 (深邃) */
+    --s-ready-bg: linear-gradient(135deg, #4a0000 0%, #210000 100%);
+    --s-ready-color: #ffcdd2; /* 浅粉红字 */
+    --s-ready-border: 1px solid #880e4f;
+    --s-ready-shadow: 0 2px 4px rgba(66, 0, 0, 0.5);
+
+    /* Playing: 醉人酒红 (Velvet Texture) */
+    --s-play-bg: linear-gradient(135deg, #880e4f 0%, #b71c1c 100%);
+    --s-play-color: #fff;
+    --s-play-border: 1px solid rgba(255, 215, 0, 0.4); /* 淡金边框，提升贵气 */
+    /* 核心：柔光晕染，模拟灯红酒绿下的暧昧 */
+    --s-play-shadow:
+    0 4px 12px rgba(136, 14, 79, 0.4),
+    inset 0 0 10px rgba(255, 0, 0, 0.1);
+
+    --s-play-scale: scale(1.02);
+    --s-play-font-weight: 500;
+
+    /* 律动条：香槟金 */
+    --wave-bar-color: #555;
+    --wave-bar-playing: #ffe082;
+}
+
+/* --- 11. 战术 · 指令 (Tactical Command) --- */
+/* 适用场景：现代战争、特工行动、危机时刻、废土生存
+   设计理念：军用HUD、雷达绿、高对比度、硬朗线条。
+   去除了所有柔和的装饰，只保留“高效”和“冷酷”。
+*/
+body[data-bubble-style="tactical"] {
+    --bubble-height: 22px; /* 紧凑，更像状态栏 */
+    --bubble-radius: 0px; /* 纯直角，军用风格 */
+    --bubble-padding: 0 8px;
+    --bubble-margin: 0 5px;
+    --bubble-font-family: "Consolas", "Roboto Mono", monospace; /* 等宽字体 */
+    --bubble-backdrop: none;
+
+    /* Waiting: 迷彩灰 */
+    --s-wait-bg: #263238;
+    --s-wait-color: #607d8b;
+    --s-wait-border: 1px solid #37474f;
+
+    /* Loading: 警戒橙 */
+    --s-load-bg: #212121;
+    --s-load-color: #ff9800;
+    --s-load-border: 1px solid #ff9800;
+
+    /* Ready: 待命绿 */
+    --s-ready-bg: #1b5e20;
+    --s-ready-color: #a5d6a7;
+    --s-ready-border: 1px solid #2e7d32;
+    --s-ready-shadow: none;
+
+    /* Playing: 锁定目标 (高亮绿) */
+    --s-play-bg: #000; /* 纯黑底 */
+    --s-play-color: #00e676; /* 荧光毒液绿 */
+    --s-play-border: 1px solid #00e676;
+    /* 扫描线风格阴影 */
+    --s-play-shadow: 0 0 4px rgba(0, 230, 118, 0.5);
+
+    --s-play-scale: none; /* 战术风格不放大 */
+    --s-play-font-weight: 700;
+
+    /* 律动条：雷达波 */
+    --wave-bar-color: #37474f;
+    --wave-bar-playing: #00e676;
+}
+
+/* --- 12. 星舰 · 光环 (Starship Halo) --- */
+/* 适用场景：太空歌剧、高度发达的未来、AI 伴侣
+   设计理念：区别于赛博朋克的“脏乱霓虹”，这是“洁净未来”。
+   通透的玻璃、全息投影、纯白与冰蓝。类似 Star Trek 或 苹果风未来感。
+*/
+body[data-bubble-style="holo"] {
+    --bubble-height: 24px;
+    --bubble-radius: 12px;
+    --bubble-padding: 0 10px;
+    --bubble-margin: 0 4px;
+    --bubble-font-family: "Segoe UI", "Roboto", sans-serif;
+    --bubble-backdrop: blur(8px); /* 磨砂玻璃 */
+
+    /* Waiting: 幽灵白 */
+    --s-wait-bg: rgba(255, 255, 255, 0.1);
+    --s-wait-color: #b0bec5;
+    --s-wait-border: 1px solid rgba(255, 255, 255, 0.1);
+
+    /* Loading: 量子态 */
+    --s-load-bg: rgba(3, 169, 244, 0.1);
+    --s-load-color: #03a9f4;
+    --s-load-border: 1px solid rgba(3, 169, 244, 0.3);
+
+    /* Ready: 护盾充能 */
+    --s-ready-bg: rgba(225, 245, 254, 0.8);
+    --s-ready-color: #0277bd;
+    --s-ready-border: 1px solid #81d4fa;
+    --s-ready-shadow: 0 0 10px rgba(129, 212, 250, 0.3);
+
+    /* Playing: 核心驱动 (冰蓝光辉) */
+    --s-play-bg: rgba(255, 255, 255, 0.95);
+    --s-play-color: #01579b;
+    --s-play-border: 1px solid #fff;
+    /* 核心：极其纯净的蓝色辉光 */
+    --s-play-shadow:
+    0 0 15px rgba(3, 169, 244, 0.6),
+    0 0 30px rgba(3, 169, 244, 0.2);
+
+    --s-play-scale: scale(1.02);
+    --s-play-font-weight: 600;
+
+    /* 律动条：激光蓝 */
+    --wave-bar-color: #b0bec5;
+    --wave-bar-playing: #039be5;
+}
 /* ==========================================================================
    PART 2: 核心组件逻辑 (Core Logic)
    ========================================================================== */
@@ -748,4 +883,35 @@ body[data-bubble-style="kawaii"] .voice-bubble.loading {
     background: linear-gradient(90deg, #ffecb3 0%, #ffca28 100%);
     color: #000;
     border-left: 3px solid #bf360c;
+}
+/* Rouge (魅影) */
+.select-trigger[data-value="rouge"] {
+    background: #2a1a1a; color: #ffcdd2;
+    border-color: #880e4f;
+    box-shadow: inset 0 0 5px rgba(136, 14, 79, 0.5);
+}
+.option-item[data-value="rouge"]:hover {
+    background: linear-gradient(90deg, #4a0000 0%, #880e4f 100%);
+    color: #fff; border-left: 3px solid #ffd700;
+}
+
+/* Tactical (战术) */
+.select-trigger[data-value="tactical"] {
+    background: #000; color: #00e676;
+    border: 1px dashed #00e676;
+    font-family: monospace; letter-spacing: 1px;
+}
+.option-item[data-value="tactical"]:hover {
+    background: #1b5e20; color: #00e676;
+    border: 1px solid #00e676;
+}
+
+/* Holo (光环) */
+.select-trigger[data-value="holo"] {
+    background: #e1f5fe; color: #0277bd;
+    border: 1px solid #81d4fa;
+}
+.option-item[data-value="holo"]:hover {
+    background: #fff; color: #03a9f4;
+    box-shadow: 0 0 10px rgba(3, 169, 244, 0.4);
 }
