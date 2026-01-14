@@ -299,6 +299,67 @@
         window.refreshTTS = refreshData;
         setTimeout(runWatchdog, 500);
     }
+    // ================= [新增] 救援模式 UI (手动 IP 配置) =================
+    function showEmergencyConfig(currentApi) {
+        // 防止重复添加
+        if($('#tts-emergency-box').length > 0) return;
+
+        const html = `
+            <div id="tts-emergency-box" style="
+                position: fixed; top: 10px; right: 10px; z-index: 999999;
+                background: #2d3436; color: #fff; padding: 15px;
+                border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+                font-family: sans-serif; font-size: 14px; border: 1px solid #ff7675;
+                max-width: 250px;
+            ">
+                <div style="font-weight:bold; color:#ff7675; margin-bottom:8px;">⚠️ 无法连接 TTS 后端</div>
+                <div style="font-size:12px; color:#aaa; margin-bottom:8px;">尝试连接: ${currentApi} 失败。<br>请手动输入电脑 IP：</div>
+
+                <input type="text" id="tts-emergency-ip" placeholder="例如: 192.168.1.5"
+                    style="width:100%; box-sizing:border-box; padding:5px; margin-bottom:8px; border-radius:4px; border:none;">
+
+                <button id="tts-emergency-save" style="
+                    width:100%; padding:6px; background:#0984e3; color:white;
+                    border:none; border-radius:4px; cursor:pointer;
+                ">保存并重连</button>
+
+                <div style="margin-top:8px; text-align:center;">
+                    <button id="tts-emergency-close" style="background:none; border:none; color:#aaa; font-size:12px; text-decoration:underline; cursor:pointer;">关闭</button>
+                </div>
+            </div>
+        `;
+
+        $('body').append(html);
+
+        // 自动填入之前可能存过的 IP
+        const saved = localStorage.getItem('tts_plugin_remote_config');
+        if(saved) {
+            try {
+                const p = JSON.parse(saved);
+                if(p.ip) $('#tts-emergency-ip').val(p.ip);
+            } catch(e){}
+        }
+
+        // 绑定关闭事件
+        $('#tts-emergency-close').on('click', function() {
+            $('#tts-emergency-box').remove();
+        });
+
+        // 绑定保存事件
+        $('#tts-emergency-save').on('click', function() {
+            const ip = $('#tts-emergency-ip').val().trim();
+            if(!ip) return alert("请输入 IP");
+
+            // 保存到标准 LocalStorage (与 index.js 顶部的读取逻辑对应)
+            localStorage.setItem('tts_plugin_remote_config', JSON.stringify({
+                useRemote: true,
+                ip: ip
+            }));
+
+            alert(`设置已保存: ${ip}\n页面即将刷新...`);
+            location.reload();
+        });
+    }
 
     // ================= 4. 启动引导流程 =================
     async function bootstrap() {
@@ -324,8 +385,8 @@
 
         } catch (error) {
             console.error("❌ TTS插件启动失败:", error);
-            // 备用：如果 Promise 失败，尝试传统的 alert 提示
-            if (window.TTS_Utils) window.TTS_Utils.showNotification("TTS插件加载失败，请按F12检查日志", "error");
+            // 【核心修改】启动失败时，弹出手动配置 IP 的框
+            showEmergencyConfig(MANAGER_API);
         }
     }
     bootstrap();
