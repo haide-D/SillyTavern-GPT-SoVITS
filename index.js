@@ -27,17 +27,25 @@
 
     const MANAGER_API = `http://${apiHost}:3000`;
 
-    // ================= 2. 模块加载器 =================
+    // ================= 2. 模块加载器 (优化版：带3秒超时) =================
     const loadModule = (name) => {
         return new Promise((resolve, reject) => {
             const url = `${MANAGER_API}/static/js/${name}.js?t=${new Date().getTime()}`;
-            $.getScript(url)
-                .done(() => {
-                resolve();
-            })
-                .fail((jqxhr, settings, exception) => {
-                console.error(`[TTS] 加载模块 ${name} 失败:`, exception);
-                reject(exception);
+
+            // 使用 $.ajax 代替 $.getScript，只为了能设置 timeout
+            $.ajax({
+                url: url,
+                dataType: "script",
+                cache: true,
+                timeout: 3000, // 【关键修改】设置3秒超时。手机连不上时，3秒后立刻触发报错弹窗
+                success: function() {
+                    resolve();
+                },
+                error: function(jqxhr, settings, exception) {
+                    console.warn(`[TTS] 模块 ${name} 连接超时或失败，准备进入救援模式`);
+                    // 拒绝 Promise，触发 bootstrap 的 catch 流程
+                    reject(exception);
+                }
             });
         });
     };
