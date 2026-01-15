@@ -89,6 +89,7 @@
                 } catch(e) {}
             });
         });
+        TTS_Utils.loadGlobalCSS(`${MANAGER_API}/static/css/mobile.css?t=${new Date().getTime()}`);
 
         // 4. 定义核心回调函数 (传给 UI 模块使用)
         async function refreshData() {
@@ -219,7 +220,7 @@
                 API_URL: MANAGER_API,
                 Utils: TTS_Utils,
                 Callbacks: { refreshData, saveSettings, toggleMasterSwitch, toggleAutoGenerate, changeBubbleStyle }
-            });
+            }, false);
         }
         // ============================================================
         // 【新增】自定义下拉菜单交互逻辑
@@ -258,6 +259,7 @@
         function runWatchdog() {
             if (document.hidden) return; // 页面不可见时不执行
 
+            /*
             // 检查 UI 按钮
             if (window.TTS_UI && $('#tts-manager-btn').length === 0) {
                 window.TTS_UI.init({
@@ -267,6 +269,7 @@
                     Callbacks: { refreshData, saveSettings, toggleMasterSwitch, toggleAutoGenerate }
                 });
             }
+            */
 
             // 检查 CSS
             if (TTS_Utils && TTS_Utils.getStyleContent) {
@@ -390,9 +393,14 @@
             await loadModule('ui_templates');
             await loadModule('ui_dashboard');
             await loadModule('ui_main');
+            console.log("📱 [Loader] 加载手机端模块...");
+            await loadModule('mobile_ui');
 
             console.log("✅ [Loader] 所有模块加载完毕，启动插件");
             initPlugin();
+            if(window.TTS_Mobile && window.TTS_Mobile.init) {
+                window.TTS_Mobile.init();
+            }
 
         } catch (error) {
             console.error("❌ TTS插件启动失败:", error);

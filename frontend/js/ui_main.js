@@ -12,11 +12,13 @@ window.TTS_UI = window.TTS_UI || {};
     };
 
     // 2. 初始化入口
-    scope.init = function(context) {
+    // 🟡 【修改点】增加 renderButton 参数，默认值为 true
+    scope.init = function(context, renderButton = true) {
         // 更新内部引用
         scope.CTX = context;
 
-        if ($('#tts-manager-btn').length === 0) {
+        // 🟡 【修改点】增加判断：只有 renderButton 为 true 时才创建悬浮球
+        if (renderButton && $('#tts-manager-btn').length === 0) {
             console.log("✅ [UI] UI模块挂载/重置");
             scope.initFloatingButton();
         }

@@ -182,5 +182,67 @@ window.TTS_UI = window.TTS_UI || {};
             $('.tts-custom-select').removeClass('open');
         });
     };
+    // ===========================================
+    // ⬇️ 渲染模型下拉菜单 (适配后)
+    // ===========================================
+    scope.renderModelOptions = function() {
+        // 关键点：从 scope 中获取全局上下文
+        const CTX = scope.CTX;
+
+        const $select = $('#tts-new-model');
+        const currentVal = $select.val();
+
+        // 重置下拉框
+        $select.empty().append('<option disabled value="">选择模型...</option>');
+
+        // 获取模型数据
+        const models = (CTX && CTX.CACHE && CTX.CACHE.models) ? CTX.CACHE.models : {};
+
+        if (Object.keys(models).length === 0) {
+            $select.append('<option disabled>暂无模型文件夹</option>');
+            return;
+        }
+
+        // 填充选项
+        Object.keys(models).forEach(k => {
+            $select.append(`<option value="${k}">${k}</option>`);
+        });
+
+        // 保持选中状态或默认选中第一个
+        if(currentVal) {
+            $select.val(currentVal);
+        } else {
+            $select.find('option:first').next().prop('selected', true);
+        }
+    };
+
+    // ===========================================
+    // ⬇️ 渲染绑定列表 (适配后)
+    // ===========================================
+    scope.renderDashboardList = function() {
+        const CTX = scope.CTX;
+        const c = $('#tts-mapping-list').empty();
+
+        const mappings = (CTX && CTX.CACHE && CTX.CACHE.mappings) ? CTX.CACHE.mappings : {};
+
+        if (Object.keys(mappings).length === 0) {
+            c.append('<div class="tts-empty">暂无绑定记录</div>');
+            return;
+        }
+
+        Object.keys(mappings).forEach(k => {
+            // 注意：HTML 里的 onclick 必须指向全局的 window.TTS_UI.handleUnbind
+            // 确保 ui_main.js 已经暴露了这个方法
+            c.append(`
+                <div class="tts-list-item">
+                    <span class="col-name">${k}</span>
+                    <span class="col-model">➡ ${mappings[k]}</span>
+                    <div class="col-action">
+                        <button class="btn-red" onclick="window.TTS_UI.handleUnbind('${k}')">解绑</button>
+                    </div>
+                </div>
+            `);
+        });
+    };
 
 })(window.TTS_UI);
