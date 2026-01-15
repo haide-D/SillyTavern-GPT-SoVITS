@@ -7,8 +7,19 @@
         // 更新按钮状态 UI
         updateStatus($btn, status) {
             $btn.attr('data-status', status).removeClass('playing loading error');
-            if (status === 'queued' || status === 'generating') $btn.addClass('loading');
-            else if (status === 'error') $btn.addClass('error');
+
+            if (status === 'queued' || status === 'generating') {
+                $btn.addClass('loading');
+            }
+            else if (status === 'error') {
+                $btn.addClass('error');
+                $btn.css('opacity', ''); // 💡 修复1: 出错也恢复亮度
+            }
+
+            // 💡 修复2: 成功后，必须把手动设置的灰色滤镜去掉！
+            if (status === 'ready') {
+                $btn.css('opacity', '');
+            }
         },
 
         getTaskKey(charName, text) {
@@ -58,7 +69,7 @@
             const charName = $btn.data('voice-name');
             const text = $btn.data('text');
             const key = this.getTaskKey(charName, text);
-
+            // 一级缓存
             if (CACHE.audioMemory[key]) {
                 $btn.data('audio-url', CACHE.audioMemory[key]);
                 this.updateStatus($btn, 'ready');
@@ -119,8 +130,8 @@
 
                 const checkPromises = tasks.map(async (task) => {
                     if (CACHE.audioMemory[task.key]) return { task, cached: true };
-                    const cached = await this.checkCache(task, modelConfig);
-                    return { task, cached };
+                    const result = await this.checkCache(task, modelConfig);
+                    return { task, cached: result && result.cached === true };
                 });
 
                 const results = await Promise.all(checkPromises);
@@ -246,8 +257,13 @@
                     prompt_lang: promptLangCode
                 };
 
-                const blob = await window.TTS_API.generateAudio(params);
+                const { blob, filename } = await window.TTS_API.generateAudio(params);
+                if (filename) {
+                    $btn.attr('data-server-filename', filename);
+                    console.log(`[TTS] 文件名已记录: ${filename}`);
+                }
                 this.finishTask(key, URL.createObjectURL(blob));
+                this.updateStatus($btn, 'ready');
 
             } catch (e) {
                 console.error("生成失败:", e);

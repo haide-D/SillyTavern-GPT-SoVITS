@@ -227,47 +227,65 @@
 
                 if (!$btn || !$btn.length) return;
 
-                // 获取生成参数（这些参数通常保存在按钮的 data 属性里，或者是生成时就需要的数据）
-                // 注意：这里假设你的按钮上或者 TTS_Scheduler 里能找到 ref_audio_path 等参数
-                // 如果按钮上只有 key，我们需要从 Scheduler 的任务队列或缓存的配置里反推，
-                // 但最简单的办法是：在生成成功时，把关键参数（ref_audio, prompt 等）存到 $btn 的 data 属性里。
+                // 【关键修改 1】不再从 audioUrl 猜文件名，而是直接读取我们在 Scheduler 里存好的真实文件名
+                const serverFilename = $btn.attr('data-server-filename');
 
-                // 这里为了演示，假设 Scheduler 生成时已经把参数绑定到了 DOM
-                // 如果没有，你可能需要修改 Scheduler 在生成成功后 $btn.data('params', requestParams)
-                const params = $btn.data('gen-params');
-
-                if (!params) {
-                    alert("无法获取生成参数，无法执行精准删除。\n(请确保 Scheduler 在生成成功后保存了参数)");
-                    // 降级方案：仅重置 UI，不删服务器文件（虽然这样可能还是会读到缓存）
-                    // 建议：修改 ui_main.js/scheduler.js 让其生成成功后 $btn.data('gen-params', 发送给API的数据)
+                // 如果没有文件名，说明还没生成过、生成失败了，或者是旧版本缓存（还没存文件名）
+                // 这种情况下，直接重置 UI 让它重新生成即可，不需要（也无法）删除服务端文件
+                if (!serverFilename) {
+                    console.warn("未找到服务端文件名记录，跳过删除步骤，直接重生成。");
+                    resetAndRegen($btn);
+                    return;
                 }
 
-                if (!confirm("确定要删除服务端缓存并重新生成吗？")) return;
+                if (!confirm("确定要重新生成这段语音吗？")) return;
 
                 // A. 调用 API 删除服务端文件
                 try {
-                    if(params) {
-                        await window.TTS_API.deleteCache(params);
-                        console.log("服务器缓存已删除");
-                    }
+                    // 【关键修改 2】传入真实的 serverFilename
+                    console.log(`🗑️ 准备删除服务端文件: ${serverFilename}`);
+                    await window.TTS_API.deleteCache(serverFilename);
+                    console.log(`✅ [Re-roll] 服务端缓存 ${serverFilename} 已删除`);
                 } catch(e) {
-                    console.error("删除缓存失败", e);
+                    console.warn("删除缓存请求失败（可能是文件已不存在），继续执行重生成", e);
                 }
 
-                // B. 清除前端内存缓存
+                // B. 执行重置和生成
+                // 【建议】重置前把旧的文件名记录也清掉，避免逻辑混淆
+                $btn.removeAttr('data-server-filename');
+                resetAndRegen($btn);
+            });
+
+            // 封装一个重置并生成的辅助函数
+            function resetAndRegen($btn) {
                 const key = $btn.data('key');
                 const CACHE = window.TTS_State.CACHE;
-                if (CACHE.audioMemory[key]) delete CACHE.audioMemory[key];
+                const Scheduler = window.TTS_Scheduler;
 
-                // C. 重置按钮状态
+                // 1. 清除前端内存缓存 (如果有)
+                if (key && CACHE.audioMemory[key]) {
+                    // 释放 Blob URL 内存
+                    URL.revokeObjectURL(CACHE.audioMemory[key]);
+                    delete CACHE.audioMemory[key];
+                }
+
+                // 2. 停止当前可能正在播放的这段音频
+                if ($btn.hasClass('playing')) {
+                    // 触发点击事件来停止，或者直接调用 API 停止
+                    if(window.TTS_Events.playAudio) window.TTS_Events.playAudio(null, null);
+                }
+
+                // 3. 重置按钮状态
                 $btn.attr('data-status', 'waiting')
                     .removeClass('ready error playing')
-                    .css('opacity', '0.6');
+                    .css('opacity', '0.6'); // 视觉反馈
 
-                // D. 重新加入队列
-                window.TTS_Scheduler.addToQueue($btn);
-                window.TTS_Scheduler.run();
-            });
+                // 4. 重新加入队列
+                // Scheduler 会重新读取 global settings 和 character mapping
+                // 自动生成新的请求，无需我们要旧的 params
+                Scheduler.addToQueue($btn);
+                Scheduler.run();
+            }
 
             // 2. 收藏 (Fav) - 带上下文
             $(document).on('click', '#tts-action-fav', async () => {
@@ -283,7 +301,6 @@
                 if ($msgContainer.length) {
                     // 拿到之前的兄弟元素
                     let $prev = $msgContainer.prevAll('.mes').slice(0, 3);
-                    // 因为 prevAll 是倒序的，我们要反转回来
                     $($prev.get().reverse()).each((i, el) => {
                         // 提取文本，去掉名字等杂质
                         let text = $(el).find('.mes_text').text() || $(el).text();
@@ -298,7 +315,6 @@
                     audio_url: $btn.attr('data-audio-url'),
                     context: context // 加入采集到的上下文
                 };
-
                 try {
                     await window.TTS_API.addFavorite(favItem);
 

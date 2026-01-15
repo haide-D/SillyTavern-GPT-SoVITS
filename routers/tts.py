@@ -38,14 +38,30 @@ def tts_proxy(text: str, text_lang: str, ref_audio_path: str, prompt_text: str, 
         # 生成缓存Key
         raw_key = f"{text}_{ref_audio_path}_{prompt_text}_{text_lang}_{prompt_lang}"
         file_hash = hashlib.md5(raw_key.encode('utf-8')).hexdigest()
-        cache_file_path = os.path.join(cache_dir, f"{file_hash}.wav")
+
+        # 【修改 1】明确定义文件名变量，方便后续使用
+        filename = f"{file_hash}.wav"
+        cache_file_path = os.path.join(cache_dir, filename)
+
+        # 【修改 2】定义响应头 (Headers)
+        # X-Audio-Filename: 告诉前端这个音频在服务器叫什么名字
+        # Access-Control-Expose-Headers: 允许前端 JS 读取这个自定义 header (否则会被浏览器拦截)
+        custom_headers = {
+            "X-Audio-Filename": filename,
+            "Access-Control-Expose-Headers": "X-Audio-Filename"
+        }
 
         # 检查缓存是否存在
         if check_only == "true":
-            return {"cached": os.path.exists(cache_file_path)}
+            # 【修改 3】check_only 模式下，也返回 filename，方便前端记录
+            return {
+                "cached": os.path.exists(cache_file_path),
+                "filename": filename
+            }
 
         if os.path.exists(cache_file_path):
-            return FileResponse(cache_file_path, media_type="audio/wav")
+            # 【修改 4】缓存命中时，带上 headers 返回
+            return FileResponse(cache_file_path, media_type="audio/wav", headers=custom_headers)
 
         maintain_cache_size(cache_dir)
 
@@ -61,7 +77,7 @@ def tts_proxy(text: str, text_lang: str, ref_audio_path: str, prompt_text: str, 
         }
 
         try:
-            # 去掉 stream=True，增加超时时间，因为需要等待完整音频生成
+            # 去掉 stream=True，增加超时时间
             r = requests.get(url, params=params, timeout=120)
         except requests.exceptions.RequestException:
             raise HTTPException(status_code=503, detail="无法连接到 SoVITS 服务，请检查 9880 端口")
@@ -70,14 +86,12 @@ def tts_proxy(text: str, text_lang: str, ref_audio_path: str, prompt_text: str, 
             raise HTTPException(status_code=500, detail=f"SoVITS Error: {r.status_code}")
 
         # 保存文件逻辑
-        # 即使是非流式，也建议先写 .tmp 再 rename，防止写入中断导致缓存文件损坏
         temp_path = cache_file_path + ".tmp"
 
         try:
             with open(temp_path, "wb") as f:
                 f.write(r.content)
 
-            # 写入成功后重命名
             if os.path.exists(cache_file_path):
                 os.remove(cache_file_path)
             os.rename(temp_path, cache_file_path)
@@ -88,42 +102,37 @@ def tts_proxy(text: str, text_lang: str, ref_audio_path: str, prompt_text: str, 
                 os.remove(temp_path)
             raise HTTPException(status_code=500, detail="Failed to save audio file")
 
-        # 直接返回文件
-        return FileResponse(cache_file_path, media_type="audio/wav")
+        # 【修改 5】新生成文件返回时，也带上 headers
+        return FileResponse(cache_file_path, media_type="audio/wav", headers=custom_headers)
 
     except HTTPException as he:
         raise he
     except Exception as e:
         print(f"General TTS Error: {e}")
         raise HTTPException(status_code=500, detail="TTS Server Internal Error")
-
 # [添加到 routers/tts.py 末尾]
 
 @router.get("/delete_cache")
-def delete_cache(
-        text: str,
-        text_lang: str,
-        ref_audio_path: str,
-        prompt_text: str,
-        prompt_lang: str
-):
+def delete_cache(filename: str):
     """
-    接收和 tts_proxy 一模一样的参数，
-    计算出同样的 Hash 文件名，然后物理删除它。
+    直接根据文件名删除缓存。
+    前端从 audio url 中提取文件名传过来即可。
     """
     _, cache_dir = get_current_dirs()
 
-    # 1. 复用完全相同的 Hash 算法
-    raw_key = f"{text}_{ref_audio_path}_{prompt_text}_{text_lang}_{prompt_lang}"
-    file_hash = hashlib.md5(raw_key.encode('utf-8')).hexdigest()
-    cache_file_path = os.path.join(cache_dir, f"{file_hash}.wav")
+    # 安全措施：只允许删除文件名，不允许带路径（防止删错系统文件）
+    safe_filename = os.path.basename(filename)
+    target_path = os.path.join(cache_dir, safe_filename)
 
-    # 2. 物理删除
-    if os.path.exists(cache_file_path):
+    if os.path.exists(target_path):
         try:
-            os.remove(cache_file_path)
-            return {"status": "success", "msg": "Cache deleted"}
+            os.remove(target_path)
+            return {"status": "success", "msg": f"Deleted {safe_filename}"}
+        except PermissionError:
+            print(f"Warning: File {safe_filename} is in use and cannot be deleted.")
+            return {"status": "success", "msg": "File in use, skipped deletion"}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)}")
     else:
-        return {"status": "not_found", "msg": "File does not exist"}
+        # 如果文件本来就不在（可能已经被删了），也算成功，方便前端继续跑生成逻辑
+        return {"status": "success", "msg": "File not found (already deleted?)"}

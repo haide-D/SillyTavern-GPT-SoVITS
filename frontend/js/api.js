@@ -29,17 +29,28 @@
         async checkCache(params) {
             const queryParams = { ...params, check_only: "true" };
             const query = new URLSearchParams(queryParams).toString();
-            const res = await fetch(this._url(`/tts_proxy?${query}`));
+            const res = await fetch(this._url(`/tts_proxy?${query}`), {
+                cache: 'no-store'
+            });
             const data = await res.json();
-            return data.cached === true;
+            return {
+                cached: data.cached === true,
+                filename: data.filename
+            };
         },
 
         async generateAudio(params) {
-            const queryParams = { ...params, streaming_mode: "true" };
+            const queryParams = { ...params, streaming_mode: "false" };
             const query = new URLSearchParams(queryParams).toString();
-            const res = await fetch(this._url(`/tts_proxy?${query}`));
+            const res = await fetch(this._url(`/tts_proxy?${query}`), {
+                cache: 'no-store'
+            });
+            const filename = res.headers.get("X-Audio-Filename");
             if (!res.ok) throw new Error("Generation Error");
-            return await res.blob();
+            return {
+                blob: await res.blob(),
+                filename: filename
+            };
         },
 
         async switchWeights(endpoint, path) {
@@ -47,10 +58,11 @@
         },
 
         // === 缓存管理 ===
-        async deleteCache(params) {
-            const queryParams = { ...params };
-            const query = new URLSearchParams(queryParams).toString();
-            // 调用在 tts.py 写的接口
+        async deleteCache(filename) {
+            // 构造查询参数 ?filename=xxx
+            const query = new URLSearchParams({ filename: filename }).toString();
+
+            // 发送请求
             const res = await fetch(this._url(`/delete_cache?${query}`));
             return await res.json();
         },
