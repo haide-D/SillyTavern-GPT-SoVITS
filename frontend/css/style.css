@@ -915,3 +915,53 @@ body[data-bubble-style="kawaii"] .voice-bubble.loading {
     background: #fff; color: #03a9f4;
     box-shadow: 0 0 10px rgba(3, 169, 244, 0.4);
 }
+
+
+/* TTS 气泡菜单样式 */
+#tts-bubble-menu {
+    position: fixed;
+    z-index: 9999;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0,0,0,0.1);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    border-radius: 12px;
+    padding: 6px;
+    min-width: 140px;
+    font-size: 14px;
+    color: #333;
+    animation: tts-fade-in 0.15s ease-out;
+}
+
+#tts-bubble-menu .menu-item {
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s;
+}
+
+#tts-bubble-menu .menu-item:hover {
+    background: #f0f0f0;
+}
+
+#tts-bubble-menu .menu-item .icon {
+    font-size: 16px;
+}
+
+#tts-bubble-menu .menu-item.danger {
+    color: #ef4444;
+}
+
+#tts-bubble-menu .divider {
+    height: 1px;
+    background: #eee;
+    margin: 4px 0;
+}
+
+@keyframes tts-fade-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}

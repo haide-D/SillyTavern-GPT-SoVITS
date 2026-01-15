@@ -127,9 +127,29 @@ window.TTS_UI.Templates = (function() {
             </div>
         </div>`;
     }
-
+    function getBubbleMenuHTML() {
+        return `
+    <div id="tts-bubble-menu" class="tts-context-menu" style="display:none;">
+        <div class="menu-item" id="tts-action-play">
+            <span class="icon">▶️</span> 播放语音 (Play)
+        </div>
+        <div class="divider"></div>
+        <div class="menu-item" id="tts-action-reroll">
+            <span class="icon">🔄</span> 重绘 (Re-Roll)
+        </div>
+        <div class="menu-item" id="tts-action-fav">
+            <span class="icon">❤️</span> 收藏 (Favorite)
+        </div>
+        <div class="divider"></div>
+        <div class="menu-item close-item" style="color:#999; justify-content:center; font-size:12px;">
+            点击外部关闭
+        </div>
+    </div>
+    `;
+    }
     return {
         getFloatingButtonHTML,
-        getDashboardHTML
+        getDashboardHTML,
+        getBubbleMenuHTML
     };
 })();

@@ -22,6 +22,10 @@ window.TTS_UI = window.TTS_UI || {};
             console.log("✅ [UI] UI模块挂载/重置");
             scope.initFloatingButton();
         }
+        // 【新增】注入气泡菜单 (如果还没有的话)
+        if ($('#tts-bubble-menu').length === 0) {
+            $('body').append(window.TTS_UI.Templates.getBubbleMenuHTML());
+        }
     };
 
     // 3. 悬浮球逻辑
