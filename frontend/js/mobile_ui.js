@@ -1,6 +1,6 @@
 window.TTS_Mobile = window.TTS_Mobile || {};
 
-(function(scope) {
+(function (scope) {
     // 状态管理
     let STATE = {
         isOpen: false,
@@ -56,8 +56,8 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                 let config = { useRemote: false, ip: "" };
                 try {
                     const saved = localStorage.getItem('tts_plugin_remote_config');
-                    if(saved) config = JSON.parse(saved);
-                } catch(e) {}
+                    if (saved) config = JSON.parse(saved);
+                } catch (e) { }
 
                 const templateData = {
                     isEnabled: settings.enabled !== false,
@@ -115,7 +115,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                 const fingerprints = window.TTS_Utils ? window.TTS_Utils.getCurrentContextFingerprints() : [];
                 let charName = "";
                 try {
-                    if(window.SillyTavern && window.SillyTavern.getContext) {
+                    if (window.SillyTavern && window.SillyTavern.getContext) {
                         const ctx = window.SillyTavern.getContext();
                         if (ctx.characters && ctx.characterId !== undefined) {
                             const charObj = ctx.characters[ctx.characterId];
@@ -124,7 +124,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                             }
                         }
                     }
-                } catch(e) {
+                } catch (e) {
                     console.warn("获取角色名失败:", e);
                 }
 
@@ -148,9 +148,9 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                         return list.map(item => {
                             // 🔥 修改3：Context 不再写死颜色，使用 class="fav-context-box"
                             let contextHtml = '';
-                            if(item.context && item.context.length) {
+                            if (item.context && item.context.length) {
                                 contextHtml = `<div class="fav-context-box" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                                    📝 ${item.context[item.context.length-1]}
+                                    📝 ${item.context[item.context.length - 1]}
                                 </div>`;
                             }
 
@@ -197,7 +197,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                     $content.html(renderList(data.current, "当前对话没有收藏记录<br>试着去其他收藏里找找？"));
 
                     // 5. 绑定 Tab 切换
-                    $tabs.find('.fav-tab').click(function() {
+                    $tabs.find('.fav-tab').click(function () {
                         const $t = $(this);
                         // 🔥 修改5：不再手动改 CSS background，而是只切换 active 类
                         $tabs.find('.fav-tab').removeClass('active');
@@ -215,10 +215,10 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                     $content.html(renderList(data.current, "当前对话没有收藏记录<br>试着去其他收藏里找找？"));
 
                     // 5. 绑定 Tab 切换
-                    $tabs.find('.fav-tab').click(function() {
+                    $tabs.find('.fav-tab').click(function () {
                         const $t = $(this);
-                        $tabs.find('.fav-tab').removeClass('active').css({background:'rgba(255,255,255,0.5)', color:'#666', boxShadow:'none'});
-                        $t.addClass('active').css({background:'#fff', color:'#e11d48', boxShadow:'0 1px 2px rgba(0,0,0,0.1)'});
+                        $tabs.find('.fav-tab').removeClass('active').css({ background: 'rgba(255,255,255,0.5)', color: '#666', boxShadow: 'none' });
+                        $t.addClass('active').css({ background: '#fff', color: '#e11d48', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' });
 
                         const tabType = $t.data('tab');
                         if (tabType === 'current') {
@@ -234,7 +234,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                         let currentAudio = null;
                         let $currentBubble = null;
 
-                        $content.find('.fav-play-bubble').off().click(function(e) {
+                        $content.find('.fav-play-bubble').off().click(function (e) {
                             e.stopPropagation();
                             const $bubble = $(this);
                             const url = $bubble.data('url');
@@ -267,7 +267,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                                 resetBubble($bubble);
                             });
 
-                            audio.onended = function() {
+                            audio.onended = function () {
                                 resetBubble($bubble);
                                 currentAudio = null;
                             };
@@ -280,15 +280,15 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                         });
 
                         // ... 删除按钮逻辑保持不变 ...
-                        $content.find('.fav-del-btn').off().click(async function(e) {
+                        $content.find('.fav-del-btn').off().click(async function (e) {
                             e.stopPropagation();
-                            if(!confirm("确定删除这条收藏吗？")) return;
+                            if (!confirm("确定删除这条收藏吗？")) return;
                             const $item = $(this).closest('.fav-item');
                             const id = $item.data('id');
                             try {
                                 await window.TTS_API.deleteFavorite(id);
-                                $item.fadeOut(300, function(){ $(this).remove(); });
-                            } catch(err) { alert("删除失败: " + err.message); }
+                                $item.fadeOut(300, function () { $(this).remove(); });
+                            } catch (err) { alert("删除失败: " + err.message); }
                         });
                     }
 
@@ -330,13 +330,13 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         }
     };
 
-    scope.init = function() {
+    scope.init = function () {
         if ($('meta[name="viewport"]').length === 0) {
             $('head').append('<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">');
             console.log("📱 [Mobile] 已注入 Viewport 标签以适配手机屏幕");
         }
 
-        if($('#tts-mobile-root').length === 0) {
+        if ($('#tts-mobile-root').length === 0) {
             injectStyles();
             renderShell();
             bindEvents();
@@ -350,7 +350,15 @@ window.TTS_Mobile = window.TTS_Mobile || {};
 
     function renderShell() {
         const html = `
-        <div id="tts-mobile-trigger">📱</div>
+        <div id="tts-mobile-trigger">
+            <div class="trigger-bubble-inner">
+                <div class="trigger-waves">
+                    <span class="trigger-bar"></span>
+                    <span class="trigger-bar"></span>
+                    <span class="trigger-bar"></span>
+                </div>
+            </div>
+        </div>
         <div id="tts-mobile-root" class="minimized">
             <div id="tts-mobile-power-btn" title="关闭手机"></div>
             <div class="side-btn volume-up"></div>
@@ -390,11 +398,11 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         STATE.currentApp = null;
     }
 
-    scope.openApp = function(appKey) {
+    scope.openApp = function (appKey) {
         const app = APPS[appKey];
-        if(!app) return;
+        if (!app) return;
 
-        if(app.action) {
+        if (app.action) {
             app.action();
             return;
         }
@@ -403,7 +411,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         $screen.empty();
         const $appContainer = $(`<div class="app-container" style="width:100%; height:100%; display:flex; flex-direction:column; background:#f2f2f7; color:#000;"></div>`);
 
-        if(app.render) {
+        if (app.render) {
             app.render($appContainer);
         }
         $screen.append($appContainer);
@@ -430,12 +438,12 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         const DRAG_THRESHOLD = 10;
 
         // 1. 按下 (鼠标或手指)
-        $trigger.on('mousedown touchstart', function(e) {
+        $trigger.on('mousedown touchstart', function (e) {
             // 多指触控忽略
             if (e.type === 'touchstart' && e.touches.length > 1) return;
 
             // 阻止默认行为 (防止选中文本等)
-            if(e.cancelable) e.preventDefault();
+            if (e.cancelable) e.preventDefault();
 
             const point = e.type === 'touchstart' ? e.touches[0] : e;
             const rect = $trigger[0].getBoundingClientRect();
@@ -464,7 +472,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         // 2. 移动
         function onMove(e) {
             if (!isDragging) return;
-            if(e.cancelable) e.preventDefault(); // 防止屏幕随手指滚动
+            if (e.cancelable) e.preventDefault(); // 防止屏幕随手指滚动
 
             const point = e.type === 'touchmove' ? e.touches[0] : e;
             const currentX = point.clientX;
@@ -543,12 +551,12 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         // 其他原有事件
         // ============================================================
 
-        $('#tts-mobile-power-btn').click(function(e) {
+        $('#tts-mobile-power-btn').click(function (e) {
             e.stopPropagation();
             closePhone();
         });
 
-        $(document).on('click', function(e) {
+        $(document).on('click', function (e) {
             if (STATE.isOpen) {
                 if ($(e.target).closest('#tts-mobile-root, #tts-mobile-trigger').length === 0) {
                     closePhone();
@@ -556,16 +564,16 @@ window.TTS_Mobile = window.TTS_Mobile || {};
             }
         });
 
-        $phone.on('click', function(e) {
+        $phone.on('click', function (e) {
             e.stopPropagation();
         });
 
-        $phone.on('click', '.app-icon-wrapper', function() {
+        $phone.on('click', '.app-icon-wrapper', function () {
             const key = $(this).data('app');
             scope.openApp(key);
         });
 
-        $('#mobile-home-btn').click(function() {
+        $('#mobile-home-btn').click(function () {
             renderHomeScreen();
         });
     }
