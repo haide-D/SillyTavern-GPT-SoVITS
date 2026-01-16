@@ -113,8 +113,6 @@ window.TTS_Mobile = window.TTS_Mobile || {};
 
                 // 2. 准备数据
                 const fingerprints = window.TTS_Utils ? window.TTS_Utils.getCurrentContextFingerprints() : [];
-
-                // 🛠️ [修复 1] 修正为 let
                 let charName = "";
                 try {
                     if(window.SillyTavern && window.SillyTavern.getContext) {
@@ -134,16 +132,12 @@ window.TTS_Mobile = window.TTS_Mobile || {};
 
                 // 3. 发送智能请求
                 try {
-                    // 🛠️ [修复 2] 变量名统一为 res
                     const res = await window.TTS_API.getMatchedFavorites({
                         char_name: charName,
                         fingerprints: fingerprints
                     });
-
                     if (res.status !== 'success') throw new Error(res.msg);
-
-                    const data = res.data; // { current: [], others: [] }
-
+                    const data = res.data;
                     // 4. 渲染函数
                     const renderList = (list, emptyMsg) => {
                         if (!list || list.length === 0) {

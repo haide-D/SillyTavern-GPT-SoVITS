@@ -146,40 +146,41 @@ FAV_AUDIO_DIR = "data/favorites_audio"
 @router.post("/add_favorite")
 def add_favorite(item: FavoriteItem):
     favs = _load_favs()
+    # 容错处理：防止 json 格式不对
     if isinstance(favs, dict):
-        print("⚠️ 警告: favorites.json 格式错误 (是dict不是list)，已自动重置为空列表。")
         if "favorites" in favs and isinstance(favs["favorites"], list):
             favs = favs["favorites"]
         else:
             favs = []
-    # 1. 准备新记录的数据
+
     new_entry = item.dict()
     new_entry["id"] = str(uuid.uuid4())
     new_entry["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # === 【核心逻辑】文件搬运 ===
-    # 如果前端传了 filename，说明需要从 Cache 备份文件
-    if item.filename:
+    # === 【安全修改 1】 ===
+    clean_filename = os.path.basename(item.filename) if item.filename else None
+
+    if clean_filename:
         # 确保目标文件夹存在
         os.makedirs(FAV_AUDIO_DIR, exist_ok=True)
-
-        source_path = os.path.join(CACHE_DIR, item.filename)
-        target_filename = f"fav_{new_entry['id']}_{item.filename}"
+        # 强制限制在 CACHE_DIR 内部
+        source_path = os.path.join(CACHE_DIR, clean_filename)
+        target_filename = f"fav_{new_entry['id']}_{clean_filename}"
         target_path = os.path.join(FAV_AUDIO_DIR, target_filename)
-
-        # 检查源文件还在不在 (防止用户手快先把 Cache 删了)
+        # 检查源文件
         if os.path.exists(source_path):
             try:
                 shutil.copy2(source_path, target_path)
                 print(f"✅ [收藏] 音频已备份: {target_path}")
                 new_entry["audio_url"] = f"/favorites/{target_filename}"
                 new_entry["relative_path"] = target_filename
+                new_entry["filename"] = clean_filename
             except Exception as e:
                 print(f"⚠️ [收藏] 备份失败: {e}")
         else:
             print(f"⚠️ [收藏] 源文件 {source_path} 未找到，仅保存文本记录。")
+
     favs.insert(0, new_entry)
-    os.makedirs("data", exist_ok=True)
     save_json(FAVORITES_FILE, favs)
     return {"status": "success", "id": new_entry["id"]}
 @router.post("/delete_favorite")
@@ -192,16 +193,18 @@ def delete_favorite(req: DeleteFavRequest):
         if not filename_to_del and target_fav.get("audio_url", "").startswith("/favorites/"):
             filename_to_del = target_fav["audio_url"].replace("/favorites/", "")
         if filename_to_del:
-            file_path = os.path.join(FAV_AUDIO_DIR, filename_to_del)
-            # 安全检查：确保要删的文件确实在 favorites_audio 文件夹里
-            if os.path.exists(file_path) and os.path.isfile(file_path):
+            # === 【安全修改 2：防止越狱删除】 ===
+            safe_filename = os.path.basename(filename_to_del)
+            abs_base_dir = os.path.abspath(FAV_AUDIO_DIR)
+            abs_target_path = os.path.abspath(os.path.join(FAV_AUDIO_DIR, safe_filename))
+            if abs_target_path.startswith(abs_base_dir) and os.path.exists(abs_target_path) and os.path.isfile(abs_target_path):
                 try:
-                    os.remove(file_path)
-                    print(f"🗑️ [删除] 已清理物理文件: {file_path}")
+                    os.remove(abs_target_path)
+                    print(f"🗑️ [删除] 已清理物理文件: {abs_target_path}")
                 except Exception as e:
                     print(f"⚠️ [删除] 文件删除失败: {e}")
             else:
-                print(f"⚠️ [删除] 文件未找到或路径异常，跳过: {file_path}")
+                print(f"🚫 [安全拦截] 试图删除非收藏目录文件或文件不存在: {abs_target_path}")
     new_favs = [f for f in favs if f["id"] != req.id]
     save_json(FAVORITES_FILE, new_favs)
 
