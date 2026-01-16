@@ -7,7 +7,7 @@
     height: 640px;
     background: #000;
     border-radius: 45px;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     border: 8px solid #333;
     z-index: 2147483647 !important;
     font-family: 'Segoe UI', sans-serif;
@@ -26,17 +26,21 @@
 .mobile-screen {
     width: 100%;
     height: 100%;
-    background: linear-gradient(135deg, #2b1055, #7597de); /* 默认壁纸 */
+    background: linear-gradient(135deg, #2b1055, #7597de);
+    /* 默认壁纸 */
     position: relative;
     overflow: hidden;
     color: white;
-    border-radius: 35px; /* 屏幕自己也要有圆角 */
-    overflow: hidden;    /* 屏幕内的内容必须被切掉，不能流出来 */
+    border-radius: 35px;
+    /* 屏幕自己也要有圆角 */
+    overflow: hidden;
+    /* 屏幕内的内容必须被切掉，不能流出来 */
     /* 稍微缩小一点屏幕，留出手机边框的厚度 */
     width: calc(100% - 10px);
     height: calc(100% - 10px);
     margin: 5px;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.5); /* 内阴影增加深度 */
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+    /* 内阴影增加深度 */
 }
 
 /* 顶部状态栏 & 灵动岛 */
@@ -77,26 +81,29 @@
     cursor: pointer;
     transition: transform 0.1s;
 }
-.app-icon-wrapper:active { transform: scale(0.9); }
+
+.app-icon-wrapper:active {
+    transform: scale(0.9);
+}
 
 .app-icon {
     width: 50px;
     height: 50px;
     border-radius: 12px;
-    background: rgba(255,255,255,0.2);
+    background: rgba(255, 255, 255, 0.2);
     backdrop-filter: blur(5px);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 24px;
     margin-bottom: 5px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .app-name {
     font-size: 12px;
     color: #ffffff !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
     font-weight: 600;
     margin-top: 6px;
     letter-spacing: 0.5px;
@@ -115,12 +122,15 @@
     transform: translateX(-50%);
     width: 120px;
     height: 5px;
-    background: rgba(255,255,255,0.5);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 10px;
     cursor: pointer;
     z-index: 20;
 }
-.mobile-home-bar:hover { background: white; }
+
+.mobile-home-bar:hover {
+    background: white;
+}
 
 #tts-mobile-trigger {
     position: fixed;
@@ -138,59 +148,78 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     cursor: pointer;
     z-index: 2147483647 !important;
     transition: transform 0.3s;
 }
-#tts-mobile-trigger:hover { transform: scale(1.1); }
+
+#tts-mobile-trigger:hover {
+    transform: translateY(-50%);
+}
+
 /* --- 新增的按键样式 --- */
 /* 1. 红色电源键 (关闭按钮) */
 #tts-mobile-power-btn {
     position: absolute;
-    right: -6px;      /* 向右突出 6px */
+    right: -6px;
+    /* 向右突出 6px */
     top: 100px;
     width: 6px;
     height: 40px;
-    background: #ef4444; /* 鲜艳的红色 */
+    background: #ef4444;
+    /* 鲜艳的红色 */
     border-top-right-radius: 4px;
     border-bottom-right-radius: 4px;
     cursor: pointer;
-    z-index: -1;      /* 放在手机下面，看起来像是一体的 */
-    box-shadow: 2px 0 4px rgba(0,0,0,0.4);
+    z-index: -1;
+    /* 放在手机下面，看起来像是一体的 */
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.4);
     transition: all 0.2s;
 }
 
 #tts-mobile-power-btn:hover {
-    background: #dc2626; /* 悬停变深色 */
-    right: -8px; /* 悬停时稍微伸出来一点，提示可点击 */
+    background: #dc2626;
+    /* 悬停变深色 */
 }
 
 #tts-mobile-power-btn:active {
-    transform: scale(0.95); /* 点击时的按压效果 */
+    transform: scale(0.95);
+    /* 点击时的按压效果 */
 }
 
 .side-btn {
     position: absolute;
-    left: -6px;       /* 向左突出 */
+    left: -6px;
+    /* 向左突出 */
     width: 6px;
     height: 30px;
-    background: #4b5563; /* 深灰色 */
+    background: #4b5563;
+    /* 深灰色 */
     border-top-left-radius: 4px;
     border-bottom-left-radius: 4px;
     z-index: -1;
-    box-shadow: -2px 0 4px rgba(0,0,0,0.4);
+    box-shadow: -2px 0 4px rgba(0, 0, 0, 0.4);
 }
-.side-btn.volume-up { top: 80px; }
-.side-btn.volume-down { top: 120px; }
+
+.side-btn.volume-up {
+    top: 80px;
+}
+
+.side-btn.volume-down {
+    top: 120px;
+}
 
 /* 3. 确保手机本体有边框，这样侧键才像连在上面的 */
 #tts-mobile-root {
-/* 如果你之前没有加 border，加上这行会更有质感 */
+    /* 如果你之前没有加 border，加上这行会更有质感 */
     border: 6px solid #1a1a1a;
-    overflow: visible !important; /* 关键：允许侧键显示在盒子外面 */
-    transform-style: preserve-3d; /* 增加一点 3D 质感 */
+    overflow: visible !important;
+    /* 关键：允许侧键显示在盒子外面 */
+    transform-style: preserve-3d;
+    /* 增加一点 3D 质感 */
 }
+
 /* 强制适配手机屏幕内的设置面板 */
 #mobile-screen-content .tts-panel {
     width: 100% !important;
@@ -198,8 +227,10 @@
     max-width: 100% !important;
     padding: 10px !important;
     box-sizing: border-box !important;
-    background: #f5f5f7 !important; /* 浅灰色背景，像 iOS 设置 */
-    color: #000 !important; /* 确保文字是黑色的 */
+    background: #f5f5f7 !important;
+    /* 浅灰色背景，像 iOS 设置 */
+    color: #000 !important;
+    /* 确保文字是黑色的 */
 }
 
 /* 隐藏原本的大标题，因为手机顶部有状态栏 */
@@ -213,7 +244,7 @@
     border-radius: 10px !important;
     margin-bottom: 15px !important;
     padding: 10px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
     border: none !important;
 }
 
@@ -236,32 +267,41 @@
     font-size: 14px !important;
     color: #333 !important;
 }
+
 /* =========================================
    📱 手机设置 App 专用样式覆盖
    ========================================= */
 
 /* 1. 让设置面板适应手机宽度，而不是原来的 600px */
 #mobile-screen-content #tts-dashboard {
-    position: static !important;    /* 取消固定定位 */
-    width: 100% !important;         /* 宽度占满手机 */
-    height: auto !important;        /* 高度自适应 */
-    transform: none !important;     /* 取消居中位移 */
+    position: static !important;
+    /* 取消固定定位 */
+    width: 100% !important;
+    /* 宽度占满手机 */
+    height: auto !important;
+    /* 高度自适应 */
+    transform: none !important;
+    /* 取消居中位移 */
     margin: 0 !important;
     padding: 10px !important;
-    background: transparent !important; /* 背景透明，透出下面的颜色 */
-    box-shadow: none !important;    /* 去掉阴影 */
+    background: transparent !important;
+    /* 背景透明，透出下面的颜色 */
+    box-shadow: none !important;
+    /* 去掉阴影 */
     border: none !important;
-    overflow-x: hidden !important;  /* 防止横向滚动条 */
+    overflow-x: hidden !important;
+    /* 防止横向滚动条 */
 }
 
 /* 2. 覆盖卡片样式，让它像手机里的列表 */
 #mobile-screen-content .tts-card {
-    background: rgba(255, 255, 255, 0.9) !important; /* 半透明白底 */
+    background: rgba(255, 255, 255, 0.9) !important;
+    /* 半透明白底 */
     border-radius: 12px !important;
     margin-bottom: 12px !important;
     padding: 12px !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-    border: 1px solid rgba(0,0,0,0.05) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
 }
 
 /* 3. 隐藏原本的大标题 (因为手机有顶部状态栏) */
@@ -273,7 +313,8 @@
 #mobile-screen-content,
 #mobile-screen-content .tts-switch-label,
 #mobile-screen-content .tts-input-label {
-    color: #333 !important; /* 深灰色文字 */
+    color: #333 !important;
+    /* 深灰色文字 */
     font-size: 13px !important;
 }
 
@@ -292,30 +333,36 @@
     padding: 8px !important;
     margin-top: 8px !important;
 }
+
 /* =========================================
    📱 修复版：手机 App 内部样式适配
    ========================================= */
 
 /* 1. 手机 App 容器：给一个浅灰色背景，模拟 iOS 设置 */
 .app-container {
-    background-color: #f2f2f7 !important; /* iOS 设置背景灰 */
+    background-color: #f2f2f7 !important;
+    /* iOS 设置背景灰 */
     display: flex;
     flex-direction: column;
-    padding-top: 0 !important; /* 去掉内联样式的 padding */
+    padding-top: 0 !important;
+    /* 去掉内联样式的 padding */
 }
 
 /* 2. 顶部导航栏 (新增) */
 .mobile-app-navbar {
-    flex-shrink: 0; /* 防止被压缩 */
+    flex-shrink: 0;
+    /* 防止被压缩 */
     height: 44px;
-    background: rgba(255, 255, 255, 0.85); /* 毛玻璃背景 */
+    background: rgba(255, 255, 255, 0.85);
+    /* 毛玻璃背景 */
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(0,0,0,0.1);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0 15px;
-    padding-top: 15px; /* 避开刘海/状态栏 */
+    padding-top: 15px;
+    /* 避开刘海/状态栏 */
     font-size: 16px;
     color: #000;
     z-index: 100;
@@ -324,17 +371,20 @@
 }
 
 .nav-left {
-    color: #007aff; /* iOS 蓝色 */
+    color: #007aff;
+    /* iOS 蓝色 */
     cursor: pointer;
     font-weight: 500;
     min-width: 60px;
     display: flex;
     align-items: center;
 }
+
 .nav-title {
     font-weight: 600;
     font-size: 16px;
 }
+
 .nav-right {
     min-width: 60px;
 }
@@ -342,9 +392,11 @@
 /* 3. 修复设置面板在手机里的布局 */
 #mobile-screen-content .mobile-settings-content {
     flex: 1;
-    overflow-y: auto; /* 让内容滚动，导航栏不动 */
+    overflow-y: auto;
+    /* 让内容滚动，导航栏不动 */
     padding: 15px !important;
-    padding-bottom: 40px !important; /* 底部留白给 Home 条 */
+    padding-bottom: 40px !important;
+    /* 底部留白给 Home 条 */
 }
 
 /* 4. 让卡片 (tts-card) 看起来像 iOS 的设置组 */
@@ -354,7 +406,8 @@
     box-shadow: none !important;
     border: none !important;
     margin-bottom: 20px !important;
-    padding: 0 !important; /* 清除内边距，由子元素控制 */
+    padding: 0 !important;
+    /* 清除内边距，由子元素控制 */
     overflow: hidden;
 }
 
@@ -379,14 +432,16 @@
     padding: 12px 15px !important;
 }
 
-#mobile-screen-content .tts-card > div:last-child {
-    border-bottom: none !important; /* 最后一项不要分割线 */
+#mobile-screen-content .tts-card>div:last-child {
+    border-bottom: none !important;
+    /* 最后一项不要分割线 */
 }
 
 /* 5. 修复输入框样式，防止溢出 */
 #mobile-screen-content input[type="text"],
 #mobile-screen-content select {
-    background: #e5e5ea !important; /* 输入框背景灰 */
+    background: #e5e5ea !important;
+    /* 输入框背景灰 */
     border: none !important;
     border-radius: 6px !important;
     height: 30px !important;
@@ -404,21 +459,25 @@
 }
 
 /* 专门给大按钮（如保存、绑定）设置全宽 */
-#mobile-screen-content > .tts-card .btn-primary,
-#mobile-screen-content > .tts-card > .btn-primary {
-/* 只有直接在卡片里的按钮才全宽，列表里的不管 */
+#mobile-screen-content>.tts-card .btn-primary,
+#mobile-screen-content>.tts-card>.btn-primary {
+    /* 只有直接在卡片里的按钮才全宽，列表里的不管 */
     width: calc(100% - 30px) !important;
     margin: 10px 15px !important;
 }
 
 /* 专门给列表里的“解绑”按钮设置样式 */
 #mobile-screen-content .tts-list-item .btn-red {
-    width: auto !important; /* 👈 恢复自动宽度 */
-    padding: 4px 10px !important; /* 👈 减小内边距 */
+    width: auto !important;
+    /* 👈 恢复自动宽度 */
+    padding: 4px 10px !important;
+    /* 👈 减小内边距 */
     font-size: 12px !important;
     margin: 0 !important;
-    flex-shrink: 0; /* 防止被挤压 */
+    flex-shrink: 0;
+    /* 防止被挤压 */
 }
+
 /* =========================================
    📱 底部弹窗选择器 (Action Sheet)
    ========================================= */
@@ -432,11 +491,13 @@
     height: 100%;
     background: rgba(0, 0, 0, 0.4);
     z-index: 200;
-    display: none; /* 默认隐藏 */
+    display: none;
+    /* 默认隐藏 */
     opacity: 0;
     transition: opacity 0.3s;
     backdrop-filter: blur(2px);
 }
+
 .mobile-sheet-overlay.active {
     display: block;
     opacity: 1;
@@ -448,17 +509,20 @@
     bottom: 0;
     left: 0;
     width: 100%;
-    max-height: 60%; /* 最多占屏幕 60% 高度 */
+    max-height: 60%;
+    /* 最多占屏幕 60% 高度 */
     background: #fff;
     border-top-left-radius: 20px;
     border-top-right-radius: 20px;
     z-index: 201;
-    transform: translateY(100%); /* 默认藏在底部下面 */
+    transform: translateY(100%);
+    /* 默认藏在底部下面 */
     transition: transform 0.3s cubic-bezier(0.19, 1, 0.22, 1);
     display: flex;
     flex-direction: column;
-    box-shadow: 0 -5px 20px rgba(0,0,0,0.1);
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
 }
+
 .mobile-sheet-panel.active {
     transform: translateY(0);
 }
@@ -491,13 +555,16 @@
     justify-content: space-between;
     transition: background 0.2s;
 }
+
 .sheet-item:active {
     background: #f0f0f0;
 }
+
 .sheet-item.selected {
     color: #007aff;
     font-weight: 600;
 }
+
 .sheet-item.selected::after {
     content: '✓';
     font-weight: bold;
@@ -515,12 +582,14 @@
     color: #333;
     cursor: pointer;
     margin-top: 5px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
+
 .pretty-select-trigger .arrow {
     color: #999;
     font-size: 12px;
 }
+
 /* Context Menu 样式 */
 .tts-context-menu {
     position: fixed;
@@ -530,15 +599,22 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 6px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     min-width: 160px;
     transform-origin: top left;
     animation: menuPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 @keyframes menuPop {
-    from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
 }
 
 .tts-context-menu .menu-item {
@@ -564,21 +640,24 @@
 }
 
 .tts-context-menu .menu-item.close-item {
-    border-top: 1px solid rgba(255,255,255,0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
     margin-top: 4px;
     color: #999;
 }
+
 .tts-context-menu .menu-item.close-item:hover {
     color: #ff6b6b;
 }
 
 #mobile-screen-content .tts-list-item .col-name {
     font-weight: bold;
-    flex: 1; /* 名字占据剩余空间 */
+    flex: 1;
+    /* 名字占据剩余空间 */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
 #mobile-screen-content .tts-list-item .col-model {
     font-size: 11px;
     color: #666;
@@ -592,7 +671,8 @@
 /* 4. 🟢【核心修复】解决风格下拉菜单被遮挡/无法点击的问题 */
 #mobile-screen-content .tts-custom-select {
     position: relative;
-    z-index: 10; /* 确保下拉框层级高 */
+    z-index: 10;
+    /* 确保下拉框层级高 */
 }
 
 /* 让下拉选项列表“浮”起来，不要撑开布局 */
@@ -601,18 +681,21 @@
     top: 100%;
     left: 0;
     width: 100%;
-    max-height: 200px; /* 限制高度 */
+    max-height: 200px;
+    /* 限制高度 */
     overflow-y: auto;
     background: #fff;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     border-radius: 8px;
-    z-index: 999; /* 👈 必须非常高 */
+    z-index: 999;
+    /* 👈 必须非常高 */
 }
 
 /* 强制让包含下拉框的卡片允许内容溢出显示 */
 #mobile-screen-content .tts-card {
     overflow: visible !important;
 }
+
 /* =================================================================
    🌈 这里的代码放到 mobile.css 最最最底部
    🌈 这里的逻辑是：强制让手机也听从 style.css 的变色指挥！
@@ -622,18 +705,19 @@
 #mobile-screen-content .tts-panel,
 #mobile-screen-content #tts-dashboard,
 .app-container {
-/* 关键：使用 style.css 里定义的变量 */
+    /* 关键：使用 style.css 里定义的变量 */
     background: var(--s-load-bg) !important;
     color: var(--s-load-color) !important;
 }
 
 /* 2. 强制卡片变色 (让它不再是死板的白色) */
 #mobile-screen-content .tts-card {
-/* 使用 Waiting 状态的背景，通常比底色稍微亮一点或暗一点，层次感刚好 */
+    /* 使用 Waiting 状态的背景，通常比底色稍微亮一点或暗一点，层次感刚好 */
     background: var(--s-wait-bg) !important;
     border: var(--s-ready-border) !important;
     color: var(--s-wait-color) !important;
-    box-shadow: none !important; /* 扁平化处理，更像现代 App */
+    box-shadow: none !important;
+    /* 扁平化处理，更像现代 App */
 }
 
 /* 3. 强制文字颜色跟随主题 */
@@ -649,19 +733,24 @@
 /* 4. 输入框也要变色 (不能是死板的浅灰了) */
 #mobile-screen-content .tts-modern-input,
 #mobile-screen-content select {
-    background: rgba(128, 128, 128, 0.15) !important; /* 通用的半透明深色 */
+    background: rgba(128, 128, 128, 0.15) !important;
+    /* 通用的半透明深色 */
     border: 1px solid rgba(128, 128, 128, 0.2) !important;
     color: inherit !important;
 }
 
 /* 5. 顶部导航栏变色 */
 .mobile-app-navbar {
-/* 使用 Ready 状态颜色 (通常是主题色) */
+    /* 使用 Ready 状态颜色 (通常是主题色) */
     background: var(--s-ready-bg) !important;
     color: var(--s-ready-color) !important;
     border-bottom: var(--s-ready-border) !important;
 }
-.nav-left { color: inherit !important; opacity: 0.7; }
+
+.nav-left {
+    color: inherit !important;
+    opacity: 0.7;
+}
 
 /* 6. 修复列表里的文字颜色 */
 #mobile-screen-content .tts-list-item .col-model {
@@ -675,57 +764,63 @@
     color: var(--s-load-color) !important;
     border: 1px solid var(--s-ready-border) !important;
 }
+
 #mobile-screen-content .sheet-item {
-    border-bottom: 1px solid rgba(128,128,128,0.1) !important;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.1) !important;
 }
+
 #mobile-screen-content .sheet-item:active {
     background: var(--s-play-bg) !important;
     color: var(--s-play-color) !important;
 }
+
 /* =========================================
    ❤️ 收藏夹 (Favorites) 高对比度修复版
    ========================================= */
 
 /* 1. 顶部 Tab 按钮组 */
 .fav-tab {
-/* 未选中：使用 Load 背景（通常是实色），加上一点透明度 */
+    /* 未选中：使用 Load 背景（通常是实色），加上一点透明度 */
     background: var(--s-load-bg, #fff) !important;
-color: var(--s-load-color, #333) !important;
-opacity: 0.7; /* 让未选中的稍微暗一点 */
+    color: var(--s-load-color, #333) !important;
+    opacity: 0.7;
+    /* 让未选中的稍微暗一点 */
     border: 1px solid var(--s-wait-border, #ddd);
-transition: all 0.2s;
+    transition: all 0.2s;
 }
 
 .fav-tab.active {
-/* 选中：使用 Ready 主题色（高亮），不透明 */
+    /* 选中：使用 Ready 主题色（高亮），不透明 */
     background: var(--s-ready-bg, #e11d48) !important;
-color: var(--s-ready-color, #fff) !important;
-opacity: 1;
+    color: var(--s-ready-color, #fff) !important;
+    opacity: 1;
     border-color: var(--s-ready-border, transparent) !important;
-box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* 2. 收藏卡片 (Item) 本体 - 重点修改！ */
 .fav-item {
-/* ✅ 改用 Load 背景：对比度最高，最清晰 */
+    /* ✅ 改用 Load 背景：对比度最高，最清晰 */
     background: var(--s-load-bg, #fff) !important;
 
-/* ✅ 加上边框：使用 Ready 边框色，让卡片从背景里跳出来 */
-border: 1px solid var(--s-ready-border, #e11d48) !important;
+    /* ✅ 加上边框：使用 Ready 边框色，让卡片从背景里跳出来 */
+    border: 1px solid var(--s-ready-border, #e11d48) !important;
 
-border-radius: 12px;
+    border-radius: 12px;
     padding: 12px;
     margin-bottom: 12px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* 加深阴影，增加层次感 */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    /* 加深阴影，增加层次感 */
     position: relative;
     overflow: hidden;
 }
 
 /* 3. 卡片里的角色名字 */
 .fav-item-name {
-/* 使用 Ready 背景色作为文字颜色（通常是主题深色），如果看不清就用 Load 颜色 */
+    /* 使用 Ready 背景色作为文字颜色（通常是主题深色），如果看不清就用 Load 颜色 */
     color: var(--s-load-color, #333) !important;
-font-weight: 900; /* 加粗 */
+    font-weight: 900;
+    /* 加粗 */
     font-size: 15px;
     opacity: 1;
 }
@@ -733,16 +828,17 @@ font-weight: 900; /* 加粗 */
 /* 4. 卡片里的时间戳 */
 .fav-item-date {
     color: var(--s-load-color, #666) !important;
-opacity: 0.6; /* 稍微淡一点，以此区分主次 */
+    opacity: 0.6;
+    /* 稍微淡一点，以此区分主次 */
     font-size: 11px;
 }
 
 .fav-context-box {
     background: transparent !important;
-border: 1px dashed var(--s-wait-color, #aaa) !important;
-color: var(--s-load-color, #555) !important;
+    border: 1px dashed var(--s-wait-color, #aaa) !important;
+    color: var(--s-load-color, #555) !important;
 
-border-radius: 6px;
+    border-radius: 6px;
     padding: 6px 8px;
     margin-bottom: 8px;
     font-size: 12px;
@@ -751,169 +847,179 @@ border-radius: 6px;
 
 /* 6. 卡片左边的“当前选中”竖条指示器 */
 .fav-item.current-item {
-/* 加粗边框，颜色跟随主题 Ready 色 */
+    /* 加粗边框，颜色跟随主题 Ready 色 */
     border-left: 5px solid var(--s-ready-bg, #e11d48) !important;
-background: var(--s-load-bg, #fff) !important; /* 确保选中项也是高亮背景 */
+    background: var(--s-load-bg, #fff) !important;
+    /* 确保选中项也是高亮背景 */
 }
 
 /* 7. 收藏夹正文文字 */
 .fav-text-content {
     color: var(--s-load-color, #000) !important;
-font-size: 15px;
+    font-size: 15px;
     line-height: 1.5;
     margin-bottom: 12px;
     font-weight: 500;
 }
+
 /* =========================================
    📱 最终版：高对比度 + 播放色字体 (修复看不清问题)
    ========================================= */
 @media screen and (max-width: 768px) {
 
-/* --- 1. 悬浮球：使用播放高亮色 --- */
+    /* --- 1. 悬浮球：使用播放高亮色 --- */
     #tts-mobile-trigger {
-    width: 60px !important;
-    height: 60px !important;
-    /* 安全定位 */
-    top: 50%; right: 10px; bottom: auto !important; left: auto;
-    transform: translateY(-50%);
-    z-index: 2147483647 !important;
-    display: flex !important;
-    touch-action: none;
+        width: 60px !important;
+        height: 60px !important;
+        /* 安全定位 */
+        top: 50%;
+        right: 10px;
+        bottom: auto !important;
+        left: auto;
+        transform: translateY(-50%);
+        z-index: 2147483647 !important;
+        display: flex !important;
+        touch-action: none;
 
-    /* 🔥 悬浮球直接用播放色，非常醒目 */
-background: var(--s-play-bg, #667eea) !important;
-color: var(--s-play-color, #fff) !important;
-border: 2px solid var(--s-play-color, #fff) !important;
+        /* 🔥 悬浮球直接用播放色，非常醒目 */
+        background: var(--s-play-bg, #667eea) !important;
+        color: var(--s-play-color, #fff) !important;
+        border: 2px solid var(--s-play-color, #fff) !important;
+    }
+
+    /* --- 2. 手机外壳：使用主题加载背景 --- */
+    #tts-mobile-root {
+        position: fixed !important;
+        /* 顶部定位，防跑偏 */
+        top: 10vh !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        bottom: auto !important;
+
+        width: 90vw !important;
+        height: 80vh !important;
+        max-height: 800px !important;
+
+        /* 🔥 外壳背景：使用 Load 背景 (通常是深色/主色) */
+        background: var(--s-load-bg, #1a1a1a) !important;
+        /* 边框：使用播放色，像流光溢彩 */
+        border: 2px solid var(--s-play-color, #444) !important;
+        border-radius: 20px !important;
+        box-shadow: 0 10px 50px rgba(0, 0, 0, 0.8) !important;
+
+        display: flex !important;
+        flex-direction: column !important;
+        z-index: 2147483647 !important;
+
+        /* 强制字体继承 */
+        font-family: inherit !important;
+    }
+
+    #tts-mobile-root.minimized {
+        display: none !important;
+    }
+
+    /* --- 3. 状态栏：高亮文字 --- */
+    .status-bar {
+        flex: 0 0 35px !important;
+        background: rgba(0, 0, 0, 0.2) !important;
+        /* 稍微暗一点 */
+        /* 🔥 状态栏文字也用播放色 */
+        color: var(--s-play-color, #fff) !important;
+        font-weight: bold;
+        opacity: 0.9;
+        font-size: 12px;
+        padding: 0 15px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* --- 4. 屏幕区域 --- */
+    .mobile-screen {
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        min-height: 0 !important;
+        background: transparent !important;
+        /* 透明，透出外壳的颜色 */
+        position: relative !important;
+        overflow: hidden !important;
+    }
+
+    /* --- 5. 滚动容器 --- */
+    #mobile-screen-content,
+    .mobile-settings-content,
+    .app-container {
+        width: 100% !important;
+        height: 100% !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    /* --- 6. 🟢 核心修复：卡片不再半透明，使用气泡色 --- */
+    #mobile-screen-content .tts-card,
+    #mobile-screen-content .tts-panel {
+        /* 🔥 重点：使用 Wait 背景 (气泡色)，这个颜色和文字对比度通常是调教最好的 */
+        background: linear-gradient(var(--s-wait-bg), var(--s-wait-bg)), #202020 !important;
+
+        /* 边框稍微淡一点 */
+        border: 1px solid var(--s-wait-border, #333) !important;
+
+        /* 阴影去掉，扁平化 */
+        box-shadow: none !important;
+        margin-bottom: 10px !important;
+        border-radius: 12px !important;
+    }
+
+    /* --- 7. 🟢 字体颜色大改造 --- */
+
+    /* 普通正文：使用加载色 (保证阅读舒适) */
+    #mobile-screen-content,
+    #mobile-screen-content .tts-input-label,
+    #mobile-screen-content .sheet-item {
+        color: var(--s-load-color, #ccc) !important;
+    }
+
+    /* 标题、加粗、选中项：使用播放色 (高亮！) */
+    #mobile-screen-content strong,
+    #mobile-screen-content b,
+    #mobile-screen-content .tts-header,
+    #mobile-screen-content .sheet-header,
+    #mobile-screen-content .nav-title,
+    .app-name {
+        color: var(--s-play-color, #ff0000) !important;
+        /* 👈 你的高亮色 */
+        opacity: 1 !important;
+        font-weight: bold !important;
+    }
+
+    /* 输入框：加深底色，文字用标准色 */
+    #mobile-screen-content input,
+    #mobile-screen-content select,
+    #mobile-screen-content .tts-modern-input {
+        background: rgba(30, 30, 30, 0.8) !important;
+        border: 1px solid var(--s-wait-border, #444) !important;
+        color: var(--s-load-color, #fff) !important;
+    }
+
+    /* 按钮：背景用播放色，文字反色 */
+    #mobile-screen-content .btn-primary {
+        background: var(--s-play-bg, #2563eb) !important;
+        color: var(--s-play-color, #fff) !important;
+        border: none !important;
+        font-weight: bold !important;
+    }
+
+    /* --- 8. 杂项隐藏 --- */
+    .side-btn,
+    #tts-mobile-power-btn,
+    .mobile-notch,
+    .mobile-home-bar {
+        display: none !important;
+    }
+
+    .app-grid {
+        padding: 20px 10px !important;
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
 }
-
-/* --- 2. 手机外壳：使用主题加载背景 --- */
-#tts-mobile-root {
-    position: fixed !important;
-    /* 顶部定位，防跑偏 */
-    top: 10vh !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    bottom: auto !important;
-
-    width: 90vw !important;
-    height: 80vh !important;
-    max-height: 800px !important;
-
-    /* 🔥 外壳背景：使用 Load 背景 (通常是深色/主色) */
-background: var(--s-load-bg, #1a1a1a) !important;
-/* 边框：使用播放色，像流光溢彩 */
-border: 2px solid var(--s-play-color, #444) !important;
-border-radius: 20px !important;
-    box-shadow: 0 10px 50px rgba(0,0,0,0.8) !important;
-
-    display: flex !important;
-    flex-direction: column !important;
-    z-index: 2147483647 !important;
-
-    /* 强制字体继承 */
-    font-family: inherit !important;
-}
-
-#tts-mobile-root.minimized {
-    display: none !important;
-}
-
-/* --- 3. 状态栏：高亮文字 --- */
-.status-bar {
-    flex: 0 0 35px !important;
-    background: rgba(0,0,0,0.2) !important; /* 稍微暗一点 */
-    /* 🔥 状态栏文字也用播放色 */
-color: var(--s-play-color, #fff) !important;
-font-weight: bold;
-    opacity: 0.9;
-    font-size: 12px;
-    padding: 0 15px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-}
-
-/* --- 4. 屏幕区域 --- */
-.mobile-screen {
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-height: 0 !important;
-    background: transparent !important; /* 透明，透出外壳的颜色 */
-    position: relative !important;
-    overflow: hidden !important;
-}
-
-/* --- 5. 滚动容器 --- */
-#mobile-screen-content,
-.mobile-settings-content,
-.app-container {
-    width: 100% !important;
-    height: 100% !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-}
-
-/* --- 6. 🟢 核心修复：卡片不再半透明，使用气泡色 --- */
-#mobile-screen-content .tts-card,
-#mobile-screen-content .tts-panel {
-/* 🔥 重点：使用 Wait 背景 (气泡色)，这个颜色和文字对比度通常是调教最好的 */
-    background: linear-gradient(var(--s-wait-bg), var(--s-wait-bg)), #202020 !important;
-
-/* 边框稍微淡一点 */
-border: 1px solid var(--s-wait-border, #333) !important;
-
-/* 阴影去掉，扁平化 */
-box-shadow: none !important;
-    margin-bottom: 10px !important;
-    border-radius: 12px !important;
-}
-
-/* --- 7. 🟢 字体颜色大改造 --- */
-
-/* 普通正文：使用加载色 (保证阅读舒适) */
-#mobile-screen-content,
-#mobile-screen-content .tts-input-label,
-#mobile-screen-content .sheet-item {
-    color: var(--s-load-color, #ccc) !important;
-}
-
-/* 标题、加粗、选中项：使用播放色 (高亮！) */
-#mobile-screen-content strong,
-#mobile-screen-content b,
-#mobile-screen-content .tts-header,
-#mobile-screen-content .sheet-header,
-#mobile-screen-content .nav-title,
-.app-name {
-    color: var(--s-play-color, #ff0000) !important; /* 👈 你的高亮色 */
-opacity: 1 !important;
-    font-weight: bold !important;
-}
-
-/* 输入框：加深底色，文字用标准色 */
-#mobile-screen-content input,
-#mobile-screen-content select,
-#mobile-screen-content .tts-modern-input {
-    background: rgba(30, 30, 30, 0.8) !important;
-border: 1px solid var(--s-wait-border, #444) !important;
-color: var(--s-load-color, #fff) !important;
-}
-
-/* 按钮：背景用播放色，文字反色 */
-#mobile-screen-content .btn-primary {
-    background: var(--s-play-bg, #2563eb) !important;
-color: var(--s-play-color, #fff) !important;
-border: none !important;
-    font-weight: bold !important;
-}
-
-/* --- 8. 杂项隐藏 --- */
-.side-btn, #tts-mobile-power-btn, .mobile-notch, .mobile-home-bar {
-    display: none !important;
-}
-
-.app-grid {
-    padding: 20px 10px !important;
-    grid-template-columns: repeat(3, 1fr) !important;
-}
-}
-
