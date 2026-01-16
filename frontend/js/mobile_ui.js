@@ -331,6 +331,11 @@ window.TTS_Mobile = window.TTS_Mobile || {};
     };
 
     scope.init = function() {
+        if ($('meta[name="viewport"]').length === 0) {
+            $('head').append('<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">');
+            console.log("📱 [Mobile] 已注入 Viewport 标签以适配手机屏幕");
+        }
+
         if($('#tts-mobile-root').length === 0) {
             injectStyles();
             renderShell();
@@ -407,11 +412,136 @@ window.TTS_Mobile = window.TTS_Mobile || {};
 
     function bindEvents() {
         const $phone = $('#tts-mobile-root');
+        const $trigger = $('#tts-mobile-trigger');
 
-        $('#tts-mobile-trigger').click(function(e) {
-            e.stopPropagation();
-            togglePhone();
+        // ============================================================
+        // 🟢 [终极修复版] 悬浮球拖拽逻辑 (带防抖死区)
+        // ============================================================
+        let isDragging = false;
+        let hasMoved = false; // 标记是否发生了实质性拖拽
+
+        // 记录起始数据
+        let startX, startY;   // 手指刚按下时的屏幕坐标
+        let shiftX, shiftY;   // 手指在小球内部的偏移量
+        let winW, winH;       // 屏幕宽高缓存
+
+        // 防抖阈值 (像素)：小于这个距离视为点击，大于视为拖拽
+        // 如果觉得还是太灵敏，可以把 10 改成 15
+        const DRAG_THRESHOLD = 10;
+
+        // 1. 按下 (鼠标或手指)
+        $trigger.on('mousedown touchstart', function(e) {
+            // 多指触控忽略
+            if (e.type === 'touchstart' && e.touches.length > 1) return;
+
+            // 阻止默认行为 (防止选中文本等)
+            if(e.cancelable) e.preventDefault();
+
+            const point = e.type === 'touchstart' ? e.touches[0] : e;
+            const rect = $trigger[0].getBoundingClientRect();
+
+            // 记录初始状态
+            startX = point.clientX;
+            startY = point.clientY;
+
+            // 计算手指在小球内的偏移量，保证拖拽时不跳变
+            shiftX = startX - rect.left;
+            shiftY = startY - rect.top;
+
+            winW = $(window).width();
+            winH = $(window).height();
+
+            isDragging = true;
+            hasMoved = false; // 重置标记
+
+            // 绑定全局事件
+            document.addEventListener('mousemove', onMove, { passive: false });
+            document.addEventListener('touchmove', onMove, { passive: false });
+            document.addEventListener('mouseup', onUp);
+            document.addEventListener('touchend', onUp);
         });
+
+        // 2. 移动
+        function onMove(e) {
+            if (!isDragging) return;
+            if(e.cancelable) e.preventDefault(); // 防止屏幕随手指滚动
+
+            const point = e.type === 'touchmove' ? e.touches[0] : e;
+            const currentX = point.clientX;
+            const currentY = point.clientY;
+
+            // 🔥 [核心逻辑] 计算移动距离
+            // 如果还未标记为“移动中”，先计算距离是否超过阈值
+            if (!hasMoved) {
+                const moveDis = Math.sqrt(Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2));
+
+                // 如果移动距离太小（手抖），直接退出，不改变小球位置！
+                if (moveDis < DRAG_THRESHOLD) {
+                    return;
+                }
+
+                // 超过阈值了！正式确认为拖拽模式
+                hasMoved = true;
+
+                // ⚡️ 此时才把 CSS 锁死为绝对定位，防止跳变
+                const rect = $trigger[0].getBoundingClientRect();
+                $trigger.css({
+                    position: 'fixed',
+                    right: 'auto',
+                    bottom: 'auto',
+                    transform: 'none' // 去掉 CSS 的居中变换
+                });
+            }
+
+            // --- 下面是正式的拖拽逻辑 ---
+
+            let newLeft = currentX - shiftX;
+            let newTop = currentY - shiftY;
+
+            // 边界限制
+            newLeft = Math.max(0, Math.min(winW - 60, newLeft));
+            newTop = Math.max(0, Math.min(winH - 60, newTop));
+
+            $trigger.css({
+                left: newLeft + 'px',
+                top: newTop + 'px'
+            });
+        }
+
+        // 3. 抬起
+        function onUp(e) {
+            isDragging = false;
+
+            // 解绑
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.removeEventListener('touchend', onUp);
+
+            // 🔥 判决时刻：
+            // 如果 hasMoved 依然是 false，说明手指移动没超过 10px
+            // 这就是一次完美的“点击”！
+            if (!hasMoved) {
+                togglePhone();
+            } else {
+                // 如果是拖拽结束，可以加个吸附效果（可选）
+                snapToEdge();
+            }
+        }
+
+        // 自动贴边 (可选，不喜欢可以删掉)
+        function snapToEdge() {
+            const rect = $trigger[0].getBoundingClientRect();
+            const midX = winW / 2;
+            const targetLeft = (rect.left + 30 < midX) ? 10 : (winW - 70);
+
+            // 使用 jQuery 动画平滑吸附
+            $trigger.animate({ left: targetLeft }, 200);
+        }
+
+        // ============================================================
+        // 其他原有事件
+        // ============================================================
 
         $('#tts-mobile-power-btn').click(function(e) {
             e.stopPropagation();

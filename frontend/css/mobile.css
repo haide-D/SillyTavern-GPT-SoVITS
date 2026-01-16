@@ -122,11 +122,15 @@
 }
 .mobile-home-bar:hover { background: white; }
 
-/* 悬浮球 (打开手机的入口) */
 #tts-mobile-trigger {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
+    top: 50%;
+    bottom: auto;
+    right: 0;
+    left: auto;
+    transform: translateY(-50%);
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
     width: 50px;
     height: 50px;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -760,3 +764,156 @@ font-size: 15px;
     margin-bottom: 12px;
     font-weight: 500;
 }
+/* =========================================
+   📱 最终版：高对比度 + 播放色字体 (修复看不清问题)
+   ========================================= */
+@media screen and (max-width: 768px) {
+
+/* --- 1. 悬浮球：使用播放高亮色 --- */
+    #tts-mobile-trigger {
+    width: 60px !important;
+    height: 60px !important;
+    /* 安全定位 */
+    top: 50%; right: 10px; bottom: auto !important; left: auto;
+    transform: translateY(-50%);
+    z-index: 2147483647 !important;
+    display: flex !important;
+    touch-action: none;
+
+    /* 🔥 悬浮球直接用播放色，非常醒目 */
+background: var(--s-play-bg, #667eea) !important;
+color: var(--s-play-color, #fff) !important;
+border: 2px solid var(--s-play-color, #fff) !important;
+}
+
+/* --- 2. 手机外壳：使用主题加载背景 --- */
+#tts-mobile-root {
+    position: fixed !important;
+    /* 顶部定位，防跑偏 */
+    top: 10vh !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    bottom: auto !important;
+
+    width: 90vw !important;
+    height: 80vh !important;
+    max-height: 800px !important;
+
+    /* 🔥 外壳背景：使用 Load 背景 (通常是深色/主色) */
+background: var(--s-load-bg, #1a1a1a) !important;
+/* 边框：使用播放色，像流光溢彩 */
+border: 2px solid var(--s-play-color, #444) !important;
+border-radius: 20px !important;
+    box-shadow: 0 10px 50px rgba(0,0,0,0.8) !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    z-index: 2147483647 !important;
+
+    /* 强制字体继承 */
+    font-family: inherit !important;
+}
+
+#tts-mobile-root.minimized {
+    display: none !important;
+}
+
+/* --- 3. 状态栏：高亮文字 --- */
+.status-bar {
+    flex: 0 0 35px !important;
+    background: rgba(0,0,0,0.2) !important; /* 稍微暗一点 */
+    /* 🔥 状态栏文字也用播放色 */
+color: var(--s-play-color, #fff) !important;
+font-weight: bold;
+    opacity: 0.9;
+    font-size: 12px;
+    padding: 0 15px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* --- 4. 屏幕区域 --- */
+.mobile-screen {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    background: transparent !important; /* 透明，透出外壳的颜色 */
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+/* --- 5. 滚动容器 --- */
+#mobile-screen-content,
+.mobile-settings-content,
+.app-container {
+    width: 100% !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+/* --- 6. 🟢 核心修复：卡片不再半透明，使用气泡色 --- */
+#mobile-screen-content .tts-card,
+#mobile-screen-content .tts-panel {
+/* 🔥 重点：使用 Wait 背景 (气泡色)，这个颜色和文字对比度通常是调教最好的 */
+    background: linear-gradient(var(--s-wait-bg), var(--s-wait-bg)), #202020 !important;
+
+/* 边框稍微淡一点 */
+border: 1px solid var(--s-wait-border, #333) !important;
+
+/* 阴影去掉，扁平化 */
+box-shadow: none !important;
+    margin-bottom: 10px !important;
+    border-radius: 12px !important;
+}
+
+/* --- 7. 🟢 字体颜色大改造 --- */
+
+/* 普通正文：使用加载色 (保证阅读舒适) */
+#mobile-screen-content,
+#mobile-screen-content .tts-input-label,
+#mobile-screen-content .sheet-item {
+    color: var(--s-load-color, #ccc) !important;
+}
+
+/* 标题、加粗、选中项：使用播放色 (高亮！) */
+#mobile-screen-content strong,
+#mobile-screen-content b,
+#mobile-screen-content .tts-header,
+#mobile-screen-content .sheet-header,
+#mobile-screen-content .nav-title,
+.app-name {
+    color: var(--s-play-color, #ff0000) !important; /* 👈 你的高亮色 */
+opacity: 1 !important;
+    font-weight: bold !important;
+}
+
+/* 输入框：加深底色，文字用标准色 */
+#mobile-screen-content input,
+#mobile-screen-content select,
+#mobile-screen-content .tts-modern-input {
+    background: rgba(30, 30, 30, 0.8) !important;
+border: 1px solid var(--s-wait-border, #444) !important;
+color: var(--s-load-color, #fff) !important;
+}
+
+/* 按钮：背景用播放色，文字反色 */
+#mobile-screen-content .btn-primary {
+    background: var(--s-play-bg, #2563eb) !important;
+color: var(--s-play-color, #fff) !important;
+border: none !important;
+    font-weight: bold !important;
+}
+
+/* --- 8. 杂项隐藏 --- */
+.side-btn, #tts-mobile-power-btn, .mobile-notch, .mobile-home-bar {
+    display: none !important;
+}
+
+.app-grid {
+    padding: 20px 10px !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+}
+}
+
