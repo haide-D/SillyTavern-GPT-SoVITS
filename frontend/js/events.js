@@ -302,18 +302,34 @@
                     return;
                 }
 
-                const msgFingerprint = window.TTS_Utils.getFingerprint($btn);
+                const msgFingerprint = window.TTS_Utils.getEnhancedFingerprint($btn);
                 const branchId = window.TTS_Utils.getCurrentChatBranch();
 
-                // --- 上下文采集 (保持不变) ---
+                // 获取上下文
                 let context = [];
-                let $msgContainer = $btn.closest('.mes');
-                if ($msgContainer.length) {
-                    let $prev = $msgContainer.prevAll('.mes').slice(0, 3);
-                    $($prev.get().reverse()).each((i, el) => {
-                        let text = $(el).find('.mes_text').text() || $(el).text();
-                        context.push(text.substring(0, 100) + "...");
-                    });
+                try {
+                    if (window.SillyTavern && window.SillyTavern.getContext) {
+                        const stContext = window.SillyTavern.getContext();
+                        const chatMessages = stContext.chat;
+
+                        const recentMessages = chatMessages.slice(-4, -1);
+                        context = recentMessages.map(msg => {
+                            const text = msg.mes || '';
+                            return text.substring(0, 100) + (text.length > 100 ? "..." : "");
+                        });
+                    } else {
+                        throw new Error('API not available');
+                    }
+                } catch (e) {
+                    // 回退到 DOM 查询
+                    let $msgContainer = $btn.closest('.mes, .message-body');
+                    if ($msgContainer.length) {
+                        let $prev = $msgContainer.prevAll('.mes, .message-body').slice(0, 3);
+                        $($prev.get().reverse()).each((i, el) => {
+                            let text = $(el).find('.mes_text, .markdown-content').text() || $(el).text();
+                            context.push(text.substring(0, 100) + "...");
+                        });
+                    }
                 }
 
                 // --- 构建请求数据 ---

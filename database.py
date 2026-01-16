@@ -144,6 +144,7 @@ class DatabaseManager:
             "total_count": len(all_favs)
         }
 
+
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """将数据库行转换为字典，并处理特殊字段"""
         d = dict(row)
