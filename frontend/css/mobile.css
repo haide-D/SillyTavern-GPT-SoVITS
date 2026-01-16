@@ -93,7 +93,19 @@
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-.app-name { font-size: 11px; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+.app-name {
+    font-size: 12px;
+    color: #ffffff !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    font-weight: 600;
+    margin-top: 6px;
+    letter-spacing: 0.5px;
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* 底部 Home 条 */
 .mobile-home-bar {
@@ -665,4 +677,86 @@
 #mobile-screen-content .sheet-item:active {
     background: var(--s-play-bg) !important;
     color: var(--s-play-color) !important;
+}
+/* =========================================
+   ❤️ 收藏夹 (Favorites) 高对比度修复版
+   ========================================= */
+
+/* 1. 顶部 Tab 按钮组 */
+.fav-tab {
+/* 未选中：使用 Load 背景（通常是实色），加上一点透明度 */
+    background: var(--s-load-bg, #fff) !important;
+color: var(--s-load-color, #333) !important;
+opacity: 0.7; /* 让未选中的稍微暗一点 */
+    border: 1px solid var(--s-wait-border, #ddd);
+transition: all 0.2s;
+}
+
+.fav-tab.active {
+/* 选中：使用 Ready 主题色（高亮），不透明 */
+    background: var(--s-ready-bg, #e11d48) !important;
+color: var(--s-ready-color, #fff) !important;
+opacity: 1;
+    border-color: var(--s-ready-border, transparent) !important;
+box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+
+/* 2. 收藏卡片 (Item) 本体 - 重点修改！ */
+.fav-item {
+/* ✅ 改用 Load 背景：对比度最高，最清晰 */
+    background: var(--s-load-bg, #fff) !important;
+
+/* ✅ 加上边框：使用 Ready 边框色，让卡片从背景里跳出来 */
+border: 1px solid var(--s-ready-border, #e11d48) !important;
+
+border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* 加深阴影，增加层次感 */
+    position: relative;
+    overflow: hidden;
+}
+
+/* 3. 卡片里的角色名字 */
+.fav-item-name {
+/* 使用 Ready 背景色作为文字颜色（通常是主题深色），如果看不清就用 Load 颜色 */
+    color: var(--s-load-color, #333) !important;
+font-weight: 900; /* 加粗 */
+    font-size: 15px;
+    opacity: 1;
+}
+
+/* 4. 卡片里的时间戳 */
+.fav-item-date {
+    color: var(--s-load-color, #666) !important;
+opacity: 0.6; /* 稍微淡一点，以此区分主次 */
+    font-size: 11px;
+}
+
+.fav-context-box {
+    background: transparent !important;
+border: 1px dashed var(--s-wait-color, #aaa) !important;
+color: var(--s-load-color, #555) !important;
+
+border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* 6. 卡片左边的“当前选中”竖条指示器 */
+.fav-item.current-item {
+/* 加粗边框，颜色跟随主题 Ready 色 */
+    border-left: 5px solid var(--s-ready-bg, #e11d48) !important;
+background: var(--s-load-bg, #fff) !important; /* 确保选中项也是高亮背景 */
+}
+
+/* 7. 收藏夹正文文字 */
+.fav-text-content {
+    color: var(--s-load-color, #000) !important;
+font-size: 15px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    font-weight: 500;
 }

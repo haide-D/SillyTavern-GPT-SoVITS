@@ -93,22 +93,22 @@ window.TTS_Mobile = window.TTS_Mobile || {};
         'favorites': {
             name: '收藏夹',
             icon: '❤️',
-            bg: '#e11d48',
+            bg: 'var(--s-ready-bg, #e11d48)',
             render: async (container) => {
                 container.empty();
                 container.append(createNavbar("我的收藏"));
-
-                // 1. 创建 Tab 栏
+                const CTX = window.TTS_UI.CTX;
+                const activeStyle = (CTX && CTX.CACHE.settings && CTX.CACHE.settings.bubble_style) || 'default';
                 const $tabs = $(`
                     <div style="display:flex; padding:10px 15px; gap:10px;">
-                        <div class="fav-tab active" data-tab="current" style="flex:1; text-align:center; padding:8px; background:#fff; border-radius:8px; font-weight:bold; color:#e11d48; box-shadow:0 1px 2px rgba(0,0,0,0.1); cursor:pointer;">当前对话</div>
-                        <div class="fav-tab" data-tab="others" style="flex:1; text-align:center; padding:8px; background:rgba(255,255,255,0.5); border-radius:8px; color:#666; cursor:pointer;">其他收藏</div>
+                        <div class="fav-tab active" data-tab="current" style="flex:1; text-align:center; padding:8px; border-radius:8px; font-weight:bold; cursor:pointer;">当前对话</div>
+                        <div class="fav-tab" data-tab="others" style="flex:1; text-align:center; padding:8px; border-radius:8px; cursor:pointer;">其他收藏</div>
                     </div>
                 `);
                 container.append($tabs);
 
-                const $content = $('<div style="padding:0 15px 15px 15px; flex:1; overflow-y:auto;"></div>');
-                $content.html('<div style="text-align:center; padding-top:20px; color:#999;">正在智能匹配...</div>');
+                const $content = $(`<div style="padding:0 15px 15px 15px; flex:1; overflow-y:auto;" data-bubble-style="${activeStyle}"></div>`);
+                $content.html('<div style="text-align:center; padding-top:20px; opacity:0.6;">正在智能匹配...</div>');
                 container.append($content);
 
                 // 2. 准备数据
@@ -141,19 +141,18 @@ window.TTS_Mobile = window.TTS_Mobile || {};
 
                     const renderList = (list, emptyMsg) => {
                         if (!list || list.length === 0) {
-                            return `<div style="padding:40px 20px; text-align:center; color:#888; font-size:14px;">${emptyMsg}</div>`;
+                            return `<div style="padding:40px 20px; text-align:center; opacity:0.6; font-size:14px;">${emptyMsg}</div>`;
                         }
                         const BARS_HTML = `<span class='sovits-voice-waves'><span class='sovits-voice-bar'></span><span class='sovits-voice-bar'></span><span class='sovits-voice-bar'></span></span>`;
 
                         return list.map(item => {
+                            // 🔥 修改3：Context 不再写死颜色，使用 class="fav-context-box"
                             let contextHtml = '';
                             if(item.context && item.context.length) {
-                                contextHtml = `<div style="font-size:12px; color:#666; background:rgba(0,0,0,0.05); padding:6px; border-radius:4px; margin-bottom:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                📝 ${item.context[item.context.length-1]}
-            </div>`;
+                                contextHtml = `<div class="fav-context-box" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                    📝 ${item.context[item.context.length-1]}
+                                </div>`;
                             }
-                            const dateStr = item.created_at ? item.created_at.split(' ')[0] : '';
-                            const borderStyle = item.is_current ? 'border-left: 4px solid #e11d48;' : '';
 
                             let fullUrl = item.audio_url;
                             if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
@@ -163,19 +162,21 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                             const d = Math.max(1, Math.ceil(cleanText.length * 0.25));
                             const bubbleWidth = Math.min(220, 60 + d * 10);
 
+                            // 🔥 修改4：彻底移除 cardStyle 变量，改用 class 控制样式
+                            // 增加 current-item 类来控制左边的竖条颜色
+                            const itemClass = item.is_current ? 'fav-item current-item' : 'fav-item';
+
                             return `
-                                <div class="fav-item" data-id="${item.id}"
-                                     style="background:#fff; border-radius:12px; padding:12px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,0,0,0.05); ${borderStyle}">
+                                <div class="${itemClass}" data-id="${item.id}">
 
                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                                        <strong style="color:#e11d48; font-size:14px;">${item.char_name || '未知角色'}</strong>
-                                        <span style="font-size:11px; color:#999;">${dateStr}</span>
+                                        <strong class="fav-item-name">${item.char_name || '未知角色'}</strong>
+                                        <span class="fav-item-date">${item.created_at ? item.created_at.split(' ')[0] : ''}</span>
                                     </div>
                                     ${contextHtml}
-                                    <div style="font-size:14px; color:#333; margin-bottom:10px; line-height:1.4;">“${item.text}”</div>
+                                    <div class="fav-text-content">“${item.text}”</div>
 
                                     <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
-
                                         <div class="voice-bubble ready fav-play-bubble"
                                              data-url="${fullUrl}"
                                              data-voice-name="${item.char_name}"
@@ -192,6 +193,24 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                                 </div>`;
                         }).join('');
                     };
+
+                    $content.html(renderList(data.current, "当前对话没有收藏记录<br>试着去其他收藏里找找？"));
+
+                    // 5. 绑定 Tab 切换
+                    $tabs.find('.fav-tab').click(function() {
+                        const $t = $(this);
+                        // 🔥 修改5：不再手动改 CSS background，而是只切换 active 类
+                        $tabs.find('.fav-tab').removeClass('active');
+                        $t.addClass('active');
+
+                        const tabType = $t.data('tab');
+                        if (tabType === 'current') {
+                            $content.html(renderList(data.current, "当前对话没有收藏记录"));
+                        } else {
+                            $content.html(renderList(data.others, "暂无其他收藏"));
+                        }
+                        bindListEvents(); // 记得重新绑定事件
+                    });
 
                     $content.html(renderList(data.current, "当前对话没有收藏记录<br>试着去其他收藏里找找？"));
 
