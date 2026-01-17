@@ -98,7 +98,7 @@
             let groups = {};
             let unboundTasks = [];
 
-            while(this.queue.length > 0) {
+            while (this.queue.length > 0) {
                 const task = this.queue.shift();
                 if (CACHE.audioMemory[task.key]) {
                     this.finishTask(task.key, CACHE.audioMemory[task.key]);
@@ -185,9 +185,11 @@
 
                 if (!targetRefs || targetRefs.length === 0) return false;
 
-                let ref = targetRefs.find(r => r.emotion === task.emotion);
-                if (!ref) ref = targetRefs.find(r => r.emotion === 'default');
-                if (!ref) ref = targetRefs[0];
+                // 随机选择相同情绪的参考音频
+                let matchedRefs = targetRefs.filter(r => r.emotion === task.emotion);
+                if (matchedRefs.length === 0) matchedRefs = targetRefs.filter(r => r.emotion === 'default');
+                if (matchedRefs.length === 0) matchedRefs = targetRefs;
+                let ref = matchedRefs[Math.floor(Math.random() * matchedRefs.length)];
 
                 if (!ref) return false;
 
@@ -240,9 +242,11 @@
                 return;
             }
 
-            let ref = targetRefs.find(r => r.emotion === emotion);
-            if (!ref) ref = targetRefs.find(r => r.emotion === 'default');
-            if (!ref) ref = targetRefs[0];
+            // 随机选择相同情绪的参考音频
+            let matchedRefs = targetRefs.filter(r => r.emotion === emotion);
+            if (matchedRefs.length === 0) matchedRefs = targetRefs.filter(r => r.emotion === 'default');
+            if (matchedRefs.length === 0) matchedRefs = targetRefs;
+            let ref = matchedRefs[Math.floor(Math.random() * matchedRefs.length)];
 
             try {
                 let promptLangCode = "zh";
