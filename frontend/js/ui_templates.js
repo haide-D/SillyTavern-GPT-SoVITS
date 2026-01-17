@@ -1,6 +1,6 @@
 // 文件: ui_templates.js
 window.TTS_UI = window.TTS_UI || {};
-window.TTS_UI.Templates = (function() {
+window.TTS_UI.Templates = (function () {
 
     // 生成悬浮球 HTML
     function getFloatingButtonHTML() {
@@ -130,8 +130,8 @@ window.TTS_UI.Templates = (function() {
     function getBubbleMenuHTML() {
         return `
     <div id="tts-bubble-menu" class="tts-context-menu" style="display:none;">
-        <div class="menu-item" id="tts-action-play">
-            <span class="icon">▶️</span> 播放语音 (Play)
+        <div class="menu-item" id="tts-action-download">
+            <span class="icon">⬇️</span> 下载语音 (Download)
         </div>
         <div class="divider"></div>
         <div class="menu-item" id="tts-action-reroll">

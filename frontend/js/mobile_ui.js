@@ -154,8 +154,16 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                                 </div>`;
                             }
 
+
                             let fullUrl = item.audio_url;
-                            if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
+
+                            // 🔧 关键修复:将静态文件路径转换为下载 API 端点
+                            if (fullUrl && fullUrl.startsWith('/favorites/')) {
+                                // 提取文件名
+                                const filename = fullUrl.replace('/favorites/', '');
+                                // 使用下载 API 端点 (带有正确的 CORS 头)
+                                fullUrl = window.TTS_API.baseUrl + `/download_favorite/${filename}`;
+                            } else if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
                                 fullUrl = window.TTS_API.baseUrl + fullUrl;
                             }
                             const cleanText = item.text || "";
@@ -180,6 +188,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                                         <div class="voice-bubble ready fav-play-bubble"
                                              data-url="${fullUrl}"
                                              data-voice-name="${item.char_name}"
+                                             data-text="${item.text}"
                                              data-status="ready"
                                              style="width: ${bubbleWidth}px; cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
 
@@ -188,6 +197,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                                              <span class="sovits-voice-duration" style="margin-left:auto;">${d}"</span>
                                         </div>
 
+                                        <button class="fav-download-btn" style="background:transparent; border:none; color:#3b82f6; opacity:0.6; padding:5px 10px;">⬇️</button>
                                         <button class="fav-del-btn" style="background:transparent; border:none; color:#dc2626; opacity:0.6; padding:5px 10px;">🗑️</button>
                                     </div>
                                 </div>`;
@@ -234,10 +244,10 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                         let currentAudio = null;
                         let $currentBubble = null;
 
-                        $content.find('.fav-play-bubble').off().click(function (e) {
+                        $content.find('.fav-play-bubble').off().click(async function (e) {
                             e.stopPropagation();
                             const $bubble = $(this);
-                            const url = $bubble.data('url');
+                            let url = $bubble.data('url');
 
                             // 停止当前
                             if ($bubble.hasClass('playing') && currentAudio) {
@@ -251,6 +261,26 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                             if (currentAudio) {
                                 currentAudio.pause();
                                 if ($currentBubble) resetBubble($currentBubble);
+                            }
+
+                            // 🔧 关键修复:如果是服务器路径,转换为 Blob URL 并缓存
+                            if (!url.startsWith('blob:')) {
+                                try {
+                                    console.log("🔄 转换服务器路径为 Blob URL:", url);
+                                    const response = await fetch(url);
+                                    if (!response.ok) throw new Error('获取音频失败');
+                                    const blob = await response.blob();
+                                    const blobUrl = URL.createObjectURL(blob);
+
+                                    // 缓存到 data-audio-url 属性,供下载使用
+                                    $bubble.attr('data-audio-url', blobUrl);
+                                    url = blobUrl;
+                                    console.log("✅ Blob URL 已缓存:", blobUrl);
+                                } catch (err) {
+                                    console.error("转换 Blob URL 失败:", err);
+                                    alert("❌ 音频加载失败,请重试");
+                                    return;
+                                }
                             }
 
                             console.log("▶️ 气泡播放:", url);
@@ -289,6 +319,48 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                                 await window.TTS_API.deleteFavorite(id);
                                 $item.fadeOut(300, function () { $(this).remove(); });
                             } catch (err) { alert("删除失败: " + err.message); }
+                        });
+
+                        // 下载按钮逻辑
+                        $content.find('.fav-download-btn').off().click(async function (e) {
+                            e.stopPropagation();
+                            const $item = $(this).closest('.fav-item');
+                            const $bubble = $item.find('.fav-play-bubble');
+
+                            // 🔧 直接使用下载 API URL (已经包含正确的 CORS 头)
+                            // data-url 已经在上面被转换为 /download_favorite/xxx.wav 格式
+                            const audioUrl = $bubble.data('url');
+                            const speaker = $bubble.data('voice-name') || 'Unknown';
+                            const text = $bubble.data('text') || $item.find('.fav-text-content').text().replace(/^"|"$/g, '').trim();
+
+                            // 🔍 调试日志
+                            console.log("📥 下载收藏项:");
+                            console.log("  - audioUrl:", audioUrl);
+                            console.log("  - speaker:", speaker);
+                            console.log("  - text:", text);
+
+                            // 🔧 构建自定义文件名并添加到 URL
+                            const cleanText = text.substring(0, 50).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+                            const customFilename = `${speaker}:${cleanText}.wav`;
+
+                            // 将自定义文件名作为查询参数添加到 URL
+                            let finalUrl = audioUrl;
+                            if (audioUrl.includes('/download_favorite/')) {
+                                const url = new URL(audioUrl);
+                                url.searchParams.set('custom_filename', customFilename);
+                                finalUrl = url.toString();
+                            }
+
+                            console.log("  - customFilename:", customFilename);
+                            console.log("  - final URL:", finalUrl);
+
+                            // 调用共用下载函数 (下载 API 返回的是可下载的文件,不会有 CORS 问题)
+                            if (window.TTS_Events && window.TTS_Events.downloadAudio) {
+                                // 注意:这里传递的 text 参数不会被使用,因为文件名已经在 URL 中了
+                                await window.TTS_Events.downloadAudio(finalUrl, speaker, text);
+                            } else {
+                                alert("❌ 下载功能未就绪,请刷新页面");
+                            }
                         });
                     }
 

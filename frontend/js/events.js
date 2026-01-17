@@ -222,7 +222,85 @@
             });
         },
 
+        // === 共用下载函数 ===
+        async downloadAudio(audioUrl, speaker, text) {
+            if (!audioUrl) {
+                alert("❌ 无法下载:音频文件不存在");
+                return;
+            }
+
+            // 清理文本内容,移除特殊字符以适配文件名
+            const cleanText = text.substring(0, 50).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+
+            // 构建文件名: 说话人:语音内容.wav
+            const filename = `${speaker}:${cleanText}.wav`;
+
+            // 🔧 关键优化:区分 Blob URL 和服务器路径
+            const isBlobUrl = audioUrl.startsWith('blob:');
+
+            // 对于 Blob URL,使用 fetch 方式(同源,无 CORS 问题)
+            if (isBlobUrl) {
+                try {
+                    const response = await fetch(audioUrl);
+                    const blob = await response.blob();
+
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(downloadUrl);
+                    }, 100);
+
+                    if (window.TTS_Utils && window.TTS_Utils.showNotification) {
+                        window.TTS_Utils.showNotification("⬇️ 下载成功: " + filename, "success");
+                    }
+                } catch (e) {
+                    console.error("下载失败:", e);
+                    alert("❌ 下载失败: " + e.message);
+                }
+            }
+            // 对于服务器路径,直接使用简单下载方式(避免 CORS)
+            else {
+                try {
+                    const a = document.createElement('a');
+                    a.href = audioUrl;
+                    a.download = filename;
+                    // 不设置 target='_blank',让浏览器直接下载
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+
+                    if (window.TTS_Utils && window.TTS_Utils.showNotification) {
+                        window.TTS_Utils.showNotification("⬇️ 下载成功: " + filename, "success");
+                    }
+                } catch (e) {
+                    console.error("下载失败:", e);
+                    alert("❌ 下载失败: " + e.message);
+                }
+            }
+        },
+
         bindMenuEvents() {
+            // 0. 下载语音 (Download)
+            $(document).on('click', '#tts-action-download', async () => {
+                const $btn = $('#tts-bubble-menu').data('target');
+                $('#tts-bubble-menu').fadeOut(100);
+
+                if (!$btn || !$btn.length) return;
+
+                const audioUrl = $btn.attr('data-audio-url') || $btn.data('audio-url');
+                const speaker = $btn.data('voice-name') || 'Unknown';
+                const text = $btn.data('text') || '';
+
+                // 调用共用下载函数
+                await window.TTS_Events.downloadAudio(audioUrl, speaker, text);
+            });
+
             // 1. 重绘 (Re-Roll) - 真正的服务端删除
             $(document).on('click', '#tts-action-reroll', async () => {
                 const $btn = $('#tts-bubble-menu').data('target');

@@ -1,6 +1,7 @@
 import os
 import glob
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 from config import init_settings, load_json, save_json, get_current_dirs, MAPPINGS_FILE, SETTINGS_FILE
 from utils import scan_audio_files
 from schemas import BindRequest, UnbindRequest, CreateModelRequest, StyleRequest
@@ -205,3 +206,62 @@ def get_matched_favorites(req: MatchRequest):
         "status": "success",
         "data": result_data
     }
+
+# 🔧 新增:下载端点,解决 CORS 问题
+@router.get("/download_favorite/{filename}")
+def download_favorite(filename: str, custom_filename: Optional[str] = None):
+    """
+    专门用于下载收藏音频的端点
+    - 自动添加 CORS 头
+    - 设置 Content-Disposition: attachment (触发下载)
+    - 支持自定义下载文件名
+    """
+    # 安全检查:只允许文件名,不允许路径遍历
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(FAV_AUDIO_DIR, safe_filename)
+    
+    # 验证文件存在且在正确的目录中
+    abs_base_dir = os.path.abspath(FAV_AUDIO_DIR)
+    abs_file_path = os.path.abspath(file_path)
+    
+    if not abs_file_path.startswith(abs_base_dir):
+        return {"status": "error", "msg": "Invalid file path"}
+    
+    if not os.path.exists(abs_file_path):
+        return {"status": "error", "msg": "File not found"}
+    
+    # 使用自定义文件名或原始文件名
+    if custom_filename:
+        # 🔒 安全验证:清理自定义文件名
+        # 1. 移除路径分隔符,防止路径遍历
+        safe_custom = os.path.basename(custom_filename)
+        # 2. 移除控制字符(包括换行符),防止 HTTP 头注入
+        safe_custom = ''.join(char for char in safe_custom if ord(char) >= 32 and char not in '\r\n')
+        # 3. 限制长度,防止过长文件名
+        safe_custom = safe_custom[:255]
+        # 4. 确保有扩展名
+        if not safe_custom.endswith('.wav'):
+            safe_custom = safe_custom + '.wav'
+        download_filename = safe_custom
+    else:
+        download_filename = safe_filename
+    
+    # 返回文件,设置 Content-Disposition 为 attachment
+    # 🔧 使用 RFC 2231 编码支持中文文件名
+    from urllib.parse import quote
+    
+    # URL 编码文件名以支持中文
+    encoded_filename = quote(download_filename.encode('utf-8'))
+    
+    return FileResponse(
+        path=abs_file_path,
+        media_type="audio/wav",
+        headers={
+            # 使用 RFC 2231 格式: filename*=UTF-8''encoded_filename
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*"
+        }
+    )
+

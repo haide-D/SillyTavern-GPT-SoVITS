@@ -12,7 +12,12 @@ app = FastAPI()
 
 # 1. CORS 配置
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    CORSMiddleware, 
+    allow_origins=["*"], 
+    allow_methods=["*"], 
+    allow_headers=["*"],
+    allow_credentials=True,  # 允许携带凭证
+    expose_headers=["*"]  # 暴露所有响应头
 )
 
 # 2. 挂载静态文件 (前端界面)
