@@ -102,10 +102,10 @@ function renderModels(models) {
             <h3>${model.name}</h3>
             <div class="model-files">
                 <div class="file-status ${model.files.gpt_weights ? 'valid' : 'invalid'}">
-                    GPT 权重 (gpt_weights.ckpt)
+                    GPT 权重 (*.ckpt)
                 </div>
                 <div class="file-status ${model.files.sovits_weights ? 'valid' : 'invalid'}">
-                    SoVITS 权重 (sovits_weights.pth)
+                    SoVITS 权重 (*.pth)
                 </div>
                 <div class="file-status ${model.files.reference_audios ? 'valid' : 'invalid'}">
                     参考音频目录
@@ -120,6 +120,17 @@ function renderModels(models) {
                     <div class="stat-value">${Object.keys(model.audio_stats.by_emotion || {}).length}</div>
                     <div class="stat-label">情感类型</div>
                 </div>
+            </div>
+            <div class="model-actions" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary" onclick="toggleModelAudios('${model.name}')" id="toggle-btn-${model.name}">
+                    🎵 查看音频 (${model.audio_stats.total || 0})
+                </button>
+                <button class="btn btn-primary" onclick="showBatchEmotionDialog('${model.name}')">
+                    🏷️ 批量修改情感
+                </button>
+            </div>
+            <div id="model-audios-${model.name}" class="model-audios-list" style="display: none; margin-top: 1rem;">
+                <p class="loading">加载中...</p>
             </div>
         </div>
     `).join('');
@@ -283,6 +294,189 @@ async function deleteAudio(relativePath) {
     } catch (error) {
         console.error('删除失败:', error);
         showNotification('删除失败', 'error');
+    }
+}
+
+// ==================== 模型音频展开/收起 ====================
+const expandedModels = new Set();
+
+async function toggleModelAudios(modelName) {
+    const container = document.getElementById(`model-audios-${modelName}`);
+    const toggleBtn = document.getElementById(`toggle-btn-${modelName}`);
+
+    if (expandedModels.has(modelName)) {
+        // 收起
+        container.style.display = 'none';
+        expandedModels.delete(modelName);
+        toggleBtn.textContent = `🎵 查看音频 (${toggleBtn.textContent.match(/\d+/)[0]})`;
+    } else {
+        // 展开并加载
+        container.style.display = 'block';
+        expandedModels.add(modelName);
+        toggleBtn.textContent = `🔽 收起音频`;
+
+        await loadModelAudios(modelName);
+    }
+}
+
+async function loadModelAudios(modelName) {
+    const container = document.getElementById(`model-audios-${modelName}`);
+    container.innerHTML = '<p class="loading">加载中...</p>';
+
+    try {
+        const response = await fetch(`${API_BASE}/models/${encodeURIComponent(modelName)}/audios`);
+        const data = await response.json();
+
+        renderModelAudios(modelName, data.audios || []);
+    } catch (error) {
+        console.error('加载音频失败:', error);
+        container.innerHTML = '<p class="placeholder">加载失败</p>';
+    }
+}
+
+function renderModelAudios(modelName, audios) {
+    const container = document.getElementById(`model-audios-${modelName}`);
+
+    if (audios.length === 0) {
+        container.innerHTML = '<p class="placeholder">该模型暂无参考音频</p>';
+        return;
+    }
+
+    container.innerHTML = `
+        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.5rem;">
+            ${audios.map(audio => `
+                <div class="audio-card" style="margin-bottom: 0.75rem; background: rgba(255,255,255,0.05); padding: 0.75rem; border-radius: 0.375rem;">
+                    <div class="filename" style="font-weight: bold; margin-bottom: 0.5rem;">${audio.filename}</div>
+                    <div class="audio-tags" style="margin-bottom: 0.5rem;">
+                        <span class="tag">🌐 ${audio.language}</span>
+                        <span class="tag">😊 ${audio.emotion}</span>
+                        <span class="tag">📦 ${formatFileSize(audio.size)}</span>
+                    </div>
+                    <div class="audio-controls" style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary" onclick="showRenameDialog('${modelName}', '${audio.relative_path.replace(/\\/g, '\\\\')}', '${audio.filename}')">
+                            ✏️ 重命名
+                        </button>
+                        <button class="btn btn-danger" onclick="deleteModelAudio('${modelName}', '${audio.relative_path.replace(/\\/g, '\\\\')}')">
+                            🗑️ 删除
+                        </button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function deleteModelAudio(modelName, relativePath) {
+    if (!confirm('确定要删除这个音频文件吗?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `${API_BASE}/models/${encodeURIComponent(modelName)}/audios?relative_path=${encodeURIComponent(relativePath)}`,
+            { method: 'DELETE' }
+        );
+
+        if (response.ok) {
+            showNotification('删除成功', 'success');
+            await loadModelAudios(modelName);
+            await loadModels(); // 刷新模型列表以更新统计
+        } else {
+            const data = await response.json();
+            showNotification(data.detail || '删除失败', 'error');
+        }
+    } catch (error) {
+        console.error('删除失败:', error);
+        showNotification('删除失败', 'error');
+    }
+}
+
+// ==================== 重命名音频 ====================
+let currentRenameContext = null;
+
+function showRenameDialog(modelName, relativePath, currentFilename) {
+    currentRenameContext = { modelName, relativePath };
+    document.getElementById('rename-new-filename').value = currentFilename;
+    document.getElementById('rename-audio-dialog').style.display = 'flex';
+}
+
+async function confirmRename() {
+    if (!currentRenameContext) return;
+
+    const newFilename = document.getElementById('rename-new-filename').value.trim();
+
+    if (!newFilename) {
+        showNotification('请输入新文件名', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `${API_BASE}/models/${encodeURIComponent(currentRenameContext.modelName)}/audios/rename?relative_path=${encodeURIComponent(currentRenameContext.relativePath)}&new_filename=${encodeURIComponent(newFilename)}`,
+            { method: 'PUT' }
+        );
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showNotification('重命名成功', 'success');
+            closeDialog('rename-audio-dialog');
+            await loadModelAudios(currentRenameContext.modelName);
+            await loadModels(); // 刷新模型列表
+        } else {
+            showNotification(data.detail || '重命名失败', 'error');
+        }
+    } catch (error) {
+        console.error('重命名失败:', error);
+        showNotification('重命名失败', 'error');
+    }
+}
+
+// ==================== 批量修改情感 ====================
+let currentBatchEmotionModel = null;
+
+function showBatchEmotionDialog(modelName) {
+    currentBatchEmotionModel = modelName;
+    document.getElementById('batch-old-emotion').value = '';
+    document.getElementById('batch-new-emotion').value = '';
+    document.getElementById('batch-emotion-dialog').style.display = 'flex';
+}
+
+async function confirmBatchEmotion() {
+    if (!currentBatchEmotionModel) return;
+
+    const oldEmotion = document.getElementById('batch-old-emotion').value.trim();
+    const newEmotion = document.getElementById('batch-new-emotion').value.trim();
+
+    if (!oldEmotion || !newEmotion) {
+        showNotification('请输入旧情感和新情感标签', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `${API_BASE}/models/${encodeURIComponent(currentBatchEmotionModel)}/audios/batch-emotion?old_emotion=${encodeURIComponent(oldEmotion)}&new_emotion=${encodeURIComponent(newEmotion)}`,
+            { method: 'POST' }
+        );
+
+        const data = await response.json();
+
+        if (response.ok) {
+            const message = `成功修改 ${data.updated_count} 个文件`;
+            showNotification(message, 'success');
+            closeDialog('batch-emotion-dialog');
+
+            // 如果该模型已展开,刷新音频列表
+            if (expandedModels.has(currentBatchEmotionModel)) {
+                await loadModelAudios(currentBatchEmotionModel);
+            }
+            await loadModels(); // 刷新模型列表
+        } else {
+            showNotification(data.detail || '批量修改失败', 'error');
+        }
+    } catch (error) {
+        console.error('批量修改失败:', error);
+        showNotification('批量修改失败', 'error');
     }
 }
 

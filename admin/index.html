@@ -212,6 +212,53 @@
         </div>
     </div>
 
+    <!-- 重命名音频对话框 -->
+    <div id="rename-audio-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog">
+            <div class="dialog-header">
+                <h3>重命名音频</h3>
+                <button class="close-btn" onclick="closeDialog('rename-audio-dialog')">✕</button>
+            </div>
+            <div class="dialog-body">
+                <div class="form-group">
+                    <label>新文件名</label>
+                    <input type="text" id="rename-new-filename" class="input" placeholder="例: happy_你好.wav">
+                    <small>可以包含正常标点符号,文件名即为音频字幕内容</small>
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button class="btn btn-secondary" onclick="closeDialog('rename-audio-dialog')">取消</button>
+                <button class="btn btn-primary" onclick="confirmRename()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量修改情感对话框 -->
+    <div id="batch-emotion-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog">
+            <div class="dialog-header">
+                <h3>批量修改情感前缀</h3>
+                <button class="close-btn" onclick="closeDialog('batch-emotion-dialog')">✕</button>
+            </div>
+            <div class="dialog-body">
+                <div class="form-group">
+                    <label>旧情感标签</label>
+                    <input type="text" id="batch-old-emotion" class="input" placeholder="例: happy">
+                    <small>将匹配所有以 "旧情感_" 开头的文件</small>
+                </div>
+                <div class="form-group">
+                    <label>新情感标签</label>
+                    <input type="text" id="batch-new-emotion" class="input" placeholder="例: joyful">
+                    <small>将替换为 "新情感_" 前缀</small>
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button class="btn btn-secondary" onclick="closeDialog('batch-emotion-dialog')">取消</button>
+                <button class="btn btn-primary" onclick="confirmBatchEmotion()">确认</button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/admin.js"></script>
 </body>
 

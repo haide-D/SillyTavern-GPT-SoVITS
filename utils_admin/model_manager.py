@@ -25,13 +25,22 @@ class ModelManager:
     
     def _analyze_model(self, name: str, path: str) -> Dict[str, Any]:
         """分析单个模型"""
-        gpt_weight = os.path.join(path, "gpt_weights.ckpt")
-        sovits_weight = os.path.join(path, "sovits_weights.pth")
         ref_audio_dir = os.path.join(path, "reference_audios")
         
+        # 通过后缀匹配查找权重文件
+        gpt_weight = None
+        sovits_weight = None
+        
+        if os.path.exists(path):
+            for file in os.listdir(path):
+                if file.endswith('.ckpt'):
+                    gpt_weight = os.path.join(path, file)
+                elif file.endswith('.pth'):
+                    sovits_weight = os.path.join(path, file)
+        
         # 检查文件完整性
-        has_gpt = os.path.exists(gpt_weight)
-        has_sovits = os.path.exists(sovits_weight)
+        has_gpt = gpt_weight is not None and os.path.exists(gpt_weight)
+        has_sovits = sovits_weight is not None and os.path.exists(sovits_weight)
         has_ref_dir = os.path.exists(ref_audio_dir)
         
         # 统计参考音频
@@ -203,3 +212,176 @@ class ModelManager:
                 "success": False,
                 "error": str(e)
             }
+    
+    def _validate_path(self, path: str) -> bool:
+        """验证路径安全性,防止路径遍历攻击"""
+        try:
+            # 规范化路径
+            normalized = os.path.normpath(path)
+            base_normalized = os.path.normpath(self.base_dir)
+            
+            # 确保路径在 base_dir 范围内
+            if not normalized.startswith(base_normalized):
+                return False
+            
+            # 检查是否包含路径遍历字符
+            if ".." in path or path.startswith("/") or path.startswith("\\"):
+                return False
+            
+            return True
+        except Exception:
+            return False
+    
+    def _validate_filename(self, filename: str) -> bool:
+        """验证文件名合法性,只禁止文件系统非法字符"""
+        # Windows 文件系统不允许的字符
+        illegal_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
+        
+        # 检查是否包含非法字符
+        for char in illegal_chars:
+            if char in filename:
+                return False
+        
+        # 文件名不能为空或只包含空格
+        if not filename or filename.strip() == "":
+            return False
+        
+        # 文件名不能以点或空格结尾 (Windows 限制)
+        if filename.endswith('.') or filename.endswith(' '):
+            return False
+        
+        return True
+    
+    def rename_audio(self, model_name: str, relative_path: str, new_filename: str) -> Dict[str, Any]:
+        """重命名参考音频文件"""
+        model_path = os.path.join(self.base_dir, model_name)
+        ref_dir = os.path.join(model_path, "reference_audios")
+        old_path = os.path.join(ref_dir, relative_path)
+        
+        # 验证旧文件路径
+        if not self._validate_path(old_path):
+            return {
+                "success": False,
+                "error": "非法的文件路径"
+            }
+        
+        if not os.path.exists(old_path):
+            return {
+                "success": False,
+                "error": "文件不存在"
+            }
+        
+        # 验证新文件名
+        if not self._validate_filename(new_filename):
+            return {
+                "success": False,
+                "error": "文件名包含非法字符或格式不正确"
+            }
+        
+        # 构建新路径 (保持在同一目录下)
+        old_dir = os.path.dirname(old_path)
+        new_path = os.path.join(old_dir, new_filename)
+        
+        # 验证新文件路径
+        if not self._validate_path(new_path):
+            return {
+                "success": False,
+                "error": "非法的目标路径"
+            }
+        
+        # 检查新文件名是否已存在
+        if os.path.exists(new_path) and new_path != old_path:
+            return {
+                "success": False,
+                "error": "目标文件名已存在"
+            }
+        
+        try:
+            os.rename(old_path, new_path)
+            
+            # 计算新的相对路径
+            new_relative_path = os.path.relpath(new_path, ref_dir)
+            
+            return {
+                "success": True,
+                "old_path": relative_path,
+                "new_path": new_relative_path,
+                "new_filename": new_filename
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"重命名失败: {str(e)}"
+            }
+    
+    def batch_update_emotion(self, model_name: str, old_emotion: str, new_emotion: str) -> Dict[str, Any]:
+        """批量修改指定情感前缀的所有音频文件"""
+        # 验证情感标签
+        if not old_emotion or not new_emotion:
+            return {
+                "success": False,
+                "error": "情感标签不能为空"
+            }
+        
+        # 验证情感标签不包含非法字符
+        if not self._validate_filename(old_emotion) or not self._validate_filename(new_emotion):
+            return {
+                "success": False,
+                "error": "情感标签包含非法字符"
+            }
+        
+        model_path = os.path.join(self.base_dir, model_name)
+        ref_dir = os.path.join(model_path, "reference_audios")
+        
+        if not os.path.exists(ref_dir):
+            return {
+                "success": False,
+                "error": "参考音频目录不存在"
+            }
+        
+        updated_files = []
+        error_files = []
+        
+        # 递归遍历所有音频文件
+        for root, dirs, files in os.walk(ref_dir):
+            for file in files:
+                # 检查是否是音频文件且匹配旧情感前缀
+                if any(file.lower().endswith(ext) for ext in ['.wav', '.mp3', '.ogg', '.flac']):
+                    name_without_ext = os.path.splitext(file)[0]
+                    
+                    # 检查是否以 "old_emotion_" 开头
+                    if name_without_ext.startswith(f"{old_emotion}_"):
+                        old_file_path = os.path.join(root, file)
+                        
+                        # 构建新文件名
+                        ext = os.path.splitext(file)[1]
+                        new_name = name_without_ext.replace(f"{old_emotion}_", f"{new_emotion}_", 1)
+                        new_filename = new_name + ext
+                        new_file_path = os.path.join(root, new_filename)
+                        
+                        # 验证路径安全性
+                        if not self._validate_path(old_file_path) or not self._validate_path(new_file_path):
+                            error_files.append(file)
+                            continue
+                        
+                        # 检查新文件名是否已存在
+                        if os.path.exists(new_file_path):
+                            error_files.append(f"{file} (目标已存在)")
+                            continue
+                        
+                        try:
+                            os.rename(old_file_path, new_file_path)
+                            updated_files.append({
+                                "old": file,
+                                "new": new_filename
+                            })
+                        except Exception as e:
+                            error_files.append(f"{file} ({str(e)})")
+        
+        return {
+            "success": True,
+            "updated_count": len(updated_files),
+            "files": updated_files,
+            "errors": error_files if error_files else None
+        }
+

@@ -151,6 +151,40 @@ async def delete_audio(model_name: str, relative_path: str):
     
     return result
 
+@router.put("/models/{model_name}/audios/rename")
+async def rename_audio(model_name: str, relative_path: str, new_filename: str):
+    """重命名参考音频"""
+    settings = init_settings()
+    base_dir = settings.get("base_dir")
+    
+    if not base_dir:
+        raise HTTPException(status_code=400, detail="模型目录未配置")
+    
+    manager = ModelManager(base_dir)
+    result = manager.rename_audio(model_name, relative_path, new_filename)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+@router.post("/models/{model_name}/audios/batch-emotion")
+async def batch_update_emotion(model_name: str, old_emotion: str, new_emotion: str):
+    """批量修改情感前缀"""
+    settings = init_settings()
+    base_dir = settings.get("base_dir")
+    
+    if not base_dir:
+        raise HTTPException(status_code=400, detail="模型目录未配置")
+    
+    manager = ModelManager(base_dir)
+    result = manager.batch_update_emotion(model_name, old_emotion, new_emotion)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
 # ==================== 配置管理 ====================
 
 @router.get("/settings")
