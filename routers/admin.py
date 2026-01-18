@@ -293,3 +293,34 @@ async def update_version():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新失败: {str(e)}")
 
+@router.post("/restart")
+async def restart_service():
+    """重启服务"""
+    import sys
+    import asyncio
+    
+    async def delayed_restart():
+        """延迟重启,确保响应能够返回"""
+        await asyncio.sleep(1)  # 等待1秒,确保响应已发送
+        try:
+            # 在 Windows 上重启服务
+            if sys.platform == 'win32':
+                # 使用 os.execv 重启当前进程
+                import os
+                python = sys.executable
+                os.execv(python, [python] + sys.argv)
+            else:
+                # Unix-like 系统
+                import os
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            print(f"重启失败: {e}")
+    
+    # 在后台执行重启
+    asyncio.create_task(delayed_restart())
+    
+    return {
+        "success": True,
+        "message": "服务正在重启..."
+    }
+

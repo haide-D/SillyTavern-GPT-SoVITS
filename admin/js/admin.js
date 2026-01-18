@@ -741,12 +741,48 @@ async function performUpdate() {
             progressBar.style.width = '100%';
             progressText.textContent = '更新完成!';
 
-            showNotification('更新成功!即将重启服务...', 'success');
+            // 检查是否需要重启
+            if (data.should_restart) {
+                showNotification('更新成功!即将自动重启服务...', 'success');
 
-            // 提示用户重启服务
-            setTimeout(() => {
-                alert('更新完成!\n\n请手动重启服务以应用更新:\n1. 关闭当前服务(Ctrl+C)\n2. 重新运行 start.bat');
-            }, 1000);
+                // 倒计时重启
+                let countdown = 3;
+                const countdownInterval = setInterval(() => {
+                    progressText.textContent = `${countdown} 秒后自动重启服务...`;
+                    countdown--;
+
+                    if (countdown < 0) {
+                        clearInterval(countdownInterval);
+                        progressText.textContent = '正在重启服务...';
+
+                        // 调用重启 API
+                        fetch(`${API_BASE}/restart`, { method: 'POST' })
+                            .then(() => {
+                                progressText.textContent = '服务正在重启,5秒后刷新页面...';
+                                // 等待服务重启,然后刷新页面
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 5000);
+                            })
+                            .catch(err => {
+                                console.error('重启请求失败:', err);
+                                // 即使重启请求失败,也尝试刷新页面
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 3000);
+                            });
+                    }
+                }, 1000);
+            } else {
+                // 不需要重启(例如已经是最新版本)
+                showNotification(data.message || '更新完成!', 'success');
+                setTimeout(() => {
+                    updateBtn.disabled = false;
+                    updateProgress.style.display = 'none';
+                    updateActions.style.display = 'block';
+                    checkVersion(); // 重新检查版本
+                }, 2000);
+            }
 
         } else {
             throw new Error(data.error || data.detail || '更新失败');
@@ -762,3 +798,4 @@ async function performUpdate() {
         updateActions.style.display = 'block';
     }
 }
+

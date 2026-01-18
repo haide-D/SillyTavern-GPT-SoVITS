@@ -347,8 +347,9 @@ class VersionManager:
                 result['no_update'] = True
             else:
                 result['success'] = True
-                result['message'] = f'成功更新分支 {current_branch}!请重启服务以应用更新'
+                result['message'] = f'成功更新分支 {current_branch}!即将自动重启服务'
                 result['updated'] = True
+                result['should_restart'] = True  # 标记需要重启
                 # 提取更新的文件数量信息
                 if 'file' in output or 'changed' in output:
                     result['update_details'] = output
@@ -477,7 +478,8 @@ class VersionManager:
                 progress_callback(5, 5, '更新完成!')
             
             result['success'] = True
-            result['message'] = f'成功更新到版本 {latest_release["tag_name"]}'
+            result['message'] = f'成功更新到版本 {latest_release["tag_name"]}!即将自动重启服务'
+            result['should_restart'] = True  # 标记需要重启
             
         except Exception as e:
             result['error'] = f'更新失败: {str(e)}'
