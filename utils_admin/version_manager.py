@@ -190,14 +190,15 @@ class VersionManager:
             {
                 'success': bool,
                 'message': str,
-                'error': str (如果有错误)
+                'error': str (如果有错误),
+                'branch': str (当前分支名)
             }
         """
         result = {'success': False}
         
         try:
             if progress_callback:
-                progress_callback(1, 4, '检查 Git 环境...')
+                progress_callback(1, 5, '检查 Git 环境...')
             
             # 检查 git 是否安装
             try:
@@ -211,8 +212,24 @@ class VersionManager:
                 result['error'] = 'Git 未安装或无法访问,请手动更新'
                 return result
             
+            # 获取当前分支名
+            branch_result = subprocess.run(
+                ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=self.base_dir
+            )
+            
+            if branch_result.returncode == 0:
+                current_branch = branch_result.stdout.strip()
+                result['branch'] = current_branch
+            else:
+                result['error'] = '无法获取当前分支信息'
+                return result
+            
             if progress_callback:
-                progress_callback(2, 4, '检查仓库状态...')
+                progress_callback(2, 5, f'检查仓库状态 ({current_branch})...')
             
             # 检查是否有未提交的更改
             status_result = subprocess.run(
@@ -229,7 +246,23 @@ class VersionManager:
                 return result
             
             if progress_callback:
-                progress_callback(3, 4, '正在拉取最新代码...')
+                progress_callback(3, 5, '正在获取远程更新...')
+            
+            # 先执行 git fetch 获取远程更新
+            fetch_result = subprocess.run(
+                ['git', 'fetch'],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=self.base_dir
+            )
+            
+            if fetch_result.returncode != 0:
+                result['error'] = f'获取远程更新失败: {fetch_result.stderr}'
+                return result
+            
+            if progress_callback:
+                progress_callback(4, 5, f'正在拉取 {current_branch} 分支...')
             
             # 执行 git pull
             pull_result = subprocess.run(
@@ -245,18 +278,21 @@ class VersionManager:
                 return result
             
             if progress_callback:
-                progress_callback(4, 4, '更新完成!')
+                progress_callback(5, 5, '更新完成!')
             
             # 检查是否有实际更新
             output = pull_result.stdout.strip()
             if 'Already up to date' in output or '已经是最新' in output:
                 result['success'] = True
-                result['message'] = '当前已是最新版本'
+                result['message'] = f'分支 {current_branch} 已是最新版本'
                 result['no_update'] = True
             else:
                 result['success'] = True
-                result['message'] = '更新成功!请重启服务以应用更新'
+                result['message'] = f'成功更新分支 {current_branch}!请重启服务以应用更新'
                 result['updated'] = True
+                # 提取更新的文件数量信息
+                if 'file' in output or 'changed' in output:
+                    result['update_details'] = output
             
         except subprocess.TimeoutExpired:
             result['error'] = 'Git 操作超时,请检查网络连接'
