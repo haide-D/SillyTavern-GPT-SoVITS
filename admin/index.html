@@ -21,6 +21,7 @@
                 <a href="#dashboard" class="nav-item active" data-page="dashboard">
                     <span class="icon">📊</span>
                     <span>仪表盘</span>
+                    <span class="update-badge" id="nav-update-badge" style="display: none;"></span>
                 </a>
                 <a href="#models" class="nav-item" data-page="models">
                     <span class="icon">🤖</span>
@@ -87,9 +88,11 @@
                     <!-- 版本更新卡片 -->
                     <div class="card" id="version-card">
                         <div class="card-header">
-                            <h3>🔄 版本更新</h3>
+                            <h3>
+                                🔄 版本更新
+                                <span class="update-badge" id="update-badge" style="display: none;"></span>
+                            </h3>
                             <span class="status-badge" id="version-status">检测中...</span>
-                            <span class="update-badge" id="update-badge" style="display: none;">●</span>
                         </div>
                         <div class="card-body">
                             <div class="info-item">

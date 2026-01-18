@@ -95,6 +95,13 @@ body {
     font-size: 1.25rem;
 }
 
+/* 导航项中的小红点 */
+.nav-item .update-badge {
+    margin-left: auto;
+    width: 8px;
+    height: 8px;
+}
+
 /* ==================== 主内容区 ==================== */
 .main-content {
     flex: 1;
@@ -741,13 +748,13 @@ body {
 }
 
 /* 版本卡片特殊样式 */
-#version-card .card-header {
-    position: relative;
+#version-card .card-header h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
-#version-card .update-badge {
-    position: absolute;
-    right: 1.25rem;
-    top: 50%;
-    transform: translateY(-50%);
+#version-card .card-header h3 .update-badge {
+    width: 8px;
+    height: 8px;
 }

@@ -151,20 +151,25 @@ class VersionManager:
         git_dir = os.path.join(self.base_dir, '.git')
         if os.path.exists(git_dir):
             result['is_git_repo'] = True
-            result['success'] = True
-            result['error'] = '检测到 Git 仓库,请使用 git pull 更新'
-            return result
+            # Git 仓库也继续检查远程版本,不直接返回
         
         # 如果无法读取版本号,返回错误但仍包含 current_version (可能为 None)
         if not current_version:
             result['error'] = '无法读取当前版本号'
             return result
         
-        # 获取最新版本
+        # 获取最新版本(Git 仓库用户也需要看到远程版本)
         latest_release = self.get_latest_release()
         if not latest_release:
-            result['error'] = '无法获取最新版本信息(可能是网络超时或 GitHub API 限制)'
-            return result
+            # 如果是 Git 仓库且无法获取 Release,仍然标记为成功
+            # 因为 Git 用户可以通过 git pull 更新
+            if result['is_git_repo']:
+                result['success'] = True
+                result['message'] = 'Git 仓库模式,无法从 GitHub 获取版本信息,但可以使用 git pull 更新'
+                return result
+            else:
+                result['error'] = '无法获取最新版本信息(可能是网络超时或 GitHub API 限制)'
+                return result
         
         latest_version = latest_release['tag_name'].lstrip('v')
         result['latest_version'] = latest_version

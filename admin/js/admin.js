@@ -629,6 +629,7 @@ async function checkVersion() {
     const latestVersionEl = document.getElementById('latest-version');
     const latestVersionInfo = document.getElementById('latest-version-info');
     const updateBadge = document.getElementById('update-badge');
+    const navUpdateBadge = document.getElementById('nav-update-badge');
     const updateActions = document.getElementById('update-actions');
     const gitRepoNotice = document.getElementById('git-repo-notice');
 
@@ -646,34 +647,48 @@ async function checkVersion() {
         // 显示当前版本
         currentVersionEl.textContent = data.current_version || '-';
 
-        // 如果是 Git 仓库
-        if (data.is_git_repo) {
-            statusEl.textContent = 'Git 仓库';
-            statusEl.className = 'status-badge status-success';
-            // 修改提示文案,说明可以一键更新
-            gitRepoNotice.textContent = '💡 检测到 Git 仓库,点击更新将自动执行 git pull';
-            gitRepoNotice.style.display = 'block';
-            // Git 仓库也显示更新按钮
-            updateActions.style.display = 'block';
-            return;
-        }
-
-        // 显示最新版本
+        // 显示最新版本(Git 仓库和 ZIP 用户都显示)
         if (data.latest_version) {
             latestVersionEl.textContent = data.latest_version;
             latestVersionInfo.style.display = 'flex';
         }
 
+        // 如果是 Git 仓库
+        if (data.is_git_repo) {
+            // 显示 Git 仓库提示
+            gitRepoNotice.textContent = '💡 检测到 Git 仓库,点击更新将自动执行 git pull';
+            gitRepoNotice.style.display = 'block';
+
+            // 根据是否有更新来显示状态和按钮
+            if (data.has_update) {
+                statusEl.textContent = '有新版本';
+                statusEl.className = 'status-badge status-warning';
+                updateBadge.style.display = 'inline-block';
+                navUpdateBadge.style.display = 'inline-block';
+                updateActions.style.display = 'block';
+            } else {
+                statusEl.textContent = '已是最新';
+                statusEl.className = 'status-badge status-success';
+                updateBadge.style.display = 'none';
+                navUpdateBadge.style.display = 'none';
+                updateActions.style.display = 'none';
+            }
+            return;
+        }
+
+        // ZIP 用户的显示逻辑
         // 检查是否有更新
         if (data.has_update) {
             statusEl.textContent = '有新版本';
             statusEl.className = 'status-badge status-warning';
             updateBadge.style.display = 'inline-block';
+            navUpdateBadge.style.display = 'inline-block';
             updateActions.style.display = 'block';
         } else {
             statusEl.textContent = '已是最新';
             statusEl.className = 'status-badge status-success';
             updateBadge.style.display = 'none';
+            navUpdateBadge.style.display = 'none';
             updateActions.style.display = 'none';
         }
 
