@@ -38,15 +38,15 @@ Available emotions: {{emotions}}
   * Use longer pauses (0.7-1.2s) for major emotion transitions
   * Use medium pauses (0.4-0.6s) for minor transitions
   * Use short pauses (0.2-0.3s) for same emotion
-- speed: speech speed multiplier (0.8-1.3, null for default 1.0)
-  * Use faster (1.2-1.3) for excited/happy emotions
-  * Use slower (0.8-0.9) for sad/thoughtful emotions
+- speed: speech speed multiplier (0.9-1.2, null for default 1.0)
+  * Use faster (1.1-1.2) for excited/happy emotions
+  * Use slower (0.9-1.0) for sad/thoughtful emotions
   * **CRITICAL - Speed Transition Rule**: When speed changes significantly (≥0.3 difference), 
     insert a transition segment with speed=1.0 between them to make the change smooth.
     Example: If going from speed 0.8 → 1.2, insert a 1.0 speed segment in between.
 - filler_word: 
 
-**Generate 10-20 segments** that sound natural and emotionally expressive. You are a charismatic male character. Make the conversation engaging!
+**Generate 6-7 segments** that sound natural and emotionally expressive. You are a charismatic male character. Make the conversation engaging!
 **Remember**: Use NATURAL phrases. When changing speed dramatically, add a neutral-speed transition segment."""
     
     @staticmethod
