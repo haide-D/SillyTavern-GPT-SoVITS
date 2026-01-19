@@ -38,6 +38,11 @@ class TTSService:
             "streaming_mode": "false"  # 明确关闭流式
         }
         
+        # 添加语速参数(如果指定)
+        if segment.speed is not None:
+            params["speed_factor"] = segment.speed
+            print(f"[TTSService] 使用语速: {segment.speed}x")
+        
         print(f"[TTSService] 调用 SoVITS: {url}")
         print(f"[TTSService] 参数: text={params['text'][:30]}..., ref_audio={ref_audio['path']}")
         print(f"[TTSService] 完整参数: {params}")

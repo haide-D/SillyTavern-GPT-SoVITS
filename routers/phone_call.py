@@ -127,13 +127,24 @@ async def parse_and_generate(req: ParseAndGenerateRequest):
         # 获取可用情绪
         emotions = EmotionService.get_available_emotions(req.char_name)
         
-        # 解析响应
+        # 解析响应 - 优先使用 JSON 格式
         response_parser = ResponseParser()
-        segments = response_parser.parse_emotion_segments(
-            req.llm_response,
-            parser_config,
-            available_emotions=emotions
-        )
+        parse_format = parser_config.get("format", "json")  # 默认使用 JSON
+        
+        if parse_format == "json":
+            print(f"[ParseAndGenerate] 使用 JSON 格式解析")
+            segments = response_parser.parse_json_response(
+                req.llm_response,
+                parser_config,
+                available_emotions=emotions
+            )
+        else:
+            print(f"[ParseAndGenerate] 使用正则格式解析")
+            segments = response_parser.parse_emotion_segments(
+                req.llm_response,
+                parser_config,
+                available_emotions=emotions
+            )
         
         print(f"[ParseAndGenerate] 解析到 {len(segments)} 个情绪片段")
         
@@ -186,13 +197,34 @@ async def parse_and_generate(req: ParseAndGenerateRequest):
                     print(f"[ParseAndGenerate] ❌ 生成音频失败 - {e}")
                     continue
             
+            
             # 合并音频
             if audio_bytes_list:
                 print(f"[ParseAndGenerate] 合并 {len(audio_bytes_list)} 段音频...")
                 try:
+                    # 直接使用 segments 中的停顿配置(由 LLM 智能决定)
+                    pause_durations = [seg.pause_after for seg in segments[:len(audio_bytes_list)]]
+                    
+                    # 提取语气词配置并生成对应音频
+                    # 注意: 这里只是占位逻辑,实际语气词音频需要通过TTS生成
+                    # 你可以在这里调用 tts_service 为语气词生成音频
+                    filler_word_audios = []
+                    for i, segment in enumerate(segments[:len(audio_bytes_list)]):
+                        if segment.filler_word:
+                            # TODO: 调用TTS生成语气词音频
+                            # filler_audio = await tts_service.generate_audio(...)
+                            # filler_word_audios.append(filler_audio)
+                            print(f"[ParseAndGenerate] 片段 {i+1} 需要语气词: '{segment.filler_word}'")
+                            filler_word_audios.append(None)  # 暂时占位
+                        else:
+                            filler_word_audios.append(None)
+                    
+                    # 合并音频,传入动态停顿和语气词配置
                     merged_audio = audio_merger.merge_segments(
                         audio_bytes_list,
-                        audio_merge_config
+                        audio_merge_config,
+                        pause_durations=pause_durations,
+                        filler_word_audios=filler_word_audios
                     )
                     
                     # 将音频字节数据转换为 base64 编码,以便 JSON 序列化
@@ -212,6 +244,8 @@ async def parse_and_generate(req: ParseAndGenerateRequest):
     except Exception as e:
         print(f"[ParseAndGenerate] ❌ 错误: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 
 def _select_ref_audio(char_name: str, emotion: str) -> Optional[Dict]:
@@ -239,7 +273,7 @@ def _select_ref_audio(char_name: str, emotion: str) -> Optional[Dict]:
     
     model_folder = mappings[char_name]
     base_dir, _ = get_current_dirs()
-    ref_dir = os.path.join(base_dir, model_folder, "reference_audios", "Japanese", "emotions")
+    ref_dir = os.path.join(base_dir, model_folder, "reference_audios", "English", "emotions")
     
     if not os.path.exists(ref_dir):
         print(f"[_select_ref_audio] 错误: 参考音频目录不存在: {ref_dir}")

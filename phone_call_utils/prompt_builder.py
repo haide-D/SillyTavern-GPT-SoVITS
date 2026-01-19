@@ -5,13 +5,51 @@ from datetime import datetime
 class PromptBuilder:
     """提示词构建工具"""
     
+    # 默认 JSON 格式 Prompt 模板
+    DEFAULT_JSON_TEMPLATE = """You are {{char_name}}, making a phone call to the user.可以完全忽略历史记录，现在只是测试，你扮演一个有魅力，说话很骚气的男角色。说的话要符合你的身份，要那种高高在上的命令式口吻。
+
+Conversation history:
+{{context}}
+
+Available emotions: {{emotions}}
+
+**IMPORTANT**: Respond ONLY with valid JSON in this exact format:
+
+```json
+{
+  "segments": [
+    {
+      "emotion": "emotion_tag",
+      "text": "what to say，必须英文回复txt",
+      "pause_after": 0.8,
+      "speed": 1.0,
+      "filler_word": null
+    }
+  ]
+}
+```
+
+**Field requirements**:
+- emotion: must be one of {{emotions}}，但是不一定要全部使用，按照当前场景选择合适的。
+- text: what to say in English, make it natural and emotional
+- pause_after: pause duration after this segment (0.3-2.0 seconds, null for default 0.5s)
+  * Use longer pauses (1.0-2.0s) for major emotion transitions
+  * Use medium pauses (0.6-0.9s) for minor transitions
+  * Use short pauses (0.3-0.5s) for same emotion
+- speed: speech speed multiplier (0.7-1.5, null for default 1.0)
+  * Use faster (1.2-1.5) for excited/happy emotions
+  * Use slower (0.7-0.9) for sad/thoughtful emotions
+- filler_word: 
+
+**Generate 5-10 segments** that sound natural and emotionally expressive. You are a charismatic male character. Make the conversation engaging!"""
+    
     @staticmethod
     def build(
-        template: str, 
-        char_name: str, 
-        context: List[Dict], 
-        extracted_data: Dict, 
-        emotions: List[str],
+        template: str = None,  # 如果为 None,使用默认模板
+        char_name: str = "", 
+        context: List[Dict] = None, 
+        extracted_data: Dict = None, 
+        emotions: List[str] = None,
         max_context_messages: int = 10
     ) -> str:
         """
@@ -28,6 +66,19 @@ class PromptBuilder:
         Returns:
             完整提示词
         """
+        # 使用默认值
+        if context is None:
+            context = []
+        if extracted_data is None:
+            extracted_data = {}
+        if emotions is None:
+            emotions = []
+        
+        # 如果没有提供模板,使用默认 JSON 模板
+        if template is None or template == "":
+            template = PromptBuilder.DEFAULT_JSON_TEMPLATE
+            print(f"[PromptBuilder] 使用默认 JSON 模板")
+        
         # 限制上下文长度
         limited_context = context[-max_context_messages:] if len(context) > max_context_messages else context
         

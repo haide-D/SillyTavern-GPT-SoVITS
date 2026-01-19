@@ -760,16 +760,8 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                             max_tokens: buildResult.llm_config.max_tokens,
                             prompt: buildResult.prompt
                         };
-
-                        console.log('[主动电话] LLM配置:', { ...llmConfig, prompt: `${llmConfig.prompt.substring(0, 100)}...` });
-
                         const llmResponse = await window.LLM_Client.callLLM(llmConfig);
-                        console.log('[主动电话] ✅ LLM响应成功:', llmResponse);
-
-                        // 步骤3: 调用后端解析响应
-                        console.log('[主动电话] 步骤3: 解析响应...');
                         $resultContent.html('<div style="text-align:center; padding:20px; color:#666;">正在解析LLM响应...</div>');
-
                         const parseUrl = `${apiBaseUrl}/api/phone_call/parse_and_generate`;
                         const parseResponse = await fetch(parseUrl, {
                             method: 'POST',
@@ -787,13 +779,10 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                         }
 
                         const result = await parseResponse.json();
-                        console.log('[主动电话] ✅ 解析完成:', result);
-
                         if (result.status !== 'success') {
                             throw new Error(result.message || '生成失败');
                         }
 
-                        // 显示结果
                         let html = `
                             <div style="padding:15px; background:#d1fae5; border-radius:8px; margin-bottom:15px;">
                                 <div style="font-size:18px; margin-bottom:5px;">✅ 生成成功</div>
@@ -801,7 +790,6 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                             </div>
                         `;
 
-                        // 显示每个片段
                         if (result.segments && result.segments.length > 0) {
                             html += '<div style="margin-bottom:15px;"><strong style="color:#666; font-size:13px;">📝 生成的内容:</strong></div>';
 
@@ -819,9 +807,7 @@ window.TTS_Mobile = window.TTS_Mobile || {};
                             });
                         }
 
-                        // 如果有音频,显示播放按钮
                         if (result.audio) {
-                            // 将 base64 解码为二进制数据
                             const binaryString = atob(result.audio);
                             const bytes = new Uint8Array(binaryString.length);
                             for (let i = 0; i < binaryString.length; i++) {
@@ -847,7 +833,6 @@ window.TTS_Mobile = window.TTS_Mobile || {};
 
                         $resultContent.html(html);
 
-                        // 绑定下载按钮
                         $('.phone-download-audio').click(function () {
                             const url = $(this).data('url');
                             const charname = $(this).data('charname');
