@@ -38,10 +38,10 @@
                 dataType: "script",
                 cache: true,
                 timeout: 3000, // 【关键修改】设置3秒超时。手机连不上时，3秒后立刻触发报错弹窗
-                success: function() {
+                success: function () {
                     resolve();
                 },
-                error: function(jqxhr, settings, exception) {
+                error: function (jqxhr, settings, exception) {
                     console.warn(`[TTS] 模块 ${name} 连接超时或失败，准备进入救援模式`);
                     // 拒绝 Promise，触发 bootstrap 的 catch 流程
                     reject(exception);
@@ -78,13 +78,13 @@
             if (window.TTS_Parser) window.TTS_Parser.scan();
 
             // 修复 Iframe 样式
-            $('iframe').each(function() {
+            $('iframe').each(function () {
                 try {
                     const head = $(this).contents().find('head');
                     if (head.length > 0 && head.find('#sovits-iframe-style').length === 0) {
                         head.append(`<style id='sovits-iframe-style'>${cssContent}</style>`);
                     }
-                } catch(e) {}
+                } catch (e) { }
             });
         });
         // ============================================================
@@ -96,27 +96,27 @@
         fetch(mobileCssUrl)
             .then(response => response.text())
             .then(cssText => {
-            // 1. 创建 style 标签
-            const style = document.createElement('style');
-            style.id = 'tts-mobile-force-style';
+                // 1. 创建 style 标签
+                const style = document.createElement('style');
+                style.id = 'tts-mobile-force-style';
 
-            // 2. 可以在这里顺便补一个 z-index 保底，防止被遮挡
-            // 如果原来的 CSS 里 z-index 不够大，这行会救命
-            const extraCss = `
+                // 2. 可以在这里顺便补一个 z-index 保底，防止被遮挡
+                // 如果原来的 CSS 里 z-index 不够大，这行会救命
+                const extraCss = `
                     #tts-mobile-trigger { z-index: 2147483647 !important; }
                     #tts-mobile-root { z-index: 2147483647 !important; }
                 `;
 
-            // 3. 填入内容
-            style.textContent = cssText + extraCss;
+                // 3. 填入内容
+                style.textContent = cssText + extraCss;
 
-            // 4. 插入页面头部
-            document.head.appendChild(style);
-            console.log("✅ [TTS] 手机端 CSS 已强制注入成功！");
-        })
+                // 4. 插入页面头部
+                document.head.appendChild(style);
+                console.log("✅ [TTS] 手机端 CSS 已强制注入成功！");
+            })
             .catch(err => {
-            console.error("❌ [TTS] 手机端 CSS 加载失败:", err);
-        });
+                console.error("❌ [TTS] 手机端 CSS 加载失败:", err);
+            });
 
         // 4. 定义核心回调函数 (传给 UI 模块使用)
         async function refreshData() {
@@ -191,7 +191,7 @@
         async function toggleMasterSwitch(checked) {
             CACHE.settings.enabled = checked;
             if (checked && window.TTS_Parser) window.TTS_Parser.scan();
-            try { await window.TTS_API.updateSettings({ enabled: checked }); } catch(e) {}
+            try { await window.TTS_API.updateSettings({ enabled: checked }); } catch (e) { }
         }
 
         async function toggleAutoGenerate(checked) {
@@ -199,7 +199,7 @@
             try {
                 await window.TTS_API.updateSettings({ auto_generate: checked });
                 if (checked && CACHE.settings.enabled !== false) Scheduler.scanAndSchedule();
-            } catch(e) {}
+            } catch (e) { }
         }
         async function changeBubbleStyle(styleName) {
             console.log("🎨 正在切换风格为:", styleName);
@@ -213,21 +213,21 @@
                 // ⚠️ 修改了 endpoint：从 /save_style 变为 /update_settings
                 const response = await fetch(`${MANAGER_API}/update_settings`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     // ⚠️ 修改了键名：确保发送的是 bubble_style，对应 Python 里的定义
                     body: JSON.stringify({ bubble_style: styleName })
                 });
 
                 const res = await response.json();
-                if(res.status === 'success') {
+                if (res.status === 'success') {
                     console.log("✅ 风格已永久保存:", styleName);
 
                     // 更新本地缓存
-                    if(window.TTS_State && window.TTS_State.CACHE.settings) {
+                    if (window.TTS_State && window.TTS_State.CACHE.settings) {
                         window.TTS_State.CACHE.settings.bubble_style = styleName;
                     }
                 }
-            } catch(e) {
+            } catch (e) {
                 console.error("❌ 保存风格失败:", e);
             }
         }
@@ -237,7 +237,7 @@
             try {
                 await window.TTS_API.updateSettings({ base_dir: b, cache_dir: c });
                 return true;
-            } catch(e) { return false; }
+            } catch (e) { return false; }
         }
 
         // 5. 初始化 UI 模块
@@ -254,13 +254,13 @@
         // ============================================================
 
         // 1. 点击触发器：切换菜单展开/收起
-        $('body').on('click', '.select-trigger', function(e) {
+        $('body').on('click', '.select-trigger', function (e) {
             e.stopPropagation(); // 阻止冒泡
             $(this).parent('.tts-custom-select').toggleClass('open');
         });
 
         // 2. 点击选项：选中并关闭
-        $('body').on('click', '.option-item', function() {
+        $('body').on('click', '.option-item', function () {
             const val = $(this).attr('data-value');
             const text = $(this).text();
             const $wrapper = $(this).closest('.tts-custom-select');
@@ -278,7 +278,7 @@
         });
 
         // 3. 点击页面其他地方：自动关闭菜单
-        $(document).on('click', function() {
+        $(document).on('click', function () {
             $('.tts-custom-select').removeClass('open');
         });
 
@@ -340,7 +340,7 @@
     // ================= [新增] 救援模式 UI (手动 IP 配置) =================
     function showEmergencyConfig(currentApi) {
         // 防止重复添加
-        if($('#tts-emergency-box').length > 0) return;
+        if ($('#tts-emergency-box').length > 0) return;
 
         const html = `
             <div id="tts-emergency-box" style="
@@ -371,22 +371,22 @@
 
         // 自动填入之前可能存过的 IP
         const saved = localStorage.getItem('tts_plugin_remote_config');
-        if(saved) {
+        if (saved) {
             try {
                 const p = JSON.parse(saved);
-                if(p.ip) $('#tts-emergency-ip').val(p.ip);
-            } catch(e){}
+                if (p.ip) $('#tts-emergency-ip').val(p.ip);
+            } catch (e) { }
         }
 
         // 绑定关闭事件
-        $('#tts-emergency-close').on('click', function() {
+        $('#tts-emergency-close').on('click', function () {
             $('#tts-emergency-box').remove();
         });
 
         // 绑定保存事件
-        $('#tts-emergency-save').on('click', function() {
+        $('#tts-emergency-save').on('click', function () {
             const ip = $('#tts-emergency-ip').val().trim();
-            if(!ip) return alert("请输入 IP");
+            if (!ip) return alert("请输入 IP");
 
             // 保存到标准 LocalStorage (与 index.js 顶部的读取逻辑对应)
             localStorage.setItem('tts_plugin_remote_config', JSON.stringify({
@@ -416,16 +416,16 @@
             await loadModule('events');
 
             console.log("🎨 [Loader] 加载UI分层模块...");
-            // await loadModule('ui_legacy');
             await loadModule('ui_templates');
             await loadModule('ui_dashboard');
             await loadModule('ui_main');
             console.log("📱 [Loader] 加载手机端模块...");
+            await loadModule('llm_client');
             await loadModule('mobile_ui');
 
             console.log("✅ [Loader] 所有模块加载完毕，启动插件");
             initPlugin();
-            if(window.TTS_Mobile && window.TTS_Mobile.init) {
+            if (window.TTS_Mobile && window.TTS_Mobile.init) {
                 window.TTS_Mobile.init();
             }
 
