@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from config import FRONTEND_DIR, init_settings
 from routers import data, tts, system
 from config import FRONTEND_DIR
-from routers import data, tts, system, admin, phone_call
+from routers import data, tts, system, admin, phone_call, speakers
 
 # 初始化配置(确保 system_settings.json 和目录存在)
 init_settings()
@@ -46,6 +46,7 @@ app.include_router(tts.router, tags=["TTS Core"])
 app.include_router(system.router, tags=["System Settings"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Panel"])
 app.include_router(phone_call.router, prefix="/api", tags=["Phone Call"])
+app.include_router(speakers.router, prefix="/api", tags=["Speakers Management"])
 
 if __name__ == "__main__":
     # 必须是 0.0.0.0，否则局域网无法访问

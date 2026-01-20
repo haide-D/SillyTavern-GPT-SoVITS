@@ -321,4 +321,46 @@ export function getCurrentChatBranch() {
     return "default";
 }
 
+/**
+ * 从消息文本中提取说话人名称
+ * @param {string} messageText - 消息文本
+ * @returns {string|null} 说话人名称,如果没有找到则返回 null
+ */
+export function extractSpeaker(messageText) {
+    if (!messageText) return null;
+
+    // 使用统一的正则表达式
+    const match = VOICE_TAG_REGEX.exec(messageText);
+    return match ? match[2] : null;  // match[2] 是说话人名称
+}
+
+/**
+ * 从消息列表中提取所有说话人 (去重)
+ * @param {Array} messages - 消息列表
+ * @returns {Array<string>} 去重后的说话人列表
+ */
+export function extractAllSpeakers(messages) {
+    const speakers = new Set();
+
+    for (const msg of messages) {
+        if (msg.is_system) continue;
+
+        const msgText = msg.mes || '';
+        if (!msgText) continue;
+
+        // 重置正则表达式的 lastIndex
+        VOICE_TAG_REGEX.lastIndex = 0;
+
+        let match;
+        while ((match = VOICE_TAG_REGEX.exec(msgText)) !== null) {
+            const speaker = match[2];  // 说话人名称
+            if (speaker) {
+                speakers.add(speaker);
+            }
+        }
+    }
+
+    return Array.from(speakers);
+}
+
 console.log("🟢 [2] TTS_Utils.js 执行完毕");

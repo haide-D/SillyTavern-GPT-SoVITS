@@ -16,6 +16,7 @@ import { TTS_Events } from './frontend/js/events.js';
 import * as TTS_Templates from './frontend/js/ui_templates.js';
 
 import { TTS_UI } from './frontend/js/ui_main.js';
+import './frontend/js/ui_dashboard.js';  // 导入 ui_dashboard.js 以加载事件绑定函数
 import { LLM_Client } from './frontend/js/llm_client.js';
 import { TTS_Mobile } from './frontend/js/mobile_ui.js';
 import { TTS_AutoPhoneCall } from './frontend/js/auto_phone_call.js';
@@ -57,9 +58,14 @@ window.TTS_Parser = TTS_Parser;
 window.TTS_Scheduler = TTS_Scheduler;
 window.TTS_Events = TTS_Events;
 window.TTS_Templates = TTS_Templates;
-window.TTS_UI = {
-    Templates: TTS_Templates  // 将 Templates 挂载到 TTS_UI 下
-};
+// 不要覆盖整个 window.TTS_UI,只添加 Templates
+// ui_main.js 的 IIFE 已经初始化了 window.TTS_UI.CTX
+if (!window.TTS_UI.Templates) {
+    window.TTS_UI.Templates = TTS_Templates;
+}
+if (!window.TTS_UI.CTX) {
+    window.TTS_UI.CTX = null;  // 如果 ui_main.js 还没设置,则初始化为 null
+}
 
 // ================= 2. 主逻辑函数 =================
 function initPlugin() {

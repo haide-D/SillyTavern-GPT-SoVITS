@@ -39,6 +39,21 @@ export const TTS_Mobile = window.TTS_Mobile;
                     </div>
                 `);
 
+                // === 调试日志开始 ===
+                console.log("[Mobile Settings] 开始渲染设置页面");
+                console.log("[Mobile Settings] window.TTS_UI 存在?", !!window.TTS_UI);
+                console.log("[Mobile Settings] window.TTS_UI.Templates 存在?", !!(window.TTS_UI && window.TTS_UI.Templates));
+                console.log("[Mobile Settings] window.TTS_UI.CTX 存在?", !!(window.TTS_UI && window.TTS_UI.CTX));
+
+                if (window.TTS_UI) {
+                    console.log("[Mobile Settings] window.TTS_UI 内容:", window.TTS_UI);
+                    if (window.TTS_UI.CTX) {
+                        console.log("[Mobile Settings] window.TTS_UI.CTX 内容:", window.TTS_UI.CTX);
+                        console.log("[Mobile Settings] window.TTS_UI.CTX.CACHE 存在?", !!window.TTS_UI.CTX.CACHE);
+                    }
+                }
+                // === 调试日志结束 ===
+
                 try {
                     if (window.refreshTTS) await window.refreshTTS();
                     else if (window.TTS_UI && window.TTS_UI.CTX && window.TTS_UI.CTX.Callbacks.refreshData) {
@@ -52,6 +67,13 @@ export const TTS_Mobile = window.TTS_Mobile;
                 }
 
                 const CTX = window.TTS_UI.CTX;
+
+                // 安全检查: 确保 CACHE 已初始化
+                if (!CTX.CACHE) {
+                    container.html('<div style="padding:20px; text-align:center;">⚠️ 数据缓存未初始化</div>');
+                    return;
+                }
+
                 const settings = CTX.CACHE.settings || {};
                 let config = { useRemote: false, ip: "" };
                 try {

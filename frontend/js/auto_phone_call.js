@@ -2,6 +2,7 @@
 // 自动电话功能的前端集成模块
 
 import { TTS_State } from './state.js';
+import { eventSource, event_types } from '../../../../../../script.js';
 
 export const TTS_AutoPhoneCall = {
     // WebSocket 连接实例
@@ -38,13 +39,15 @@ export const TTS_AutoPhoneCall = {
         // 详细的调试信息
         console.log(`🔍 [AutoPhoneCall] 检查 SillyTavern 状态 (重试: ${retryCount}/${MAX_RETRIES})`);
         console.log(`   - window.SillyTavern 存在: ${!!window.SillyTavern}`);
+        console.log(`   - eventSource 存在: ${!!eventSource}`);
+        console.log(`   - event_types 存在: ${!!event_types}`);
 
         if (window.SillyTavern) {
             console.log(`   - SillyTavern.getContext 存在: ${!!window.SillyTavern.getContext}`);
         }
 
-        // 检查 SillyTavern 是否已加载 (只需要 getContext 即可)
-        if (!window.SillyTavern || !window.SillyTavern.getContext) {
+        // 检查 SillyTavern 是否已加载
+        if (!window.SillyTavern || !window.SillyTavern.getContext || !eventSource || !event_types) {
             if (retryCount >= MAX_RETRIES) {
                 console.error("❌ [AutoPhoneCall] SillyTavern 加载超时,已达到最大重试次数");
                 console.error("   请检查:");
@@ -59,25 +62,21 @@ export const TTS_AutoPhoneCall = {
             return;
         }
 
-        // ✅ 使用 document 事件监听 (SillyTavern 扩展的标准方式)
-        // SillyTavern 通过 document 触发自定义事件,而不是通过 eventSource
+        // ✅ 使用 eventSource.on() 监听事件 (SillyTavern 标准方式)
 
         // 监听角色消息渲染完成事件 (AI 回复完成)
-        // 事件名称: character_message_rendered
-        $(document).on('character_message_rendered', (e) => {
-            const messageId = e.detail;
+        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, (messageId) => {
             console.log(`📨 [AutoPhoneCall] 检测到角色消息渲染: messageId=${messageId}`);
             this.onCharacterMessageRendered(messageId);
         });
 
         // 监听聊天切换事件
-        // 事件名称: chat_id_changed
-        $(document).on('chat_id_changed', () => {
+        eventSource.on(event_types.CHAT_CHANGED, () => {
             console.log("🔄 [AutoPhoneCall] 聊天已切换");
             this.onChatChanged();
         });
 
-        console.log("✅ [AutoPhoneCall] SillyTavern 事件监听已绑定 (使用 document 事件)");
+        console.log("✅ [AutoPhoneCall] SillyTavern 事件监听已绑定 (使用 eventSource.on)");
     },
 
     /**
@@ -109,6 +108,19 @@ export const TTS_AutoPhoneCall = {
                 this.connectWebSocket(charName);
             }
 
+            // 获取 chat_branch
+            const chatBranch = this.getCurrentChatBranch();
+
+            // 查询当前对话的所有说话人
+            let speakers = [];
+            try {
+                const result = await window.TTS_API.getSpeakers(chatBranch);
+                speakers = result.speakers || [];
+                console.log(`📋 [AutoPhoneCall] 查询到 ${speakers.length} 个说话人:`, speakers);
+            } catch (error) {
+                console.warn("⚠️ [AutoPhoneCall] 查询说话人失败,将使用空列表:", error);
+            }
+
             // 计算当前楼层 (轮次)
             // 楼层 = 消息总数 / 2 (向下取整)
             const currentFloor = Math.floor(chat.length / 2);
@@ -120,14 +132,35 @@ export const TTS_AutoPhoneCall = {
                 mes: msg.mes || ""
             }));
 
-            console.log(`📊 [AutoPhoneCall] 当前楼层: ${currentFloor}, 上下文消息数: ${contextMessages.length}`);
+            console.log(`📊 [AutoPhoneCall] 当前楼层: ${currentFloor}, 上下文消息数: ${contextMessages.length}, 说话人数: ${speakers.length}`);
 
             // 发送 webhook 到后端
-            await this.sendWebhook(charName, currentFloor, contextMessages);
+            await this.sendWebhook(chatBranch, speakers, currentFloor, contextMessages);
 
         } catch (error) {
             console.error("❌ [AutoPhoneCall] 处理角色消息时出错:", error);
         }
+    },
+
+    /**
+     * 获取当前对话分支ID
+     * @returns {string} chat_branch
+     */
+    getCurrentChatBranch() {
+        try {
+            if (window.TTS_Utils && window.TTS_Utils.getCurrentChatBranch) {
+                return window.TTS_Utils.getCurrentChatBranch();
+            }
+
+            // 回退方案
+            const context = window.SillyTavern.getContext();
+            if (context && context.chatId) {
+                return context.chatId.replace(/\.(jsonl|json)$/i, "");
+            }
+        } catch (e) {
+            console.error("[AutoPhoneCall] 获取 chat_branch 失败:", e);
+        }
+        return "default";
     },
 
     /**
@@ -141,21 +174,24 @@ export const TTS_AutoPhoneCall = {
         this.currentCharName = null;
     },
 
+
     /**
      * 发送 webhook 到后端
-     * @param {string} charName - 角色名称
+     * @param {string} chatBranch - 对话分支ID
+     * @param {Array<string>} speakers - 说话人列表
      * @param {number} floor - 当前楼层
      * @param {Array} context - 上下文消息
      */
-    async sendWebhook(charName, floor, context) {
+    async sendWebhook(chatBranch, speakers, floor, context) {
         try {
             const apiHost = this.getApiHost();
             const response = await fetch(`${apiHost}/api/phone_call/webhook/message`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    char_name: charName,
-                    floor: floor,
+                    chat_branch: chatBranch,
+                    speakers: speakers,
+                    current_floor: floor,
                     context: context
                 })
             });

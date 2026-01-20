@@ -59,6 +59,19 @@ class DatabaseManager:
             )
         ''')
         
+        # 创建 conversation_speakers 表 - 对话说话人记录
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversation_speakers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_branch TEXT NOT NULL,
+                speakers TEXT NOT NULL,
+                last_updated_mesid INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(chat_branch)
+            )
+        ''')
+
+        
         conn.commit()
         conn.close()
 
@@ -331,3 +344,83 @@ class DatabaseManager:
             except:
                 d["segments"] = []
         return d
+    
+    # ==================== 对话说话人管理相关方法 ====================
+    
+    def get_speakers_for_chat(self, chat_branch: str) -> List[str]:
+        """
+        获取指定对话的所有说话人
+        
+        Args:
+            chat_branch: 对话分支ID
+            
+        Returns:
+            说话人列表,如果不存在则返回空列表
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute(
+                'SELECT speakers FROM conversation_speakers WHERE chat_branch = ?',
+                (chat_branch,)
+            )
+            row = cursor.fetchone()
+            
+            if row and row[0]:
+                try:
+                    return json.loads(row[0])
+                except:
+                    return []
+            return []
+        finally:
+            conn.close()
+    
+    def update_speakers_for_chat(self, chat_branch: str, speakers: List[str], mesid: Optional[int] = None):
+        """
+        更新或插入对话的说话人列表
+        
+        Args:
+            chat_branch: 对话分支ID
+            speakers: 说话人列表
+            mesid: 最后更新的消息ID (可选)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        speakers_json = json.dumps(speakers, ensure_ascii=False)
+        
+        try:
+            cursor.execute('''
+                INSERT INTO conversation_speakers (chat_branch, speakers, last_updated_mesid)
+                VALUES (?, ?, ?)
+                ON CONFLICT(chat_branch) DO UPDATE SET
+                    speakers = excluded.speakers,
+                    last_updated_mesid = excluded.last_updated_mesid,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (chat_branch, speakers_json, mesid))
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def batch_init_speakers(self, speakers_data: List[Dict[str, Any]]):
+        """
+        批量初始化说话人记录 (用于旧对话扫描)
+        
+        Args:
+            speakers_data: 说话人数据列表,每项包含 chat_branch, speakers, mesid
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            for data in speakers_data:
+                speakers_json = json.dumps(data['speakers'], ensure_ascii=False)
+                cursor.execute('''
+                    INSERT OR REPLACE INTO conversation_speakers (chat_branch, speakers, last_updated_mesid)
+                    VALUES (?, ?, ?)
+                ''', (data['chat_branch'], speakers_json, data.get('mesid')))
+            
+            conn.commit()
+        finally:
+            conn.close()

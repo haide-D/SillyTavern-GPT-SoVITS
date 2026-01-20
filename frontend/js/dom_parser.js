@@ -252,5 +252,46 @@ export const TTS_Parser = {
                 }
             });
         }
+
+        // ==================== 说话人提取和存储 ====================
+        // 在扫描完成后,提取并更新说话人列表
+        this._updateSpeakers();
+    },
+
+    /**
+     * 提取并更新当前对话的说话人列表
+     */
+    async _updateSpeakers() {
+        try {
+            // 检查必要的依赖
+            if (!window.SillyTavern || !window.TTS_Utils || !window.TTS_API) {
+                return;
+            }
+
+            const context = window.SillyTavern.getContext();
+            if (!context || !context.chat) return;
+
+            // 提取所有说话人
+            const speakers = window.TTS_Utils.extractAllSpeakers(context.chat);
+
+            // 如果没有说话人,跳过
+            if (speakers.length === 0) return;
+
+            // 获取 chat_branch
+            const chatBranch = window.TTS_Utils.getCurrentChatBranch();
+
+            // 更新到数据库 (异步,不阻塞)
+            window.TTS_API.updateSpeakers({
+                chat_branch: chatBranch,
+                speakers: speakers,
+                mesid: context.chat.length - 1
+            }).catch(err => {
+                console.warn("[Parser] 更新说话人失败:", err);
+            });
+
+        } catch (error) {
+            // 静默失败,不影响主流程
+            console.warn("[Parser] 说话人提取出错:", error);
+        }
     }
 };

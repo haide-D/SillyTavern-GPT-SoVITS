@@ -44,7 +44,8 @@ class LLMTestRequest(BaseModel):
 
 class MessageWebhookRequest(BaseModel):
     """消息 Webhook 请求"""
-    char_name: str
+    chat_branch: str  # 对话分支ID
+    speakers: List[str]  # 说话人列表
     current_floor: int  # 当前对话楼层
     context: List[Dict[str, str]]  # 完整对话上下文
 

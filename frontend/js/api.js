@@ -136,5 +136,46 @@ export const TTS_API = {
             body: JSON.stringify({ folder_name: folderName })
         });
         if (!res.ok) throw new Error("Create folder failed");
+    },
+
+    // ===========================================
+    // 【新增】说话人管理 API
+    // ===========================================
+
+    /**
+     * 获取指定对话的所有说话人
+     */
+    async getSpeakers(chatBranch) {
+        const res = await fetch(this._url(`/api/speakers/${encodeURIComponent(chatBranch)}`));
+        if (!res.ok) throw new Error("Get speakers failed");
+        return await res.json();
+    },
+
+    /**
+     * 更新对话的说话人列表
+     */
+    async updateSpeakers(payload) {
+        // payload 格式: { chat_branch, speakers, mesid }
+        const res = await fetch(this._url('/api/speakers/update'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Update speakers failed");
+        return await res.json();
+    },
+
+    /**
+     * 批量初始化说话人记录 (用于旧对话扫描)
+     */
+    async batchInitSpeakers(speakersData) {
+        // speakersData 格式: [{ chat_branch, speakers, mesid }, ...]
+        const res = await fetch(this._url('/api/speakers/batch_init'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ speakers_data: speakersData })
+        });
+        if (!res.ok) throw new Error("Batch init speakers failed");
+        return await res.json();
     }
 };
