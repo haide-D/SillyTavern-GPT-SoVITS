@@ -45,7 +45,7 @@ class DataExtractor:
             
             # 提取数据
             for msg in filtered_messages:
-                content = msg["content"]
+                content = msg.mes  # ContextMessage 使用 .mes 属性
                 matches = re.findall(pattern, content)
                 results[name].extend(matches)
             
@@ -67,15 +67,15 @@ class DataExtractor:
         按scope过滤消息
         
         Args:
-            context: 对话上下文
+            context: 对话上下文 (ContextMessage 对象列表)
             scope: 过滤范围 ("character_only" | "user_only" | "all")
             
         Returns:
             过滤后的消息列表
         """
         if scope == "character_only":
-            return [msg for msg in context if msg["role"] == "assistant"]
+            return [msg for msg in context if not msg.is_user]  # ContextMessage 使用 .is_user 属性
         elif scope == "user_only":
-            return [msg for msg in context if msg["role"] == "user"]
+            return [msg for msg in context if msg.is_user]
         else:
             return context

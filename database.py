@@ -48,14 +48,14 @@ class DatabaseManager:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS auto_phone_calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                char_name TEXT NOT NULL,
+                char_name TEXT,
                 trigger_floor INTEGER NOT NULL,
                 segments TEXT NOT NULL,
                 audio_path TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 status TEXT DEFAULT 'pending',
                 error_message TEXT,
-                UNIQUE(char_name, trigger_floor)
+                UNIQUE(trigger_floor)
             )
         ''')
         
@@ -189,15 +189,16 @@ class DatabaseManager:
 
     # ==================== 自动电话生成记录相关方法 ====================
     
-    def add_auto_phone_call(self, char_name: str, trigger_floor: int, segments: List[Dict], 
+    def add_auto_phone_call(self, trigger_floor: int, segments: List[Dict], 
+                           char_name: Optional[str] = None,
                            audio_path: Optional[str] = None, status: str = "pending") -> Optional[int]:
         """
         添加自动电话生成记录
         
         Args:
-            char_name: 角色名称
             trigger_floor: 触发楼层
             segments: 情绪片段列表
+            char_name: 角色名称(可选,初始为 None,LLM 选择后更新)
             audio_path: 音频文件路径
             status: 状态 (pending/generating/completed/failed)
             
@@ -212,9 +213,9 @@ class DatabaseManager:
         try:
             cursor.execute('''
                 INSERT INTO auto_phone_calls (
-                    char_name, trigger_floor, segments, audio_path, status
+                    trigger_floor, char_name, segments, audio_path, status
                 ) VALUES (?, ?, ?, ?, ?)
-            ''', (char_name, trigger_floor, segments_json, audio_path, status))
+            ''', (trigger_floor, char_name, segments_json, audio_path, status))
             conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -223,25 +224,25 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def is_auto_call_generated(self, char_name: str, trigger_floor: int) -> bool:
+    def is_auto_call_generated(self, trigger_floor: int) -> bool:
         """
-        检查指定楼层是否已生成过自动电话
+        检查指定楼层是否已成功生成过自动电话
         
         Args:
-            char_name: 角色名称
             trigger_floor: 触发楼层
             
         Returns:
-            True 表示已生成, False 表示未生成
+            True 表示已成功生成, False 表示未生成或生成失败
         """
         conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
+            # 只检查状态为 'completed' 的记录,允许 'failed' 状态的记录重试
             cursor.execute('''
                 SELECT COUNT(*) FROM auto_phone_calls 
-                WHERE char_name = ? AND trigger_floor = ?
-            ''', (char_name, trigger_floor))
+                WHERE trigger_floor = ? AND status = 'completed'
+            ''', (trigger_floor,))
             count = cursor.fetchone()[0]
             return count > 0
         finally:

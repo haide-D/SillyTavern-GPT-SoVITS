@@ -162,7 +162,7 @@ class PromptBuilder:
         格式化上下文为文本
         
         Args:
-            context: 对话上下文
+            context: 对话上下文 (ContextMessage 对象列表)
             
         Returns:
             格式化的文本
@@ -172,8 +172,8 @@ class PromptBuilder:
         
         lines = []
         for i, msg in enumerate(context, 1):
-            role = "用户" if msg["role"] == "user" else "角色"
-            content = msg["content"]
+            role = "用户" if msg.is_user else msg.name  # ContextMessage 使用 .is_user 和 .name 属性
+            content = msg.mes  # ContextMessage 使用 .mes 属性
             lines.append(f"{i}. {role}: {content}")
         
         return "\n".join(lines)

@@ -30,30 +30,29 @@ class AutoCallScheduler:
         Returns:
             任务ID,如果已存在或正在执行则返回 None
         """
-        # 使用第一个说话人作为主要角色
-        primary_speaker = speakers[0] if speakers else "Unknown"
-        task_key = (primary_speaker, trigger_floor)
+        # 使用楼层作为任务标识
+        task_key = trigger_floor
         
         # 检查是否正在执行
         if task_key in self._running_tasks:
-            print(f"[AutoCallScheduler] 任务已在执行中: {primary_speaker} @ 楼层{trigger_floor}")
+            print(f"[AutoCallScheduler] 任务已在执行中: 楼层{trigger_floor}")
             return None
         
-        # 检查数据库是否已生成 (使用primary_speaker)
-        if self.db.is_auto_call_generated(primary_speaker, trigger_floor):
-            print(f"[AutoCallScheduler] 该楼层已生成过: {primary_speaker} @ 楼层{trigger_floor}")
+        # 检查数据库是否已生成
+        if self.db.is_auto_call_generated(trigger_floor):
+            print(f"[AutoCallScheduler] 该楼层已生成过: 楼层{trigger_floor}")
             return None
         
-        # 创建数据库记录
+        # 创建数据库记录(char_name 初始为 None,等 LLM 选择后更新)
         call_id = self.db.add_auto_phone_call(
-            char_name=primary_speaker,  # 暂时使用primary_speaker保持兼容
             trigger_floor=trigger_floor,
             segments=[],  # 初始为空
+            char_name=None,  # 初始为 None,LLM 选择后更新
             status="pending"
         )
         
         if call_id is None:
-            print(f"[AutoCallScheduler] 创建记录失败(可能已存在): {primary_speaker} @ 楼层{trigger_floor}")
+            print(f"[AutoCallScheduler] 创建记录失败(可能已存在): 楼层{trigger_floor}")
             return None
         
         print(f"[AutoCallScheduler] ✅ 创建任务: ID={call_id}, speakers={speakers} @ 楼层{trigger_floor}")
@@ -80,8 +79,7 @@ class AutoCallScheduler:
             trigger_floor: 触发楼层
             context: 对话上下文
         """
-        primary_speaker = speakers[0] if speakers else "Unknown"
-        task_key = (primary_speaker, trigger_floor)
+        task_key = trigger_floor
         self._running_tasks.add(task_key)
         
         try:

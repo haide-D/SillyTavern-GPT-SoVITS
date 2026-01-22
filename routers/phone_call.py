@@ -430,19 +430,19 @@ async def complete_generation(req: CompleteGenerationRequest):
                 audio_merge_config.get("output_format", "wav")
             )
         
-        # 更新数据库
+        # 更新数据库(同时更新 char_name 为 LLM 选择的说话人)
         conn = db._get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "UPDATE auto_phone_calls SET status = ?, audio_path = ?, segments = ? WHERE id = ?",
-                ("completed", audio_path, json.dumps([seg.dict() for seg in segments], ensure_ascii=False), req.call_id)
+                "UPDATE auto_phone_calls SET status = ?, char_name = ?, audio_path = ?, segments = ? WHERE id = ?",
+                ("completed", selected_speaker, audio_path, json.dumps([seg.dict() for seg in segments], ensure_ascii=False), req.call_id)
             )
             conn.commit()
         finally:
             conn.close()
         
-        print(f"[CompleteGeneration] ✅ 生成完成: call_id={req.call_id}, audio={audio_path}")
+        print(f"[CompleteGeneration] ✅ 生成完成: call_id={req.call_id}, speaker={selected_speaker}, audio={audio_path}")
         
         # 通知前端完成
         from services.notification_service import NotificationService
@@ -454,14 +454,19 @@ async def complete_generation(req: CompleteGenerationRequest):
             audio_path=audio_path
         )
         
-        # 移除运行中标记
-        primary_speaker = req.speakers[0] if req.speakers else selected_speaker
-        task_key = (primary_speaker, None)  # trigger_floor未知,但会被discard
-        if hasattr(scheduler, '_running_tasks'):
-            # 尝试移除所有相关任务
-            to_remove = [k for k in scheduler._running_tasks if k[0] == primary_speaker]
-            for k in to_remove:
-                scheduler._running_tasks.discard(k)
+        # 移除运行中标记(使用 trigger_floor)
+        # 需要从 call_id 获取 trigger_floor
+        conn = db._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT trigger_floor FROM auto_phone_calls WHERE id = ?", (req.call_id,))
+            row = cursor.fetchone()
+            if row and hasattr(scheduler, '_running_tasks'):
+                trigger_floor = row[0]
+                scheduler._running_tasks.discard(trigger_floor)
+                print(f"[CompleteGeneration] 移除运行中任务: 楼层{trigger_floor}")
+        finally:
+            conn.close()
         
         return {
             "status": "success",
