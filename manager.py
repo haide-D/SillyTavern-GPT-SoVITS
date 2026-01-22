@@ -10,10 +10,16 @@ from routers import data, tts, system
 from config import FRONTEND_DIR
 from routers import data, tts, system, admin
 
+# 导入自定义日志中间件
+from middleware.logging_middleware import LoggingMiddleware
+
 # 初始化配置(确保 system_settings.json 和目录存在)
 init_settings()
 
 app = FastAPI()
+
+# 0. 添加自定义日志中间件(必须在 CORS 之前)
+app.add_middleware(LoggingMiddleware)
 
 # 1. CORS 配置
 app.add_middleware(
@@ -48,4 +54,5 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin Panel"])
 
 if __name__ == "__main__":
     # 必须是 0.0.0.0，否则局域网无法访问
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    # access_log=False 禁用默认访问日志,使用自定义日志中间件
+    uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)

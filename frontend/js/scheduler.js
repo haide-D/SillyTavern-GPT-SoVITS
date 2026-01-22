@@ -152,6 +152,9 @@
                         await this.switchModel(modelConfig);
                         for (const task of tasksToGenerate) await this.processSingleTask(task, modelConfig);
                     } catch (e) {
+                        console.error("模型切换或生成失败:", e);
+                        const errorMsg = e.message || "未知错误";
+                        window.TTS_Utils.showNotification(`❌ 模型切换失败: ${errorMsg}`, 'error');
                         tasksToGenerate.forEach(t => {
                             this.updateStatus(t.$btn, 'error');
                             CACHE.pendingTasks.delete(t.key);
@@ -243,6 +246,9 @@
 
             } catch (e) {
                 console.error("生成失败:", e);
+                // 显示详细错误信息给用户
+                const errorMsg = e.message || "未知错误";
+                window.TTS_Utils.showNotification(`❌ TTS 生成失败: ${errorMsg}`, 'error');
                 this.updateStatus($btn, 'error');
                 CACHE.pendingTasks.delete(key);
             }

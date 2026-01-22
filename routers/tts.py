@@ -12,23 +12,83 @@ router = APIRouter()
 
 @router.get("/proxy_set_gpt_weights")
 def proxy_set_gpt_weights(weights_path: str):
+    # 1. 检查文件是否存在
+    if not os.path.exists(weights_path):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"GPT 权重文件不存在: {weights_path}"
+        )
+    
+    # 2. 尝试连接服务并切换权重
     try:
         url = f"{get_sovits_host()}/set_gpt_weights"
         resp = requests.get(url, params={"weights_path": weights_path}, timeout=10)
+        
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"GPT 权重切换失败 (服务返回 {resp.status_code}): {resp.text}"
+            )
+        
         return {"status": resp.status_code, "detail": resp.text}
+        
+    except requests.exceptions.ConnectionError:
+        print(f"Set GPT Error: 无法连接到 GPT-SoVITS 服务 (端口 9880)")
+        raise HTTPException(
+            status_code=503, 
+            detail="无法连接到 GPT-SoVITS 服务,请检查服务是否已启动 (端口 9880)"
+        )
+    except requests.exceptions.Timeout:
+        print(f"Set GPT Error: 连接超时")
+        raise HTTPException(
+            status_code=503,
+            detail="连接 GPT-SoVITS 服务超时,请检查服务状态"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Set GPT Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"GPT 权重切换失败: {str(e)}")
 
 @router.get("/proxy_set_sovits_weights")
 def proxy_set_sovits_weights(weights_path: str):
+    # 1. 检查文件是否存在
+    if not os.path.exists(weights_path):
+        raise HTTPException(
+            status_code=400,
+            detail=f"SoVITS 权重文件不存在: {weights_path}"
+        )
+    
+    # 2. 尝试连接服务并切换权重
     try:
         url = f"{get_sovits_host()}/set_sovits_weights"
         resp = requests.get(url, params={"weights_path": weights_path}, timeout=10)
+        
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=500,
+                detail=f"SoVITS 权重切换失败 (服务返回 {resp.status_code}): {resp.text}"
+            )
+        
         return {"status": resp.status_code, "detail": resp.text}
+        
+    except requests.exceptions.ConnectionError:
+        print(f"Set SoVITS Error: 无法连接到 GPT-SoVITS 服务 (端口 9880)")
+        raise HTTPException(
+            status_code=503,
+            detail="无法连接到 GPT-SoVITS 服务,请检查服务是否已启动 (端口 9880)"
+        )
+    except requests.exceptions.Timeout:
+        print(f"Set SoVITS Error: 连接超时")
+        raise HTTPException(
+            status_code=503,
+            detail="连接 GPT-SoVITS 服务超时,请检查服务状态"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Set SoVITS Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"SoVITS 权重切换失败: {str(e)}")
 
 @router.get("/tts_proxy")
 def tts_proxy(
@@ -41,6 +101,7 @@ def tts_proxy(
     streaming_mode: Optional[str] = "false", 
     check_only: Optional[str] = None
 ):
+    # ========== 缓存检查逻辑 ==========
     _, cache_dir = get_current_dirs()
 
     try:
@@ -85,6 +146,21 @@ def tts_proxy(
             except Exception as e:
                 print(f"[Cache Migration Failed] {e}")
             return FileResponse(old_cache_path, media_type="audio/wav", headers=custom_headers)
+
+        # ========== 缓存未命中,需要生成,进行参数验证 ==========
+        from validation_utils import validate_tts_request
+        
+        try:
+            validate_tts_request(
+                text=text,
+                text_lang=text_lang,
+                ref_audio_path=ref_audio_path,
+                prompt_lang=prompt_lang,
+                sovits_host=get_sovits_host()
+            )
+        except HTTPException:
+            # 验证失败时直接抛出,让 FastAPI 处理
+            raise
 
         maintain_cache_size(cache_dir)
 
