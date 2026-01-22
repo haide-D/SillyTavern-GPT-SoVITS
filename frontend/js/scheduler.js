@@ -69,6 +69,11 @@
             const charName = $btn.data('voice-name');
             const text = $btn.data('text');
             const key = this.getTaskKey(charName, text);
+
+            // 【修复】规范化情绪参数:空字符串、null、undefined 统一转为 'default'
+            const rawEmotion = $btn.data('voice-emotion');
+            const normalizedEmotion = (rawEmotion && rawEmotion.trim() !== '') ? rawEmotion : 'default';
+
             // 一级缓存
             if (CACHE.audioMemory[key]) {
                 $btn.data('audio-url', CACHE.audioMemory[key]);
@@ -82,7 +87,7 @@
 
             this.updateStatus($btn, 'queued');
             CACHE.pendingTasks.add(key);
-            this.queue.push({ charName, emotion: $btn.data('voice-emotion'), text, key, $btn });
+            this.queue.push({ charName, emotion: normalizedEmotion, text, key, $btn });
         },
 
         async run() {
@@ -134,16 +139,16 @@
                 });
 
                 const checkPromises = tasks.map(async (task) => {
-                    if (CACHE.audioMemory[task.key]) return { task, cached: true };
+                    if (CACHE.audioMemory[task.key]) return { task, cached: true, cacheResult: null };
                     const result = await this.checkCache(task, modelConfig);
-                    return { task, cached: result && result.cached === true };
+                    return { task, cached: result && result.cached === true, cacheResult: result };
                 });
 
                 const results = await Promise.all(checkPromises);
                 const tasksToGenerate = [];
 
                 for (const res of results) {
-                    if (res.cached) await this.processSingleTask(res.task, modelConfig);
+                    if (res.cached) await this.processSingleTask(res.task, modelConfig, res.cacheResult);
                     else tasksToGenerate.push(res.task);
                 }
 
@@ -208,7 +213,7 @@
             }
         },
 
-        async processSingleTask(task, modelConfig) {
+        async processSingleTask(task, modelConfig, cacheResult = null) {
             const { text, emotion, key, $btn } = task;
             const settings = window.TTS_State.CACHE.settings;
             const CACHE = window.TTS_State.CACHE;
@@ -237,12 +242,15 @@
                 };
 
                 const { blob, filename } = await window.TTS_API.generateAudio(params);
-                if (filename) {
-                    $btn.attr('data-server-filename', filename);
-                    console.log(`[TTS] 文件名已记录: ${filename}`);
+
+                // 【关键修复1】优先使用生成返回的 filename,如果没有则使用缓存检查时返回的 filename
+                const serverFilename = filename || (cacheResult && cacheResult.filename);
+                if (serverFilename) {
+                    $btn.attr('data-server-filename', serverFilename);
+                    console.log(`[TTS] 文件名已记录: ${serverFilename}`);
                 }
 
-                // 【关键修复】先生成 URL 并写入 DOM，再更新状态
+                // 【关键修复2】先生成 URL 并写入 DOM,再更新状态
                 const audioUrl = URL.createObjectURL(blob);
                 $btn.attr('data-audio-url', audioUrl);  // 直接写入 DOM 属性
                 $btn.attr('data-key', key);             // 确保 key 也写入
@@ -278,7 +286,7 @@
 
             if (!targetRefs || targetRefs.length === 0) return null;
 
-            // 情绪匹配逻辑
+            // 情绪匹配逻辑 (task.emotion 已在 addToQueue 中规范化)
             let matchedRefs = targetRefs.filter(r => r.emotion === task.emotion);
             if (matchedRefs.length === 0) matchedRefs = targetRefs.filter(r => r.emotion === 'default');
             if (matchedRefs.length === 0) matchedRefs = targetRefs;
