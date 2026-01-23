@@ -11,7 +11,19 @@ class ConversationMonitor:
     
     def is_enabled(self) -> bool:
         """检查自动生成功能是否启用"""
-        return self.auto_config.get("enabled", False)
+        # 先检查电话功能总开关
+        phone_call_enabled = self.settings.get("phone_call", {}).get("enabled", True)
+        if not phone_call_enabled:
+            print(f"[ConversationMonitor] 电话功能总开关已禁用 (phone_call.enabled = false)")
+            return False
+        
+        # 再检查自动生成子功能开关
+        auto_enabled = self.auto_config.get("enabled", False)
+        if not auto_enabled:
+            print(f"[ConversationMonitor] 自动生成功能未启用 (auto_generation.enabled = false)")
+            return False
+        
+        return True
     
     def should_trigger(self, char_name: str, current_floor: int) -> bool:
         """

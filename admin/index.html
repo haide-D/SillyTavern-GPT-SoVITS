@@ -191,6 +191,123 @@
                             <option value="English">英语</option>
                         </select>
                     </div>
+
+                    <!-- 电话呼叫启用开关 -->
+                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">📞 电话呼叫功能</h3>
+
+                    <div class="form-group">
+                        <label>启用电话呼叫</label>
+                        <select id="setting-phone-call-enabled" class="select">
+                            <option value="true">启用</option>
+                            <option value="false">禁用</option>
+                        </select>
+                        <small>是否启用主动电话呼叫功能</small>
+                    </div>
+
+                    <!-- LLM 配置 -->
+                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">📞 LLM 配置</h3>
+
+                    <div class="form-group">
+                        <label>LLM API 地址</label>
+                        <input type="text" id="setting-llm-api-url" class="input"
+                            placeholder="例: http://127.0.0.1:7861/v1/chat/completions">
+                        <small>LLM 服务的 API 地址</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>LLM API Key</label>
+                        <input type="text" id="setting-llm-api-key" class="input" placeholder="例: pwd">
+                        <small>LLM 服务的 API 密钥</small>
+                    </div>
+
+                    <div class="form-group">
+                        <div
+                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+                            <label>LLM 模型</label>
+                            <button type="button" id="fetch-llm-models-btn" class="btn btn-secondary"
+                                style="padding:4px 12px; font-size:12px;">
+                                🔄 获取模型列表
+                            </button>
+                        </div>
+                        <select id="setting-llm-model" class="select">
+                            <option value="">请选择模型...</option>
+                        </select>
+                        <small>使用的 LLM 模型名称,点击上方按钮从 API 获取可用模型</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>LLM 温度</label>
+                        <input type="number" id="setting-llm-temperature" class="input" step="0.1" min="0" max="2"
+                            placeholder="0.8">
+                        <small>控制生成文本的随机性 (0.0-2.0)</small>
+                    </div>
+
+                    <!-- TTS 配置 -->
+                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">🎙️ TTS 配置</h3>
+
+                    <div class="form-group">
+                        <label>文本语言</label>
+                        <select id="setting-tts-text-lang" class="select">
+                            <option value="zh">中文 (zh)</option>
+                            <option value="en">英语 (en)</option>
+                            <option value="ja">日语 (ja)</option>
+                        </select>
+                        <small>生成语音的文本语言</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>提示语言</label>
+                        <select id="setting-tts-prompt-lang" class="select">
+                            <option value="zh">中文 (zh)</option>
+                            <option value="en">英语 (en)</option>
+                            <option value="ja">日语 (ja)</option>
+                        </select>
+                        <small>提示词的语言</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>文本分割方法</label>
+                        <select id="setting-tts-text-split-method" class="select">
+                            <option value="cut0">cut0 - 不分割</option>
+                            <option value="cut1">cut1 - 按标点分割</option>
+                            <option value="cut2">cut2 - 按句子分割</option>
+                            <option value="cut3">cut3 - 按段落分割</option>
+                            <option value="cut4">cut4 - 按长度分割</option>
+                            <option value="cut5">cut5 - 智能分割</option>
+                        </select>
+                        <small>文本分割策略</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>使用辅助参考音频</label>
+                        <select id="setting-tts-use-aux-ref-audio" class="select">
+                            <option value="false">否</option>
+                            <option value="true">是</option>
+                        </select>
+                        <small>是否使用辅助参考音频</small>
+                    </div>
+
+                    <!-- 自动生成配置 -->
+                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">🤖 自动生成配置</h3>
+
+                    <div class="form-group">
+                        <label>楼层间隔</label>
+                        <input type="number" id="setting-auto-floor-interval" class="input" min="1" placeholder="3">
+                        <small>每隔多少条消息触发一次自动生成</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>起始楼层</label>
+                        <input type="number" id="setting-auto-start-floor" class="input" min="1" placeholder="3">
+                        <small>从第几条消息开始触发自动生成</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>最大上下文消息数</label>
+                        <input type="number" id="setting-auto-max-context-messages" class="input" min="1"
+                            placeholder="10">
+                        <small>自动生成时使用的最大上下文消息数量</small>
+                    </div>
                 </div>
             </section>
 

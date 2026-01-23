@@ -1,9 +1,16 @@
-from typing import List, Dict
+﻿from typing import List, Dict
 from datetime import datetime
 
 
 class PromptBuilder:
     """提示词构建工具"""
+    
+    # 语言映射
+    LANG_MAP = {
+        "zh": {"name": "Chinese", "display": "中文"},
+        "ja": {"name": "Japanese", "display": "日文"},
+        "en": {"name": "English", "display": "英文"}
+    }
     
     # 默认 JSON 格式 Prompt 模板
     DEFAULT_JSON_TEMPLATE = """You are an AI assistant helping to determine which character should make a phone call based on the conversation context.必须模仿电话的这种形式，电话内容必须合理且贴切，必须要有一件或者多个电话主题，围绕这个主题展开电话内容。
@@ -27,7 +34,7 @@ class PromptBuilder:
   "segments": [
     {
       "emotion": "emotion_tag",
-      "text": "what to say in English",
+      "text": "what to say in {{lang_display}}",
       "pause_after": 0.8,
       "speed": 1.0,
       "filler_word": null
@@ -38,8 +45,8 @@ class PromptBuilder:
 
 **Field Requirements**:
 - **speaker**: MUST be one of the available speakers listed above ({{speakers}})
-- **emotion**: must be one of the emotions available for the selected speaker
-- **text**: what to say in Chinese,必须中文说话内容, make it natural and emotional，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。
+- **emotion**: must be one of the emotions available for the selected speaker，注意情绪要符合这次的电话主题，可以使用一种情绪，或者几种情绪的组合。但是千万不能为了符合情绪而改变说话内容。情绪是为内容服务的，宁愿情绪少，也不能硬凑情绪。
+- **text**: what to say in {{lang_display}},必须{{lang_display}}说话内容, make it natural and emotional，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。
   * Use multiple short segments instead of one long segment
 - **pause_after**: pause duration after this segment (0.2-0.8 seconds, null for default 0.3s)
   * Use longer pauses (0.7-0.8s) for major emotion transitions
@@ -65,7 +72,8 @@ class PromptBuilder:
         emotions: List[str] = None,
         max_context_messages: int = 20,
         speakers: List[str] = None,  # 新增: 说话人列表
-        speakers_emotions: Dict[str, List[str]] = None  # 新增: 说话人情绪映射
+        speakers_emotions: Dict[str, List[str]] = None,  # 新增: 说话人情绪映射
+        text_lang: str = "zh"  # 新增: 文本语言配置
     ) -> str:
         """
         构建LLM提示词
@@ -79,6 +87,7 @@ class PromptBuilder:
             max_context_messages: 最大上下文消息数(默认20)
             speakers: 说话人列表
             speakers_emotions: 说话人情绪映射 {说话人: [情绪列表]}
+            text_lang: 文本语言配置 (zh/ja/en)
             
         Returns:
             完整提示词
@@ -117,6 +126,11 @@ class PromptBuilder:
         message_count = len(context)
         recent_message_count = len(limited_context)
         
+        # 获取语言配置
+        lang_info = PromptBuilder.LANG_MAP.get(text_lang, PromptBuilder.LANG_MAP["zh"])
+        lang_name = lang_info["name"]
+        lang_display = lang_info["display"]
+        
         # 替换模板变量
         prompt = template
         prompt = prompt.replace("{{char_name}}", char_name)
@@ -130,6 +144,10 @@ class PromptBuilder:
         # 新增: 替换说话人相关变量
         prompt = prompt.replace("{{speakers}}", speakers_list)
         prompt = prompt.replace("{{speakers_emotions}}", formatted_speakers)
+        
+        # 新增: 替换语言相关变量
+        prompt = prompt.replace("{{lang_name}}", lang_name)
+        prompt = prompt.replace("{{lang_display}}", lang_display)
         
         print(f"[PromptBuilder] 构建提示词: {len(prompt)} 字符, {message_count} 条消息, {len(speakers)} 个说话人")
         

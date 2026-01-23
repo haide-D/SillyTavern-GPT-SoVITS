@@ -13,6 +13,20 @@ from config import load_json, SETTINGS_FILE
 router = APIRouter()
 
 
+def check_phone_call_enabled():
+    """检查电话功能是否启用,如果禁用则抛出 403 错误"""
+    settings = load_json(SETTINGS_FILE)
+    phone_call_config = settings.get("phone_call", {})
+    enabled = phone_call_config.get("enabled", True)
+    
+    if not enabled:
+        raise HTTPException(
+            status_code=403, 
+            detail="电话功能已被禁用 (phone_call.enabled = false)"
+        )
+
+
+
 class ContextMessage(BaseModel):
     """对话上下文消息"""
     name: str
@@ -81,6 +95,7 @@ async def build_prompt(req: BuildPromptRequest):
         包含prompt和llm_config的字典
     """
     try:
+        check_phone_call_enabled()
         print(f"\n[BuildPrompt] 开始构建提示词: 角色={req.char_name}, 上下文={len(req.context)}条消息")
         
         # 加载配置
@@ -90,6 +105,8 @@ async def build_prompt(req: BuildPromptRequest):
         llm_config = phone_call_config.get("llm", {})
         extractors = phone_call_config.get("data_extractors", [])
         prompt_template = phone_call_config.get("prompt_template", "")
+        tts_config = phone_call_config.get("tts_config", {})
+        text_lang = tts_config.get("text_lang", "zh")  # 读取语言配置,默认中文
         
         # 提取上下文数据
         data_extractor = DataExtractor()
@@ -105,7 +122,8 @@ async def build_prompt(req: BuildPromptRequest):
             char_name=req.char_name,
             context=req.context,
             extracted_data=extracted_data,
-            emotions=emotions
+            emotions=emotions,
+            text_lang=text_lang  # 传递语言配置
         )
         
         print(f"[BuildPrompt] ✅ 提示词构建完成: {len(prompt)} 字符")
@@ -141,6 +159,7 @@ async def parse_and_generate(req: ParseAndGenerateRequest):
         包含segments和audio(可选)的字典
     """
     try:
+        check_phone_call_enabled()
         print(f"\n[ParseAndGenerate] 开始解析: 角色={req.char_name}, 响应长度={len(req.llm_response)} 字符")
         
         # 加载配置
@@ -336,6 +355,7 @@ async def complete_generation(req: CompleteGenerationRequest):
         生成结果
     """
     try:
+        check_phone_call_enabled()
         from database import DatabaseManager
         from services.auto_call_scheduler import AutoCallScheduler
         import json
@@ -603,6 +623,7 @@ async def generate_phone_call(req: PhoneCallRequest):
         包含segments、audio(可选)等信息的字典
     """
     try:
+        check_phone_call_enabled()
         service = PhoneCallService()
         result = await service.generate(req.char_name, req.context)
         
@@ -628,6 +649,7 @@ def get_emotions(char_name: str):
         情绪列表
     """
     try:
+        check_phone_call_enabled()
         emotions = EmotionService.get_available_emotions(char_name)
         return {
             "status": "success",
@@ -651,6 +673,7 @@ async def test_llm(req: LLMTestRequest):
     Returns:
         测试结果
     """
+    check_phone_call_enabled()
     return await LLMService.test_connection(req.dict())
 
 
@@ -670,6 +693,7 @@ async def message_webhook(req: MessageWebhookRequest):
         处理结果
     """
     try:
+        check_phone_call_enabled()
         from services.conversation_monitor import ConversationMonitor
         from services.auto_call_scheduler import AutoCallScheduler
         
@@ -748,6 +772,7 @@ async def get_auto_call_history(char_name: str, limit: int = 50):
         历史记录列表
     """
     try:
+        check_phone_call_enabled()
         from database import DatabaseManager
         
         db = DatabaseManager()
@@ -775,6 +800,7 @@ async def get_latest_auto_call(char_name: str):
         最新记录或 null
     """
     try:
+        check_phone_call_enabled()
         from database import DatabaseManager
         
         db = DatabaseManager()
@@ -864,6 +890,7 @@ async def test_trigger_auto_call(req: TestTriggerRequest):
         调度结果
     """
     try:
+        check_phone_call_enabled()
         from services.auto_call_scheduler import AutoCallScheduler
         from services.conversation_monitor import ConversationMonitor
         

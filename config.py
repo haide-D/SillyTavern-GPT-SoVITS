@@ -56,6 +56,57 @@ def init_settings():
             settings[key] = val
             dirty = True
 
+    # phone_call 配置默认值
+    if "phone_call" not in settings:
+        settings["phone_call"] = {
+            "enabled": True,
+            "trigger": {
+                "type": "message_count",
+                "threshold": 5
+            },
+            "llm": {
+                "api_url": "",  # 用户自定义
+                "api_key": "",  # 用户自定义
+                "model": "gemini-2.5-flash",
+                "temperature": 0.8,
+                "max_tokens": 500
+            },
+            "data_extractors": [
+                {
+                    "name": "summary",
+                    "pattern": "<总结>([\\s\\S]*?)</总结>",
+                    "scope": "character_only",
+                    "description": "提取角色消息中的总结内容"
+                }
+            ],
+            "response_parser": {
+                "format": "json",
+                "fallback_emotion": "default",
+                "validate_speed_range": [0.5, 2.0],
+                "validate_pause_range": [0.1, 3.0]
+            },
+            "audio_merge": {
+                "silence_between_segments": 0.5,
+                "normalize_volume": False,
+                "output_format": "wav"
+            },
+            "tts_config": {
+                "text_lang": "zh",
+                "prompt_lang": "zh",
+                "text_split_method": "cut0",
+                "use_aux_ref_audio": False
+            },
+            "auto_generation": {
+                "enabled": True,
+                "trigger_strategy": "floor_interval",
+                "floor_interval": 3,
+                "start_floor": 3,
+                "max_context_messages": 10,
+                "notification_method": "websocket"
+            }
+        }
+        dirty = True
+
     if dirty:
         save_json(SETTINGS_FILE, settings)
 

@@ -64,6 +64,8 @@ class PhoneCallService:
         llm_config = phone_call_config.get("llm", {})
         extractors = phone_call_config.get("data_extractors", [])
         prompt_template = phone_call_config.get("prompt_template", "")
+        tts_config = phone_call_config.get("tts_config", {})
+        text_lang = tts_config.get("text_lang", "zh")  # 读取语言配置,默认中文
         
         # 2. 提取上下文数据
         extracted_data = self.data_extractor.extract(context, extractors)
@@ -83,7 +85,8 @@ class PhoneCallService:
             extracted_data=extracted_data,
             emotions=speakers_emotions.get(speakers[0], []) if speakers else [],
             speakers=speakers,  # 新增: 传递说话人列表
-            speakers_emotions=speakers_emotions  # 新增: 传递说话人情绪映射
+            speakers_emotions=speakers_emotions,  # 新增: 传递说话人情绪映射
+            text_lang=text_lang  # 新增: 传递语言配置
         )
         
         print(f"[PhoneCallService] ✅ Prompt构建完成: {len(prompt)} 字符")

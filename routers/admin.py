@@ -250,7 +250,21 @@ async def update_settings(settings: dict):
     """更新系统配置"""
     try:
         current = init_settings()
-        current.update(settings)
+        
+        # 深度合并配置,而不是浅更新
+        def deep_merge(base: dict, updates: dict) -> dict:
+            """深度合并两个字典"""
+            result = base.copy()
+            for key, value in updates.items():
+                if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                    # 递归合并嵌套字典
+                    result[key] = deep_merge(result[key], value)
+                else:
+                    # 直接覆盖
+                    result[key] = value
+            return result
+        
+        current = deep_merge(current, settings)
         save_json(SETTINGS_FILE, current)
         
         # 确保新路径存在

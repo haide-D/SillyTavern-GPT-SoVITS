@@ -223,5 +223,27 @@ export const TTS_API = {
         });
         if (!res.ok) throw new Error("Batch init speakers failed");
         return await res.json();
+    },
+
+    // ===========================================
+    // 【新增】自动来电管理 API
+    // ===========================================
+
+    /**
+     * 获取角色最新的自动来电记录
+     */
+    async getLatestAutoCall(charName) {
+        const res = await fetch(this._url(`/api/phone_call/auto/latest/${encodeURIComponent(charName)}`));
+        if (!res.ok) throw new Error("Get latest auto call failed");
+        return await res.json();
+    },
+
+    /**
+     * 获取角色的来电历史记录
+     */
+    async getAutoCallHistory(charName, limit = 50) {
+        const res = await fetch(this._url(`/api/phone_call/auto/history/${encodeURIComponent(charName)}?limit=${limit}`));
+        if (!res.ok) throw new Error("Get auto call history failed");
+        return await res.json();
     }
 };

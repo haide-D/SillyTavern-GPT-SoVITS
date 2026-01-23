@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
     loadModels();
     loadSettings();
+
+    // 绑定获取 LLM 模型列表按钮
+    bindFetchModelsButton();
 });
 
 function switchPage(pageName) {
@@ -528,10 +531,56 @@ async function loadSettings() {
         const response = await fetch(`${API_BASE}/settings`);
         const settings = await response.json();
 
+        // 基础配置
         document.getElementById('setting-base-dir').value = settings.base_dir || '';
         document.getElementById('setting-cache-dir').value = settings.cache_dir || '';
         document.getElementById('setting-sovits-host').value = settings.sovits_host || 'http://127.0.0.1:9880';
         document.getElementById('setting-default-lang').value = settings.default_lang || 'Chinese';
+
+        // 电话呼叫启用开关
+        const phoneCallEnabled = settings.phone_call?.enabled !== false;
+        document.getElementById('setting-phone-call-enabled').value = String(phoneCallEnabled);
+
+        // LLM 配置
+        const llm = settings.phone_call?.llm || {};
+        document.getElementById('setting-llm-api-url').value = llm.api_url || 'http://127.0.0.1:7861/v1/chat/completions';
+        document.getElementById('setting-llm-api-key').value = llm.api_key || '';
+
+        // 处理模型下拉框
+        const modelSelect = document.getElementById('setting-llm-model');
+        const savedModel = llm.model || 'gemini-2.5-flash';
+
+        // 如果下拉框中没有这个选项,添加它
+        let hasOption = false;
+        for (let i = 0; i < modelSelect.options.length; i++) {
+            if (modelSelect.options[i].value === savedModel) {
+                hasOption = true;
+                break;
+            }
+        }
+
+        if (!hasOption && savedModel) {
+            const option = document.createElement('option');
+            option.value = savedModel;
+            option.textContent = savedModel;
+            modelSelect.appendChild(option);
+        }
+
+        modelSelect.value = savedModel;
+        document.getElementById('setting-llm-temperature').value = llm.temperature || 0.8;
+
+        // TTS 配置
+        const tts = settings.phone_call?.tts_config || {};
+        document.getElementById('setting-tts-text-lang').value = tts.text_lang || 'zh';
+        document.getElementById('setting-tts-prompt-lang').value = tts.prompt_lang || 'zh';
+        document.getElementById('setting-tts-text-split-method').value = tts.text_split_method || 'cut0';
+        document.getElementById('setting-tts-use-aux-ref-audio').value = String(tts.use_aux_ref_audio || false);
+
+        // 自动生成配置
+        const autoGen = settings.phone_call?.auto_generation || {};
+        document.getElementById('setting-auto-floor-interval').value = autoGen.floor_interval || 3;
+        document.getElementById('setting-auto-start-floor').value = autoGen.start_floor || 3;
+        document.getElementById('setting-auto-max-context-messages').value = autoGen.max_context_messages || 10;
     } catch (error) {
         console.error('加载配置失败:', error);
     }
@@ -542,7 +591,27 @@ async function saveSettings() {
         base_dir: document.getElementById('setting-base-dir').value.trim(),
         cache_dir: document.getElementById('setting-cache-dir').value.trim(),
         sovits_host: document.getElementById('setting-sovits-host').value.trim(),
-        default_lang: document.getElementById('setting-default-lang').value
+        default_lang: document.getElementById('setting-default-lang').value,
+        phone_call: {
+            enabled: document.getElementById('setting-phone-call-enabled').value === 'true',
+            llm: {
+                api_url: document.getElementById('setting-llm-api-url').value.trim(),
+                api_key: document.getElementById('setting-llm-api-key').value.trim(),
+                model: document.getElementById('setting-llm-model').value.trim(),
+                temperature: parseFloat(document.getElementById('setting-llm-temperature').value) || 0.8
+            },
+            tts_config: {
+                text_lang: document.getElementById('setting-tts-text-lang').value,
+                prompt_lang: document.getElementById('setting-tts-prompt-lang').value,
+                text_split_method: document.getElementById('setting-tts-text-split-method').value,
+                use_aux_ref_audio: document.getElementById('setting-tts-use-aux-ref-audio').value === 'true'
+            },
+            auto_generation: {
+                floor_interval: parseInt(document.getElementById('setting-auto-floor-interval').value) || 3,
+                start_floor: parseInt(document.getElementById('setting-auto-start-floor').value) || 3,
+                max_context_messages: parseInt(document.getElementById('setting-auto-max-context-messages').value) || 10
+            }
+        }
     };
 
     try {
@@ -563,6 +632,96 @@ async function saveSettings() {
         console.error('保存配置失败:', error);
         showNotification('保存失败', 'error');
     }
+}
+
+// 获取 LLM 模型列表
+async function fetchLLMModels(apiUrl, apiKey) {
+    // 从 API URL 中提取基础 URL
+    const baseUrl = apiUrl.replace(/\/chat\/completions.*$/, '');
+    const modelsUrl = baseUrl + '/models';
+
+    const response = await fetch(modelsUrl, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // 解析模型列表,兼容不同的响应格式
+    let models = [];
+    if (data.data && Array.isArray(data.data)) {
+        models = data.data.map(m => m.id || m.name || m);
+    } else if (Array.isArray(data)) {
+        models = data.map(m => typeof m === 'string' ? m : (m.id || m.name));
+    }
+
+    if (models.length === 0) {
+        throw new Error('未找到可用模型');
+    }
+
+    return models;
+}
+
+// 绑定获取模型列表按钮
+function bindFetchModelsButton() {
+    const btn = document.getElementById('fetch-llm-models-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+        const apiUrl = document.getElementById('setting-llm-api-url').value.trim();
+        const apiKey = document.getElementById('setting-llm-api-key').value.trim();
+        const modelSelect = document.getElementById('setting-llm-model');
+
+        if (!apiUrl || !apiKey) {
+            showNotification('请先填写 LLM API 地址和密钥', 'warning');
+            return;
+        }
+
+        // 保存当前选中的值
+        const currentValue = modelSelect.value;
+
+        // 禁用按钮并显示加载状态
+        btn.disabled = true;
+        btn.textContent = '获取中...';
+
+        try {
+            console.log('[管理面板] 开始获取模型列表...', { apiUrl, apiKey: '***' });
+            const models = await fetchLLMModels(apiUrl, apiKey);
+            console.log('[管理面板] 成功获取模型:', models);
+
+            // 清空并重新填充下拉框
+            modelSelect.innerHTML = '<option value="">请选择模型...</option>';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                modelSelect.appendChild(option);
+            });
+
+            // 如果之前的值在新列表中,恢复选中
+            if (currentValue && models.includes(currentValue)) {
+                modelSelect.value = currentValue;
+            } else if (models.length > 0) {
+                // 否则选择第一个模型
+                modelSelect.value = models[0];
+            }
+
+            showNotification(`成功获取 ${models.length} 个模型`, 'success');
+        } catch (error) {
+            console.error('[管理面板] 获取模型失败:', error);
+            showNotification(`获取模型失败: ${error.message}`, 'error');
+        } finally {
+            // 恢复按钮状态
+            btn.disabled = false;
+            btn.textContent = '🔄 获取模型列表';
+        }
+    });
 }
 
 // ==================== 工具函数 ====================
