@@ -10,6 +10,13 @@ class EmotionSegment(BaseModel):
     pause_after: Optional[float] = None  # 此片段后的停顿时长(秒),None表示使用默认值
     speed: Optional[float] = None  # 语速倍率(1.0=正常,>1.0=加快,<1.0=减慢),None表示使用默认值
     filler_word: Optional[str] = None  # 此片段后的语气词(如"嗯"、"啊"),None表示不添加
+    
+    # 双语支持字段
+    translation: Optional[str] = None  # 中文翻译(用于UI显示),None表示无翻译
+    
+    # 音轨同步字段
+    audio_duration: Optional[float] = None  # 该segment的音频时长(秒)
+    start_time: Optional[float] = None  # 在合并音频中的起始时间(秒)
 
 
 class ResponseParser:
@@ -163,6 +170,7 @@ class ResponseParser:
                 pause_after = seg_data.get("pause_after")
                 speed = seg_data.get("speed")
                 filler_word = seg_data.get("filler_word")
+                translation = seg_data.get("translation")  # 新增: 提取翻译字段
                 
                 # 验证数值范围
                 if pause_after is not None:
@@ -180,11 +188,15 @@ class ResponseParser:
                     text=text,
                     pause_after=pause_after,
                     speed=speed,
-                    filler_word=filler_word
+                    filler_word=filler_word,
+                    translation=translation  # 新增: 传递翻译字段
                 )
                 segments.append(segment)
                 
-                print(f"[ResponseParser] 片段 {i}: [{emotion}] {text[:50]}... (pause={pause_after}, speed={speed})")
+                # 日志中显示翻译信息
+                trans_info = f" (翻译: {translation[:30]}...)" if translation else ""
+                print(f"[ResponseParser] 片段 {i}: [{emotion}] {text[:50]}...{trans_info} (pause={pause_after}, speed={speed})")
+                
                 
             except Exception as e:
                 print(f"[ResponseParser] 警告: 解析片段 {i} 失败 - {e}")

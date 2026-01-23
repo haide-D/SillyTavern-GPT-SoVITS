@@ -233,10 +233,29 @@ body {
 }
 
 .segment {
-    background: white;
+    background: rgba(255, 255, 255, 0.3);
+    /* 半透明白色背景 */
+    backdrop-filter: blur(10px);
+    /* 毛玻璃效果 */
     padding: 15px;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+    opacity: 1;
+}
+
+.segment.active {
+    opacity: 1;
+    background: rgba(195, 207, 226, 0.4);
+    /* 半透明蓝灰色 */
+    backdrop-filter: blur(15px);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+    transform: scale(1.02);
+}
+
+/* 当有音轨同步时,非active的segment稍微淡一点 */
+.segment:not(.active) {
+    opacity: 0.75;
 }
 
 .emotion-tag {

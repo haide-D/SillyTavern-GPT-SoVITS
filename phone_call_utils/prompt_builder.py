@@ -35,6 +35,7 @@ class PromptBuilder:
     {
       "emotion": "emotion_tag",
       "text": "what to say in {{lang_display}}",
+      "translation": "中文翻译 (必须写上，如果已经是中文，就写上中文即可)",
       "pause_after": 0.8,
       "speed": 1.0,
       "filler_word": null

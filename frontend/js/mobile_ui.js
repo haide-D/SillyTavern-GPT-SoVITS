@@ -78,6 +78,19 @@ export const TTS_Mobile = window.TTS_Mobile;
                 function showInCallUI(container, callData) {
                     container.empty();
 
+                    // 生成segments HTML
+                    const segmentsHTML = (callData.segments || []).map((seg, index) => {
+                        const displayText = seg.translation || seg.text || '';
+                        const startTime = seg.start_time || 0;
+
+                        return `
+                            <div class="call-segment" data-index="${index}" data-start-time="${startTime}">
+                                <div class="segment-emotion-tag">${seg.emotion || '默认'}</div>
+                                <div class="segment-text-content">${displayText}</div>
+                            </div>
+                        `;
+                    }).join('');
+
                     // 创建通话中界面
                     const $inCallContent = $(`
                         <div class="in-call-container">
@@ -85,6 +98,11 @@ export const TTS_Mobile = window.TTS_Mobile;
                                 <div class="call-avatar">👤</div>
                                 <div class="call-name">${callData.char_name}</div>
                                 <div class="call-duration">00:00</div>
+                            </div>
+                            
+                            <!-- 对话内容区域 -->
+                            <div class="call-segments-container">
+                                ${segmentsHTML}
                             </div>
 
                             <div class="audio-visualizer">
@@ -152,6 +170,36 @@ export const TTS_Mobile = window.TTS_Mobile;
                             $inCallContent.find('.current-time').text(
                                 `${currentMins}:${currentSecs.toString().padStart(2, '0')}`
                             );
+
+                            // 🎯 音轨同步 - 高亮当前segment
+                            const currentTime = audio.currentTime;
+                            const $segments = $inCallContent.find('.call-segment');
+
+                            // 找到当前时间对应的segment
+                            let activeIndex = -1;
+                            for (let i = 0; i < (callData.segments || []).length; i++) {
+                                const seg = callData.segments[i];
+                                const startTime = seg.start_time || 0;
+                                const duration = seg.audio_duration || 0;
+                                const endTime = startTime + duration;
+
+                                if (currentTime >= startTime && currentTime < endTime) {
+                                    activeIndex = i;
+                                    break;
+                                }
+                            }
+
+                            // 更新高亮状态
+                            $segments.each(function (index) {
+                                const $seg = $(this);
+                                if (index === activeIndex) {
+                                    $seg.addClass('active');
+                                    // 自动滚动到当前segment
+                                    this.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                } else {
+                                    $seg.removeClass('active');
+                                }
+                            });
                         });
 
                         // 播放音频

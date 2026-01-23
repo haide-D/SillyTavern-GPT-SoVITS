@@ -79,6 +79,9 @@ function onAnswer() {
         audioPlayer.play().catch(e => {
             console.error('[AutoPhoneCall] 音频播放失败:', e);
         });
+
+        // 添加音频播放监听器,实现音轨同步
+        audioPlayer.addEventListener('timeupdate', highlightCurrentSegment);
     }
 }
 
@@ -132,12 +135,18 @@ function renderSegments() {
         return;
     }
 
-    segmentsContainer.innerHTML = segments.map(seg => `
-        <div class="segment">
+    segmentsContainer.innerHTML = segments.map((seg, index) => {
+        // 优先显示翻译,无翻译则显示原文
+        const displayText = seg.translation || seg.text || '';
+        const startTime = seg.start_time || 0;
+
+        return `
+        <div class="segment" data-index="${index}" data-start-time="${startTime}">
             <span class="emotion-tag">${seg.emotion || '默认'}</span>
-            <p class="segment-text">${escapeHtml(seg.text || '')}</p>
+            <p class="segment-text">${escapeHtml(displayText)}</p>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 /**
@@ -147,6 +156,38 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+/**
+ * 根据音频播放进度高亮当前segment
+ */
+function highlightCurrentSegment() {
+    const currentTime = audioPlayer.currentTime;
+    const segmentElements = document.querySelectorAll('.segment');
+
+    // 找到当前时间对应的segment
+    let activeIndex = -1;
+    for (let i = 0; i < segments.length; i++) {
+        const startTime = segments[i].start_time || 0;
+        const duration = segments[i].audio_duration || 0;
+        const endTime = startTime + duration;
+
+        if (currentTime >= startTime && currentTime < endTime) {
+            activeIndex = i;
+            break;
+        }
+    }
+
+    // 更新高亮状态
+    segmentElements.forEach((el, index) => {
+        if (index === activeIndex) {
+            el.classList.add('active');
+            // 自动滚动到当前segment
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            el.classList.remove('active');
+        }
+    });
 }
 
 // 页面加载完成后初始化

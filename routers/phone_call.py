@@ -452,6 +452,15 @@ async def complete_generation(req: CompleteGenerationRequest):
                     tts_config=tts_config,
                     previous_ref_audio=previous_ref_audio if emotion_changed else None
                 )
+                
+                # 获取音频时长(用于音轨同步)
+                from pydub import AudioSegment as PydubSegment
+                from io import BytesIO
+                audio_seg = PydubSegment.from_file(BytesIO(audio_bytes), format="wav")
+                duration_seconds = len(audio_seg) / 1000.0  # 毫秒转秒
+                segment.audio_duration = duration_seconds
+                print(f"[CompleteGeneration] 音频时长: {duration_seconds:.2f}秒")
+                
                 audio_bytes_list.append(audio_bytes)
                 
                 previous_emotion = segment.emotion
@@ -475,6 +484,24 @@ async def complete_generation(req: CompleteGenerationRequest):
                 merged_audio,
                 audio_merge_config.get("output_format", "wav")
             )
+            
+            # 计算每个segment的起始时间(用于音轨同步)
+            current_time = 0.0
+            default_pause = audio_merge_config.get("silence_between_segments", 0.3)
+            for i, segment in enumerate(segments):
+                segment.start_time = current_time
+                
+                # 累加时间: 音频时长 + 停顿时长
+                if segment.audio_duration:
+                    current_time += segment.audio_duration
+                
+                # 添加停顿时长(最后一个segment不添加)
+                if i < len(segments) - 1:
+                    pause = segment.pause_after if segment.pause_after is not None else default_pause
+                    current_time += pause
+            
+            print(f"[CompleteGeneration] ✅ 音轨同步信息已计算: {len(segments)}个片段")
+        
         
         # 更新数据库(同时更新 char_name 为 LLM 选择的说话人)
         conn = db._get_connection()
