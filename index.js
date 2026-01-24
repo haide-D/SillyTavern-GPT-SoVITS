@@ -195,6 +195,9 @@ function initPlugin() {
             console.error("TTS Backend Error:", e);
             TTS_Utils.showNotification("❌ 未检测到 TTS 后端服务", "error");
             $('#tts-manager-btn').css({ 'border-color': '#ff5252', 'color': '#ff5252' }).text('⚠️ TTS断开');
+
+            // 弹出救援配置界面
+            showEmergencyConfig(MANAGER_API);
         }
     }
 
