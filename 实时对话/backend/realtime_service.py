@@ -21,6 +21,7 @@ class RealtimeService:
     
     def __init__(self):
         self.sovits_host = get_sovits_host()
+        print(f"[RealtimeService] 🔧 初始化，sovits_host = {self.sovits_host}")
         self._current_request: Optional[httpx.Response] = None
     
     async def stream_tts(
@@ -54,41 +55,66 @@ class RealtimeService:
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
             "text_split_method": "cut0",  # 不切分，由前端控制分段
-            "streaming_mode": 2,           # 中等质量，较快响应
-            "min_chunk_length": 8,         # 减少音频块大小
-            "fragment_interval": 0.1,      # 减少片段间隔
+            # streaming_mode: 0=禁用, 1=分段返回(慢), 2=流式推理(推荐), 3=快速流式(质量稍低)
+            "streaming_mode": 2,
+            "min_chunk_length": 16,
+            "fragment_interval": 0.3,
             "parallel_infer": True,
             "speed_factor": 1.0,
         }
         
-        print(f"[RealtimeService] 流式TTS请求: text='{text[:30]}...' ")
-        print(f"[RealtimeService] 参数: {params}")
+        print(f"[RealtimeService] 🔊 流式TTS请求")
+        print(f"[RealtimeService] 📝 文本: '{text[:50]}...' (长度: {len(text)})")
+        print(f"[RealtimeService] 🔗 URL: {url}")
+        print(f"[RealtimeService] 📋 参数详情:")
+        for k, v in params.items():
+            val_str = str(v)[:80] if len(str(v)) > 80 else str(v)
+            print(f"[RealtimeService]   - {k}: {val_str}")
         
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                async with client.stream("GET", url, params=params) as response:
-                    self._current_request = response
+        # 专门打印完整的 ref_audio_path（不截断）
+        print(f"[RealtimeService] 🔊 完整 ref_audio_path: {params.get('ref_audio_path', 'N/A')}")
+        
+        # 使用 requests 库的流式传输
+        import requests
+        
+        try:
+            print(f"[RealtimeService] 🚀 发送流式请求...")
+            
+            # 使用 stream=True 实现流式传输
+            r = requests.get(url, params=params, stream=True, timeout=120)
+            
+            print(f"[RealtimeService] 📥 响应状态: {r.status_code}")
+            print(f"[RealtimeService] 📥 Content-Type: {r.headers.get('content-type', 'N/A')}")
+            
+            if r.status_code != 200:
+                error_text = r.text
+                print(f"[RealtimeService] ❌ HTTP错误: {r.status_code}")
+                print(f"[RealtimeService] ❌ 错误内容: {error_text[:500]}")
+                raise Exception(f"TTS Error: {r.status_code} - {error_text}")
+            
+            # 流式传输：逐块读取音频数据
+            chunk_count = 0
+            total_bytes = 0
+            first_chunk_logged = False
+            
+            for chunk in r.iter_content(chunk_size=4096):
+                if chunk:  # 过滤掉 keep-alive 的空块
+                    chunk_count += 1
+                    total_bytes += len(chunk)
                     
-                    if response.status_code != 200:
-                        error = await response.aread()
-                        print(f"[RealtimeService] ❌ HTTP错误: {response.status_code}")
-                        raise Exception(f"TTS Error: {response.status_code} - {error.decode()}")
+                    # 记录第一个块的头部，用于诊断
+                    if not first_chunk_logged and len(chunk) > 4:
+                        header_str = chunk[:4].decode('latin-1', errors='replace')
+                        print(f"[RealtimeService] 🎵 首块头部: '{header_str}' (期望: 'RIFF')")
+                        first_chunk_logged = True
                     
-                    chunk_count = 0
-                    total_bytes = 0
-                    
-                    async for chunk in response.aiter_bytes(chunk_size=4096):
-                        chunk_count += 1
-                        total_bytes += len(chunk)
-                        yield chunk
-                    
-                    print(f"[RealtimeService] ✅ 流式完成: {chunk_count}块, {total_bytes}字节")
-                    
-            except httpx.RequestError as e:
-                print(f"[RealtimeService] ❌ 请求失败: {e}")
-                raise
-            finally:
-                self._current_request = None
+                    yield chunk
+            
+            print(f"[RealtimeService] ✅ 流式完成: {chunk_count}块, {total_bytes}字节")
+                
+        except requests.exceptions.RequestException as e:
+            print(f"[RealtimeService] ❌ 请求失败: {type(e).__name__}: {e}")
+            raise
     
     def cancel(self) -> bool:
         """

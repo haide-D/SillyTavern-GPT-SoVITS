@@ -40,6 +40,9 @@ class RealtimeClient {
 
         // 取消控制器
         this._abortController = null;
+
+        // TTS 请求链（保证顺序执行）
+        this._ttsPromiseChain = Promise.resolve();
     }
 
     /**
@@ -104,6 +107,7 @@ class RealtimeClient {
         }
 
         this._abortController = new AbortController();
+        this._ttsPromiseChain = Promise.resolve(); // 重置TTS链
         this.chunker.clear();
 
         // 添加用户消息到历史
@@ -132,20 +136,28 @@ class RealtimeClient {
                     // 收到 token
                     if (onToken) onToken(chunk);
 
-                    // 分段并发送 TTS
+                    // 分段并发送 TTS（串行化，保证顺序）
                     const chunks = this.chunker.feed(chunk);
                     for (const textChunk of chunks) {
-                        this._sendToTTS(textChunk, onAudio, onError);
+                        // 链式执行，保证顺序
+                        this._ttsPromiseChain = this._ttsPromiseChain.then(() =>
+                            this._sendToTTS(textChunk, onAudio, onError)
+                        );
                     }
                 },
                 this._abortController.signal
             );
 
-            // 刷新剩余内容
+            // 刷新剩余内容（等待之前的TTS完成后再发送）
             const remaining = this.chunker.flush();
             if (remaining) {
-                await this._sendToTTS(remaining, onAudio, onError);
+                this._ttsPromiseChain = this._ttsPromiseChain.then(() =>
+                    this._sendToTTS(remaining, onAudio, onError)
+                );
             }
+
+            // 等待所有TTS请求完成
+            await this._ttsPromiseChain;
 
             // 添加助手回复到历史
             this.conversationHistory.push({
@@ -191,6 +203,20 @@ class RealtimeClient {
      */
     async _sendToTTS(text, onAudio, onError) {
         console.log(`[RealtimeClient] 发送TTS: "${text}"`);
+        console.log(`[RealtimeClient] TTS配置:`, {
+            apiBaseUrl: this.config.apiBaseUrl,
+            refAudioPath: this.config.refAudioPath,
+            promptText: this.config.promptText,
+            textLang: this.config.textLang
+        });
+
+        // 验证必要参数
+        if (!this.config.refAudioPath) {
+            const error = '❌ ref_audio_path 为空！请先配置参考音频路径';
+            console.error(`[RealtimeClient] ${error}`);
+            if (onError) onError(error);
+            return;
+        }
 
         try {
             const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/tts_stream`, {
@@ -207,6 +233,11 @@ class RealtimeClient {
                 signal: this._abortController?.signal
             });
 
+            // 记录响应头信息
+            console.log(`[RealtimeClient] TTS响应状态:`, response.status);
+            console.log(`[RealtimeClient] Content-Type:`, response.headers.get('Content-Type'));
+            console.log(`[RealtimeClient] Content-Length:`, response.headers.get('Content-Length'));
+
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`TTS API错误: ${response.status} - ${errorText}`);
@@ -214,12 +245,43 @@ class RealtimeClient {
 
             // 获取完整音频 (流式返回，但前端收集完整)
             const audioData = await response.arrayBuffer();
+            console.log(`[RealtimeClient] 收到音频数据: ${audioData.byteLength} 字节`);
+
+            // 检查数据头部（用于诊断格式问题）
+            if (audioData.byteLength > 0) {
+                const header = new Uint8Array(audioData.slice(0, 16));
+                const headerHex = Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                console.log(`[RealtimeClient] 音频数据头部(hex): ${headerHex}`);
+
+                // 检查是否是WAV文件 (RIFF头)
+                const headerStr = String.fromCharCode(...header.slice(0, 4));
+                console.log(`[RealtimeClient] 音频格式标识: '${headerStr}' (期望: 'RIFF')`);
+
+                if (headerStr !== 'RIFF') {
+                    console.warn(`[RealtimeClient] ⚠️ 音频数据不是WAV格式！`);
+                    // 尝试显示前100字节作为文本（可能是错误信息）
+                    if (audioData.byteLength < 1000) {
+                        try {
+                            const textDecoder = new TextDecoder();
+                            const text = textDecoder.decode(audioData);
+                            console.error(`[RealtimeClient] 响应内容: ${text}`);
+                        } catch (e) {
+                            // 忽略解码错误
+                        }
+                    }
+                }
+            } else {
+                console.error(`[RealtimeClient] ❌ 收到空的音频数据!`);
+            }
+
             const audioBlob = new Blob([audioData], { type: 'audio/wav' });
+            console.log(`[RealtimeClient] 创建Blob: size=${audioBlob.size}, type=${audioBlob.type}`);
 
-            if (onAudio) onAudio(audioBlob);
-
-            // 加入播放队列
+            // 加入播放队列（由 audioQueue 统一管理播放）
             this.audioQueue.add(audioBlob);
+
+            // 通知回调（仅用于 UI 更新，不要在回调中播放！）
+            if (onAudio) onAudio(audioBlob);
 
         } catch (e) {
             if (e.name !== 'AbortError') {
@@ -339,20 +401,68 @@ class AudioQueue {
         this.queue = [];
         this.isPlaying = false;
         this.audio = new Audio();
+        this._currentUrl = null;
 
         this.audio.onended = () => {
+            console.log('[AudioQueue] ✅ 播放完成');
+            this._cleanup();
             this.isPlaying = false;
             this._playNext();
         };
 
         this.audio.onerror = (e) => {
-            console.error('[AudioQueue] 播放错误:', e);
+            // 获取更详细的错误信息
+            const mediaError = this.audio.error;
+            let errorMsg = '未知错误';
+            if (mediaError) {
+                switch (mediaError.code) {
+                    case MediaError.MEDIA_ERR_ABORTED:
+                        errorMsg = 'MEDIA_ERR_ABORTED: 播放被中止';
+                        break;
+                    case MediaError.MEDIA_ERR_NETWORK:
+                        errorMsg = 'MEDIA_ERR_NETWORK: 网络错误';
+                        break;
+                    case MediaError.MEDIA_ERR_DECODE:
+                        errorMsg = 'MEDIA_ERR_DECODE: 解码错误';
+                        break;
+                    case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                        errorMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED: 不支持的音频格式';
+                        break;
+                }
+                errorMsg += ` (message: ${mediaError.message || 'N/A'})`;
+            }
+            console.error(`[AudioQueue] ❌ 播放错误: ${errorMsg}`);
+            console.error(`[AudioQueue] 当前src: ${this.audio.src}`);
+            console.error(`[AudioQueue] 当前状态: readyState=${this.audio.readyState}, networkState=${this.audio.networkState}`);
+
+            this._cleanup();
             this.isPlaying = false;
             this._playNext();
         };
+
+        // 添加更多事件监听用于调试
+        this.audio.onloadstart = () => {
+            console.log('[AudioQueue] 开始加载音频...');
+        };
+
+        this.audio.onloadedmetadata = () => {
+            console.log(`[AudioQueue] 元数据加载完成: duration=${this.audio.duration}s`);
+        };
+
+        this.audio.oncanplay = () => {
+            console.log('[AudioQueue] 可以播放');
+        };
+    }
+
+    _cleanup() {
+        if (this._currentUrl) {
+            URL.revokeObjectURL(this._currentUrl);
+            this._currentUrl = null;
+        }
     }
 
     add(audioBlob) {
+        console.log(`[AudioQueue] 添加到队列: size=${audioBlob.size}, type=${audioBlob.type}, 队列长度=${this.queue.length + 1}`);
         this.queue.push(audioBlob);
         if (!this.isPlaying) {
             this._playNext();
@@ -360,25 +470,37 @@ class AudioQueue {
     }
 
     clear() {
+        console.log('[AudioQueue] 清空队列');
         this.queue = [];
         this.audio.pause();
+        this._cleanup();
         this.audio.src = '';
         this.isPlaying = false;
     }
 
     _playNext() {
         if (this.queue.length === 0) {
+            console.log('[AudioQueue] 队列为空，等待新音频');
             return;
         }
 
         const blob = this.queue.shift();
-        const url = URL.createObjectURL(blob);
+        console.log(`[AudioQueue] 准备播放: size=${blob.size}, type=${blob.type}, 剩余=${this.queue.length}`);
 
-        this.audio.src = url;
+        // 清理之前的URL
+        this._cleanup();
+
+        this._currentUrl = URL.createObjectURL(blob);
+        console.log(`[AudioQueue] 创建ObjectURL: ${this._currentUrl}`);
+
+        this.audio.src = this._currentUrl;
         this.isPlaying = true;
 
-        this.audio.play().catch(e => {
-            console.error('[AudioQueue] 播放失败:', e);
+        this.audio.play().then(() => {
+            console.log('[AudioQueue] 🎵 开始播放');
+        }).catch(e => {
+            console.error('[AudioQueue] 播放失败:', e.name, e.message);
+            this._cleanup();
             this.isPlaying = false;
             // 继续尝试下一个
             setTimeout(() => this._playNext(), 100);

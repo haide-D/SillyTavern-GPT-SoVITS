@@ -102,6 +102,20 @@
             box-shadow: 0 0 0 3px var(--accent-glow);
         }
 
+        /* 确保下拉选项在深色主题下可读 */
+        select option {
+            background: #1a1a2e;
+            color: var(--text-primary);
+            padding: 8px;
+        }
+
+        select option:hover,
+        select option:focus,
+        select option:checked {
+            background: var(--accent);
+            color: white;
+        }
+
         /* 对话区 */
         .chat-area {
             min-height: 200px;
@@ -609,13 +623,14 @@
                         assistantMsg.textContent += token;
                     },
                     onAudio: (audioBlob) => {
+                        // 仅记录首音频延迟（播放由 audioQueue 统一管理）
                         if (!firstAudioTime) {
                             firstAudioTime = performance.now() - startTime;
                             document.getElementById('stat-first-audio').textContent =
                                 Math.round(firstAudioTime) + 'ms';
                             log('success', `首音频: ${Math.round(firstAudioTime)}ms`);
                         }
-                        playAudio(audioBlob);
+                        // 不要在这里调用 playAudio()！audioQueue 会自动播放
                     },
                     onError: (error) => {
                         log('error', error);
