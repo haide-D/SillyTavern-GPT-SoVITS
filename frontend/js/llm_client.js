@@ -130,8 +130,123 @@ function parseResponse(data) {
     return content;
 }
 
+/**
+ * 流式调用 LLM (SSE)
+ * 
+ * @param {Object} config - LLM 配置
+ * @param {string} config.api_url - API 地址
+ * @param {string} config.api_key - API 密钥
+ * @param {string} config.model - 模型名称
+ * @param {string} config.prompt - 用户提示词
+ * @param {Array} config.messages - 消息列表（可选，优先于 prompt）
+ * @param {number} config.temperature - 温度（默认 0.8）
+ * @param {number} config.max_tokens - 最大 token 数
+ * @param {Function} onChunk - 收到文本块时的回调 (chunk: string) => void
+ * @param {AbortSignal} signal - 可选的 AbortSignal 用于取消请求
+ * @returns {Promise<string>} - 完整响应文本
+ */
+async function callLLMStream(config, onChunk, signal = null) {
+    let llmUrl = config.api_url.trim();
+
+    if (!llmUrl.includes('/chat/completions')) {
+        llmUrl = llmUrl.replace(/\/$/, '') + '/chat/completions';
+    }
+
+    // 构建 messages
+    let messages = config.messages;
+    if (!messages && config.prompt) {
+        messages = [{ role: "user", content: config.prompt }];
+    }
+
+    const requestBody = {
+        model: config.model,
+        messages: messages,
+        temperature: config.temperature || 0.8,
+        stream: true  // 启用流式
+    };
+
+    if (config.max_tokens) {
+        requestBody.max_tokens = config.max_tokens;
+    }
+
+    console.log('[LLM_Client] 🚀 开始流式调用:', llmUrl);
+
+    const response = await fetch(llmUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.api_key}`
+        },
+        body: JSON.stringify(requestBody),
+        signal: signal
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // 按行分割处理 SSE
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';  // 保留不完整的行
+
+        for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                const data = line.slice(6).trim();
+
+                if (data === '[DONE]') {
+                    console.log('[LLM_Client] ✅ 流式完成');
+                    continue;
+                }
+
+                try {
+                    const event = JSON.parse(data);
+
+                    // OpenAI 格式: choices[0].delta.content
+                    let chunk = null;
+
+                    if (event.choices?.[0]?.delta?.content) {
+                        chunk = event.choices[0].delta.content;
+                    }
+                    // 兼容其他格式
+                    else if (event.delta?.text) {
+                        chunk = event.delta.text;
+                    }
+                    else if (event.content) {
+                        chunk = event.content;
+                    }
+
+                    if (chunk) {
+                        fullContent += chunk;
+                        if (onChunk) {
+                            onChunk(chunk);
+                        }
+                    }
+                } catch (e) {
+                    // 忽略 JSON 解析错误（可能是空行或其他非 JSON 数据）
+                }
+            }
+        }
+    }
+
+    console.log('[LLM_Client] ✅ 流式调用完成,总长度:', fullContent.length);
+    return fullContent;
+}
+
 export const LLM_Client = {
     fetchModels,
     callLLM,
+    callLLMStream,
     parseResponse
 };

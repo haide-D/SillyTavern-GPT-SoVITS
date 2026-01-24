@@ -65,6 +65,14 @@ if os.path.exists(admin_dir):
 else:
     print(f"Warning: 'admin' folder not found at {admin_dir}")
 
+# 挂载实时对话前端
+realtime_frontend_dir = os.path.join(os.path.dirname(__file__), "实时对话", "frontend")
+if os.path.exists(realtime_frontend_dir):
+    app.mount("/realtime", StaticFiles(directory=realtime_frontend_dir, html=True), name="realtime")
+    print(f"[Manager] ✅ 实时对话前端已挂载: /realtime")
+else:
+    print(f"[Manager] ⚠️ 实时对话前端目录不存在: {realtime_frontend_dir}")
+
 os.makedirs("data/favorites_audio", exist_ok=True)
 app.mount("/favorites", StaticFiles(directory="data/favorites_audio"), name="favorites")
 
@@ -114,6 +122,18 @@ app.include_router(system.router, tags=["System Settings"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Panel"])
 app.include_router(phone_call.router, prefix="/api", tags=["Phone Call"])
 app.include_router(speakers.router, prefix="/api", tags=["Speakers Management"])
+
+# 实时对话路由
+try:
+    import sys
+    realtime_path = os.path.join(os.path.dirname(__file__), "实时对话", "backend")
+    if os.path.exists(realtime_path):
+        sys.path.insert(0, os.path.dirname(realtime_path))
+        from 实时对话.backend.realtime_router import router as realtime_router
+        app.include_router(realtime_router, prefix="/api/realtime", tags=["Realtime Chat"])
+        print("[Manager] ✅ 实时对话路由已加载")
+except Exception as e:
+    print(f"[Manager] ⚠️ 实时对话路由加载失败: {e}")
 
 if __name__ == "__main__":
     # 必须是 0.0.0.0，否则局域网无法访问
