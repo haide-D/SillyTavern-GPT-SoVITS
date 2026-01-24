@@ -40,7 +40,8 @@ class RealtimeService:
         ref_audio_path: str,
         prompt_text: str = "",
         text_lang: str = "zh",
-        prompt_lang: str = "zh"
+        prompt_lang: str = "zh",
+        is_first_chunk: bool = False
     ) -> AsyncGenerator[bytes, None]:
         """
         流式TTS生成
@@ -52,19 +53,25 @@ class RealtimeService:
             text_lang: 文本语言
             prompt_lang: 提示语言
             
+            is_first_chunk: 是否是第一个文本块（用于首包优化）
+            
         Yields:
             音频数据块 (bytes)
         """
         url = f"{self.sovits_host}/tts"
         
         # 为实时对话优化的参数
+        # 第一个文本块使用 cut5 切分（按逗号、句号等停顿符切分），让 GPT-SoVITS 更快返回首个音频
+        # 后续文本块使用 cut0（不切分），因为前端已经做了合理分段
+        text_split_method = "cut5" if is_first_chunk else "cut0"
+        
         params = {
             "text": text,
             "text_lang": text_lang,
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
-            "text_split_method": "cut0",  # 不切分，由前端控制分段
+            "text_split_method": text_split_method,
             # streaming_mode: 0=禁用, 1=分段返回(慢), 2=流式推理(推荐), 3=快速流式(质量稍低)
             "streaming_mode": 2,  # 流式推理模式（推荐）
             "min_chunk_length": 16,
@@ -73,7 +80,7 @@ class RealtimeService:
             "speed_factor": 1.0,
         }
         
-        print(f"[RealtimeService] 🔊 流式TTS请求")
+        print(f"[RealtimeService] 🔊 流式TTS请求 (首块优化: {is_first_chunk}, 切分: {text_split_method})")
         print(f"[RealtimeService] 📝 文本: '{text[:50]}...' (长度: {len(text)})")
         print(f"[RealtimeService] 🔗 URL: {url}")
         print(f"[RealtimeService] 📋 参数详情:")

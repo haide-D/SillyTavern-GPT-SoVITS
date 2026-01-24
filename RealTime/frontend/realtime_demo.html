@@ -429,12 +429,16 @@
     <script type="module">
         // 引入现有的 LLM_Client 模块（/static 挂载到 frontend 目录）
         import { LLM_Client } from '/static/js/llm_client.js';
+        // 引入流式播放器
+        import { StreamingPlayer } from './audio_streaming/index.js';
 
-        // 将 LLM_Client 挂载到 window 上供 RealtimeClient 使用
+        // 将模块挂载到 window 上供 RealtimeClient 使用
         window.LLM_Client = LLM_Client;
+        window.StreamingPlayer = StreamingPlayer;
 
-        // 全局 RealtimeClient 实例
+        // 全局实例
         let realtimeClient = null;
+        let streamingPlayer = null;
 
         // 页面初始化 (module 加载完成后自动执行)
         log('info', '页面加载完成');
@@ -675,6 +679,14 @@
                 // 创建或复用实时客户端（保持对话历史）
                 if (!realtimeClient) {
                     realtimeClient = new RealtimeClient(ttsConfig);
+
+                    // 初始化流式播放器
+                    if (window.StreamingPlayer) {
+                        streamingPlayer = new StreamingPlayer();
+                        await streamingPlayer.init();
+                        realtimeClient.setStreamingPlayer(streamingPlayer);
+                        log('success', '流式播放器已启用');
+                    }
                 }
 
                 // 手动设置 LLM 配置（从界面获取）

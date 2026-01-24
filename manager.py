@@ -66,7 +66,7 @@ else:
     print(f"Warning: 'admin' folder not found at {admin_dir}")
 
 # 挂载实时对话前端
-realtime_frontend_dir = os.path.join(os.path.dirname(__file__), "实时对话", "frontend")
+realtime_frontend_dir = os.path.join(os.path.dirname(__file__), "RealTime", "frontend")
 if os.path.exists(realtime_frontend_dir):
     app.mount("/realtime", StaticFiles(directory=realtime_frontend_dir, html=True), name="realtime")
     print(f"[Manager] ✅ 实时对话前端已挂载: /realtime")

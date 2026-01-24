@@ -43,6 +43,9 @@ class RealtimeClient {
 
         // TTS 请求链（保证顺序执行）
         this._ttsPromiseChain = Promise.resolve();
+
+        // 是否是第一个TTS分段（用于首包优化）
+        this._isFirstTTSChunk = true;
     }
 
     /**
@@ -237,6 +240,7 @@ class RealtimeClient {
         this._abortController = new AbortController();
         this._ttsPromiseChain = Promise.resolve(); // 重置TTS链
         this._firstTTSCallTime = null; // 重置首次TTS调用时间
+        this._isFirstTTSChunk = true; // 重置首包标记
         this.chunker.clear();
 
         // 添加用户消息到历史
@@ -268,15 +272,18 @@ class RealtimeClient {
                     // 分段并发送 TTS（串行化，保证顺序）
                     const chunks = this.chunker.feed(chunk);
                     for (const textChunk of chunks) {
+                        // 记录首次TTS调用时间（在分段产生时立即记录，而非 Promise 执行时）
+                        if (!this._firstTTSCallTime) {
+                            this._firstTTSCallTime = performance.now();
+                            console.log(`[RealtimeClient] 🎤 首次TTS文本分段产生，文本: "${textChunk}"`);
+                            if (onFirstTTSCall) onFirstTTSCall(textChunk);
+                        }
+
                         // 链式执行，保证顺序
+                        const isFirst = this._isFirstTTSChunk;
+                        this._isFirstTTSChunk = false; // 后续分段不再是首包
                         this._ttsPromiseChain = this._ttsPromiseChain.then(() => {
-                            // 记录首次TTS调用时间
-                            if (!this._firstTTSCallTime) {
-                                this._firstTTSCallTime = performance.now();
-                                console.log(`[RealtimeClient] 🎤 首次TTS调用，文本: "${textChunk}"`);
-                                if (onFirstTTSCall) onFirstTTSCall(textChunk);
-                            }
-                            return this._sendToTTS(textChunk, onAudio, onError);
+                            return this._sendToTTS(textChunk, onAudio, onError, isFirst);
                         });
                     }
                 },
@@ -286,8 +293,10 @@ class RealtimeClient {
             // 刷新剩余内容（等待之前的TTS完成后再发送）
             const remaining = this.chunker.flush();
             if (remaining) {
+                const isFirst = this._isFirstTTSChunk;
+                this._isFirstTTSChunk = false;
                 this._ttsPromiseChain = this._ttsPromiseChain.then(() =>
-                    this._sendToTTS(remaining, onAudio, onError)
+                    this._sendToTTS(remaining, onAudio, onError, isFirst)
                 );
             }
 
@@ -334,16 +343,11 @@ class RealtimeClient {
     }
 
     /**
-     * 发送文本到TTS并获取流式音频
+     * 发送文本到TTS并流式播放（边下载边播放）
+     * @param {boolean} isFirstChunk - 是否是第一个文本块（用于首包延迟优化）
      */
-    async _sendToTTS(text, onAudio, onError) {
-        console.log(`[RealtimeClient] 发送TTS: "${text}"`);
-        console.log(`[RealtimeClient] TTS配置:`, {
-            apiBaseUrl: this.config.apiBaseUrl,
-            refAudioPath: this.config.refAudioPath,
-            promptText: this.config.promptText,
-            textLang: this.config.textLang
-        });
+    async _sendToTTS(text, onAudio, onError, isFirstChunk = false) {
+        console.log(`[RealtimeClient] 发送TTS: "${text}" (isFirstChunk: ${isFirstChunk})`);
 
         // 验证必要参数
         if (!this.config.refAudioPath) {
@@ -353,70 +357,103 @@ class RealtimeClient {
             return;
         }
 
+        const startTime = performance.now();
+        let firstChunkTime = null;
+        let firstPlayTime = null;
+
         try {
             const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/tts_stream`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text: text,
                     ref_audio_path: this.config.refAudioPath,
                     prompt_text: this.config.promptText,
-                    text_lang: this.config.textLang
+                    text_lang: this.config.textLang,
+                    is_first_chunk: isFirstChunk  // 首包优化标记
                 }),
                 signal: this._abortController?.signal
             });
 
-            // 记录响应头信息
-            console.log(`[RealtimeClient] TTS响应状态:`, response.status);
-            console.log(`[RealtimeClient] Content-Type:`, response.headers.get('Content-Type'));
-            console.log(`[RealtimeClient] Content-Length:`, response.headers.get('Content-Length'));
+            console.log(`[RealtimeClient] TTS响应状态: ${response.status}`);
 
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`TTS API错误: ${response.status} - ${errorText}`);
             }
 
-            // 获取完整音频 (流式返回，但前端收集完整)
-            const audioData = await response.arrayBuffer();
-            console.log(`[RealtimeClient] 收到音频数据: ${audioData.byteLength} 字节`);
+            // 检查是否有流式播放器可用（只要设置了就使用）
+            const useStreamingPlayer = !!this._streamingPlayer;
 
-            // 检查数据头部（用于诊断格式问题）
-            if (audioData.byteLength > 0) {
-                const header = new Uint8Array(audioData.slice(0, 16));
-                const headerHex = Array.from(header).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                console.log(`[RealtimeClient] 音频数据头部(hex): ${headerHex}`);
+            if (useStreamingPlayer) {
+                // ===== 边下边播模式 =====
+                console.log('[RealtimeClient] 🚀 使用流式播放器');
 
-                // 检查是否是WAV文件 (RIFF头)
-                const headerStr = String.fromCharCode(...header.slice(0, 4));
-                console.log(`[RealtimeClient] 音频格式标识: '${headerStr}' (期望: 'RIFF')`);
+                // 使用 startNewSegment 而不是 startSession，保留之前的播放队列
+                this._streamingPlayer.startNewSegment();
+                const reader = response.body.getReader();
 
-                if (headerStr !== 'RIFF') {
-                    console.warn(`[RealtimeClient] ⚠️ 音频数据不是WAV格式！`);
-                    // 尝试显示前100字节作为文本（可能是错误信息）
-                    if (audioData.byteLength < 1000) {
-                        try {
-                            const textDecoder = new TextDecoder();
-                            const text = textDecoder.decode(audioData);
-                            console.error(`[RealtimeClient] 响应内容: ${text}`);
-                        } catch (e) {
-                            // 忽略解码错误
-                        }
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    // 记录首个 chunk 的时间
+                    if (!firstChunkTime && value.length > 0) {
+                        firstChunkTime = performance.now() - startTime;
+                        console.log(`[RealtimeClient] 🎵 首个 chunk: ${Math.round(firstChunkTime)}ms, ${value.length} 字节`);
                     }
+
+                    // 将数据传给流式播放器
+                    await this._streamingPlayer.feedChunk(value, () => {
+                        if (!firstPlayTime) {
+                            firstPlayTime = performance.now() - startTime;
+                            console.log(`[RealtimeClient] 🔊 开始播放: ${Math.round(firstPlayTime)}ms`);
+                            // 通知回调（用于更新 UI 统计）
+                            if (onAudio) onAudio(null, firstChunkTime, firstPlayTime);
+                        }
+                    });
                 }
+
+                this._streamingPlayer.endSession();
+                console.log(`[RealtimeClient] ✅ 流式播放完成`);
+
             } else {
-                console.error(`[RealtimeClient] ❌ 收到空的音频数据!`);
+                // ===== 传统模式（等待完整下载后播放）=====
+                console.log('[RealtimeClient] 📦 使用传统播放模式');
+
+                const reader = response.body.getReader();
+                const chunks = [];
+                let totalBytes = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    if (!firstChunkTime && value.length > 0) {
+                        firstChunkTime = performance.now() - startTime;
+                        console.log(`[RealtimeClient] 🎵 首个 chunk: ${Math.round(firstChunkTime)}ms`);
+                    }
+
+                    chunks.push(value);
+                    totalBytes += value.length;
+                }
+
+                // 合并所有 chunks
+                const audioData = new Uint8Array(totalBytes);
+                let offset = 0;
+                for (const chunk of chunks) {
+                    audioData.set(chunk, offset);
+                    offset += chunk.length;
+                }
+
+                const audioBlob = new Blob([audioData], { type: 'audio/wav' });
+                console.log(`[RealtimeClient] 创建Blob: size=${audioBlob.size}`);
+
+                // 加入播放队列
+                this.audioQueue.add(audioBlob);
+
+                if (onAudio) onAudio(audioBlob, firstChunkTime);
             }
-
-            const audioBlob = new Blob([audioData], { type: 'audio/wav' });
-            console.log(`[RealtimeClient] 创建Blob: size=${audioBlob.size}, type=${audioBlob.type}`);
-
-            // 加入播放队列（由 audioQueue 统一管理播放）
-            this.audioQueue.add(audioBlob);
-
-            // 通知回调（仅用于 UI 更新，不要在回调中播放！）
-            if (onAudio) onAudio(audioBlob);
 
         } catch (e) {
             if (e.name !== 'AbortError') {
@@ -424,6 +461,19 @@ class RealtimeClient {
                 if (onError) onError(e.message);
             }
         }
+    }
+
+    /**
+     * 设置流式播放器
+     * @param {StreamingPlayer} player - 流式播放器实例
+     */
+    setStreamingPlayer(player) {
+        this._streamingPlayer = player;
+        // 清空并禁用旧的 AudioQueue，防止双重播放
+        if (this.audioQueue) {
+            this.audioQueue.clear();
+        }
+        console.log('[RealtimeClient] 已设置流式播放器（AudioQueue 已禁用）');
     }
 
     /**

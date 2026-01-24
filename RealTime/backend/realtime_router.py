@@ -27,6 +27,7 @@ class TTSRequest(BaseModel):
     prompt_text: str = ""
     text_lang: str = "zh"
     prompt_lang: str = "zh"
+    is_first_chunk: bool = False  # 是否是第一个文本块，用于首包延迟优化
 
 
 class InterruptRequest(BaseModel):
@@ -58,7 +59,8 @@ async def tts_stream(request: TTSRequest):
             ref_audio_path=request.ref_audio_path,
             prompt_text=request.prompt_text,
             text_lang=request.text_lang,
-            prompt_lang=request.prompt_lang
+            prompt_lang=request.prompt_lang,
+            is_first_chunk=request.is_first_chunk
         ):
             yield chunk
     
