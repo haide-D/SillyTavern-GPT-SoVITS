@@ -87,16 +87,144 @@ class RealtimeClient {
     }
 
     /**
+     * 预热 GPT-SoVITS 模型
+     * 
+     * 通过发送一个短文本请求，让 GPT-SoVITS 提前缓存参考音频特征。
+     * 预热后，后续请求的延迟将从 ~3s 降至 ~0.3s。
+     * 
+     * @param {Object} options - 预热选项
+     * @param {string} options.refAudioPath - 参考音频路径（可选，默认使用配置）
+     * @param {string} options.promptText - 提示文本（可选）
+     * @param {string} options.promptLang - 提示语言（可选）
+     * @param {boolean} options.force - 是否强制预热（默认 false）
+     * @returns {Promise<Object>} {success, message, elapsed_ms, skipped}
+     */
+    async warmup(options = {}) {
+        console.log('[RealtimeClient] 🔥 开始预热...');
+
+        try {
+            const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/warmup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ref_audio_path: options.refAudioPath || null,
+                    prompt_text: options.promptText || null,
+                    prompt_lang: options.promptLang || null,
+                    force: options.force || false
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                if (result.skipped) {
+                    console.log('[RealtimeClient] ⏩ 跳过预热（已缓存）');
+                } else {
+                    console.log(`[RealtimeClient] ✅ 预热完成！耗时: ${result.elapsed_ms}ms`);
+                }
+            } else {
+                console.warn('[RealtimeClient] ⚠️ 预热失败:', result.message);
+            }
+
+            return result;
+        } catch (e) {
+            console.error('[RealtimeClient] ❌ 预热请求异常:', e);
+            return {
+                success: false,
+                message: e.message,
+                elapsed_ms: 0,
+                skipped: false
+            };
+        }
+    }
+
+    /**
+     * 切换参考音频（用于角色切换）
+     * 
+     * @param {Object} options - 切换选项
+     * @param {string} options.refAudioPath - 新的参考音频路径
+     * @param {string} options.promptText - 新的提示文本
+     * @param {string} options.promptLang - 新的提示语言
+     * @param {boolean} options.autoWarmup - 是否自动预热（默认 true）
+     * @returns {Promise<Object>} {success, message, old_path, new_path, warmup_result}
+     */
+    async switchRefAudio(options) {
+        console.log('[RealtimeClient] 🔄 切换参考音频...');
+
+        if (!options.refAudioPath || !options.promptText) {
+            return {
+                success: false,
+                message: 'refAudioPath 和 promptText 不能为空'
+            };
+        }
+
+        try {
+            const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/switch_ref_audio`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ref_audio_path: options.refAudioPath,
+                    prompt_text: options.promptText,
+                    prompt_lang: options.promptLang || 'zh',
+                    auto_warmup: options.autoWarmup !== false
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // 更新本地配置
+                this.config.refAudioPath = options.refAudioPath;
+                this.config.promptText = options.promptText;
+                if (options.promptLang) {
+                    this.config.textLang = options.promptLang;
+                }
+                console.log(`[RealtimeClient] ✅ 参考音频已切换`);
+            } else {
+                console.warn('[RealtimeClient] ⚠️ 切换失败:', result.message);
+            }
+
+            return result;
+        } catch (e) {
+            console.error('[RealtimeClient] ❌ 切换请求异常:', e);
+            return {
+                success: false,
+                message: e.message
+            };
+        }
+    }
+
+    /**
+     * 获取当前预热状态
+     * @returns {Promise<Object>} {is_warmed_up, ref_audio_path, prompt_text, prompt_lang}
+     */
+    async getWarmupStatus() {
+        try {
+            const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/warmup_status`);
+            return await response.json();
+        } catch (e) {
+            console.error('[RealtimeClient] ❌ 获取预热状态失败:', e);
+            return {
+                is_warmed_up: false,
+                ref_audio_path: null,
+                prompt_text: null,
+                prompt_lang: null
+            };
+        }
+    }
+
+    /**
      * 开始流式对话
      * @param {string} userMessage - 用户消息
      * @param {Object} callbacks - 回调函数
      * @param {Function} callbacks.onToken - 收到token时回调
      * @param {Function} callbacks.onAudio - 收到音频时回调
+     * @param {Function} callbacks.onFirstTTSCall - 首次调用TTS时回调（用于测量延迟）
      * @param {Function} callbacks.onError - 错误回调
      * @param {Function} callbacks.onComplete - 完成回调
      */
     async chat(userMessage, callbacks = {}) {
-        const { onToken, onAudio, onError, onComplete } = callbacks;
+        const { onToken, onAudio, onFirstTTSCall, onError, onComplete } = callbacks;
 
         // 检查 LLM 配置
         if (!this.llmConfig || !this.llmConfig.api_url || !this.llmConfig.api_key) {
@@ -108,6 +236,7 @@ class RealtimeClient {
 
         this._abortController = new AbortController();
         this._ttsPromiseChain = Promise.resolve(); // 重置TTS链
+        this._firstTTSCallTime = null; // 重置首次TTS调用时间
         this.chunker.clear();
 
         // 添加用户消息到历史
@@ -140,9 +269,15 @@ class RealtimeClient {
                     const chunks = this.chunker.feed(chunk);
                     for (const textChunk of chunks) {
                         // 链式执行，保证顺序
-                        this._ttsPromiseChain = this._ttsPromiseChain.then(() =>
-                            this._sendToTTS(textChunk, onAudio, onError)
-                        );
+                        this._ttsPromiseChain = this._ttsPromiseChain.then(() => {
+                            // 记录首次TTS调用时间
+                            if (!this._firstTTSCallTime) {
+                                this._firstTTSCallTime = performance.now();
+                                console.log(`[RealtimeClient] 🎤 首次TTS调用，文本: "${textChunk}"`);
+                                if (onFirstTTSCall) onFirstTTSCall(textChunk);
+                            }
+                            return this._sendToTTS(textChunk, onAudio, onError);
+                        });
                     }
                 },
                 this._abortController.signal

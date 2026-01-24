@@ -123,3 +123,78 @@ async def health():
         "service": "realtime",
         "sovits_host": _service.sovits_host
     }
+
+
+# ===================== 预热相关接口 =====================
+
+class WarmupRequest(BaseModel):
+    """预热请求模型"""
+    ref_audio_path: Optional[str] = None
+    prompt_text: Optional[str] = None
+    prompt_lang: Optional[str] = None
+    force: bool = False
+
+
+class SwitchRefAudioRequest(BaseModel):
+    """切换参考音频请求模型"""
+    ref_audio_path: str
+    prompt_text: str
+    prompt_lang: str = "zh"
+    auto_warmup: bool = True
+
+
+@router.post("/warmup")
+async def warmup(request: WarmupRequest = None):
+    """
+    预热 GPT-SoVITS 模型
+    
+    通过发送一个短文本请求，让 GPT-SoVITS 提前缓存参考音频特征。
+    预热后，后续请求的延迟将从 ~3s 降至 ~0.3s。
+    
+    如果不传参数，将使用配置文件中的默认参考音频。
+    
+    Returns:
+        {success, message, ref_audio_path, elapsed_ms, skipped}
+    """
+    if request is None:
+        request = WarmupRequest()
+    
+    result = _service.warmup(
+        ref_audio_path=request.ref_audio_path,
+        prompt_text=request.prompt_text,
+        prompt_lang=request.prompt_lang,
+        force=request.force
+    )
+    
+    return result
+
+
+@router.post("/switch_ref_audio")
+async def switch_ref_audio(request: SwitchRefAudioRequest):
+    """
+    切换参考音频（用于角色切换）
+    
+    切换到新的参考音频，并可选择自动预热。
+    
+    Returns:
+        {success, message, old_path, new_path, warmup_result}
+    """
+    result = _service.switch_ref_audio(
+        ref_audio_path=request.ref_audio_path,
+        prompt_text=request.prompt_text,
+        prompt_lang=request.prompt_lang,
+        auto_warmup=request.auto_warmup
+    )
+    
+    return result
+
+
+@router.get("/warmup_status")
+async def warmup_status():
+    """
+    获取当前预热状态
+    
+    Returns:
+        {is_warmed_up, ref_audio_path, prompt_text, prompt_lang}
+    """
+    return _service.get_warmup_status()

@@ -358,6 +358,13 @@
                 <div class="form-group">
                     <button id="btn-load-ref" class="secondary">加载默认配置</button>
                 </div>
+                <div class="form-group">
+                    <button id="btn-warmup" class="secondary" style="background: #4ade80;">🔥 预热模型</button>
+                </div>
+            </div>
+            <div style="margin-top: 12px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                <span style="font-size: 0.85rem; color: var(--text-secondary);">预热状态：</span>
+                <span id="warmup-status" style="font-size: 0.85rem;">未预热</span>
             </div>
         </div>
 
@@ -391,10 +398,14 @@
         <!-- 延迟统计 -->
         <div class="card">
             <h2>📊 延迟统计</h2>
-            <div class="latency-stats">
+            <div class="latency-stats" style="grid-template-columns: repeat(4, 1fr);">
                 <div class="stat-item">
                     <div class="stat-value" id="stat-first-token">-</div>
                     <div class="stat-label">首Token延迟</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="stat-first-tts">-</div>
+                    <div class="stat-label">首次TTS调用</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="stat-first-audio">-</div>
@@ -456,12 +467,17 @@
 
             // 加载 TTS 配置
             await loadRefAudio();
+
+            // 自动预热（加载配置后自动触发）
+            log('info', '正在自动预热模型...');
+            await warmupModel(true);
         }
 
         // 绑定按钮事件
         document.getElementById('btn-load-ref').addEventListener('click', loadRefAudio);
         document.getElementById('btn-fetch-models').addEventListener('click', fetchModels);
         document.getElementById('btn-test-llm').addEventListener('click', testLLMConnection);
+        document.getElementById('btn-warmup').addEventListener('click', warmupModel);
 
         // 加载默认参考音频
         async function loadRefAudio() {
@@ -477,6 +493,67 @@
                 }
             } catch (e) {
                 log('error', '加载参考音频失败: ' + e.message);
+            }
+        }
+
+        // 预热模型
+        async function warmupModel(isAuto = false) {
+            const btn = document.getElementById('btn-warmup');
+            const statusSpan = document.getElementById('warmup-status');
+
+            const refAudioPath = document.getElementById('ref-audio-path').value;
+            const promptText = document.getElementById('prompt-text').value;
+            const textLang = document.getElementById('text-lang').value;
+
+            if (!refAudioPath || !promptText) {
+                if (!isAuto) {
+                    log('error', '请先填写参考音频路径和提示文本');
+                }
+                statusSpan.textContent = '❌ 配置不完整';
+                statusSpan.style.color = '#f87171';
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.textContent = '预热中...';
+                statusSpan.textContent = '🔄 预热中...';
+                statusSpan.style.color = 'var(--warning)';
+
+                const response = await fetch('/api/realtime/warmup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ref_audio_path: refAudioPath,
+                        prompt_text: promptText,
+                        prompt_lang: textLang,
+                        force: !isAuto  // 手动预热时强制重新预热
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    if (result.skipped) {
+                        log('info', '⏩ 跳过预热（已缓存）');
+                        statusSpan.textContent = '✅ 已预热（缓存命中）';
+                    } else {
+                        log('success', `✅ 预热完成！耗时: ${result.elapsed_ms}ms`);
+                        statusSpan.textContent = `✅ 已预热 (${result.elapsed_ms}ms)`;
+                    }
+                    statusSpan.style.color = 'var(--success)';
+                } else {
+                    log('error', '预热失败: ' + result.message);
+                    statusSpan.textContent = '❌ 预热失败';
+                    statusSpan.style.color = '#f87171';
+                }
+            } catch (e) {
+                log('error', '预热请求异常: ' + e.message);
+                statusSpan.textContent = '❌ 预热异常';
+                statusSpan.style.color = '#f87171';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔥 预热模型';
             }
         }
 
@@ -581,6 +658,7 @@
             // 记录开始时间
             const startTime = performance.now();
             let firstTokenTime = null;
+            let firstTTSTime = null;
             let firstAudioTime = null;
 
             try {
@@ -621,6 +699,12 @@
                             log('info', `首Token: ${Math.round(firstTokenTime)}ms`);
                         }
                         assistantMsg.textContent += token;
+                    },
+                    onFirstTTSCall: (textChunk) => {
+                        firstTTSTime = performance.now() - startTime;
+                        document.getElementById('stat-first-tts').textContent =
+                            Math.round(firstTTSTime) + 'ms';
+                        log('info', `🎤 首次TTS调用: ${Math.round(firstTTSTime)}ms, 文本: "${textChunk}"`);
                     },
                     onAudio: (audioBlob) => {
                         // 仅记录首音频延迟（播放由 audioQueue 统一管理）
