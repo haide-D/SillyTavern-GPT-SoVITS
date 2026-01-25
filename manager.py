@@ -126,10 +126,10 @@ app.include_router(speakers.router, prefix="/api", tags=["Speakers Management"])
 # 实时对话路由
 try:
     import sys
-    realtime_path = os.path.join(os.path.dirname(__file__), "实时对话", "backend")
+    realtime_path = os.path.join(os.path.dirname(__file__), "RealTime", "backend")
     if os.path.exists(realtime_path):
         sys.path.insert(0, os.path.dirname(realtime_path))
-        from 实时对话.backend.realtime_router import router as realtime_router
+        from RealTime.backend.realtime_router import router as realtime_router
         app.include_router(realtime_router, prefix="/api/realtime", tags=["Realtime Chat"])
         print("[Manager] ✅ 实时对话路由已加载")
 except Exception as e:

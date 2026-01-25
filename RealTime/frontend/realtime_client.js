@@ -7,10 +7,17 @@
  * 3. 音频队列管理
  * 4. 打断支持
  * 5. 对话历史缓存
+ * 
+ * 依赖模块：
+ * - ./js/text_chunker.js
+ * - ./js/audio_queue.js
+ * - LLM_Client (从父级目录)
+ * - StreamingPlayer (可选，用于边下边播)
  */
 
-// 导入 LLM_Client（需要在 HTML 中引入）
-// import { LLM_Client } from '../../frontend/js/llm_client.js';
+// 在 ES Module 环境中导入
+// import { TextChunker } from './js/text_chunker.js';
+// import { AudioQueue } from './js/audio_queue.js';
 
 class RealtimeClient {
     constructor(config = {}) {
@@ -29,14 +36,16 @@ class RealtimeClient {
         // 对话历史缓存
         this.conversationHistory = [];
 
-        // 文本分段器
-        this.chunker = new TextChunker({
+        // 文本分段器（使用全局或导入的 TextChunker）
+        const ChunkerClass = window.TextChunker || TextChunker;
+        this.chunker = new ChunkerClass({
             minLength: 5,
             maxLength: 50
         });
 
-        // 音频队列
-        this.audioQueue = new AudioQueue();
+        // 音频队列（使用全局或导入的 AudioQueue）
+        const QueueClass = window.AudioQueue || AudioQueue;
+        this.audioQueue = new QueueClass();
 
         // 取消控制器
         this._abortController = null;
@@ -91,16 +100,6 @@ class RealtimeClient {
 
     /**
      * 预热 GPT-SoVITS 模型
-     * 
-     * 通过发送一个短文本请求，让 GPT-SoVITS 提前缓存参考音频特征。
-     * 预热后，后续请求的延迟将从 ~3s 降至 ~0.3s。
-     * 
-     * @param {Object} options - 预热选项
-     * @param {string} options.refAudioPath - 参考音频路径（可选，默认使用配置）
-     * @param {string} options.promptText - 提示文本（可选）
-     * @param {string} options.promptLang - 提示语言（可选）
-     * @param {boolean} options.force - 是否强制预热（默认 false）
-     * @returns {Promise<Object>} {success, message, elapsed_ms, skipped}
      */
     async warmup(options = {}) {
         console.log('[RealtimeClient] 🔥 开始预热...');
@@ -143,13 +142,6 @@ class RealtimeClient {
 
     /**
      * 切换参考音频（用于角色切换）
-     * 
-     * @param {Object} options - 切换选项
-     * @param {string} options.refAudioPath - 新的参考音频路径
-     * @param {string} options.promptText - 新的提示文本
-     * @param {string} options.promptLang - 新的提示语言
-     * @param {boolean} options.autoWarmup - 是否自动预热（默认 true）
-     * @returns {Promise<Object>} {success, message, old_path, new_path, warmup_result}
      */
     async switchRefAudio(options) {
         console.log('[RealtimeClient] 🔄 切换参考音频...');
@@ -199,7 +191,6 @@ class RealtimeClient {
 
     /**
      * 获取当前预热状态
-     * @returns {Promise<Object>} {is_warmed_up, ref_audio_path, prompt_text, prompt_lang}
      */
     async getWarmupStatus() {
         try {
@@ -218,13 +209,6 @@ class RealtimeClient {
 
     /**
      * 开始流式对话
-     * @param {string} userMessage - 用户消息
-     * @param {Object} callbacks - 回调函数
-     * @param {Function} callbacks.onToken - 收到token时回调
-     * @param {Function} callbacks.onAudio - 收到音频时回调
-     * @param {Function} callbacks.onFirstTTSCall - 首次调用TTS时回调（用于测量延迟）
-     * @param {Function} callbacks.onError - 错误回调
-     * @param {Function} callbacks.onComplete - 完成回调
      */
     async chat(userMessage, callbacks = {}) {
         const { onToken, onAudio, onFirstTTSCall, onError, onComplete } = callbacks;
@@ -238,9 +222,9 @@ class RealtimeClient {
         }
 
         this._abortController = new AbortController();
-        this._ttsPromiseChain = Promise.resolve(); // 重置TTS链
-        this._firstTTSCallTime = null; // 重置首次TTS调用时间
-        this._isFirstTTSChunk = true; // 重置首包标记
+        this._ttsPromiseChain = Promise.resolve();
+        this._firstTTSCallTime = null;
+        this._isFirstTTSChunk = true;
         this.chunker.clear();
 
         // 添加用户消息到历史
@@ -250,9 +234,7 @@ class RealtimeClient {
         });
 
         try {
-            // 构建 messages（包含历史）
             const messages = this._buildMessages();
-
             console.log('[RealtimeClient] 开始流式对话，历史消息数:', this.conversationHistory.length);
 
             // 使用 LLM_Client.callLLMStream 进行流式调用
@@ -266,13 +248,12 @@ class RealtimeClient {
                     messages: messages
                 },
                 (chunk) => {
-                    // 收到 token
                     if (onToken) onToken(chunk);
 
                     // 分段并发送 TTS（串行化，保证顺序）
                     const chunks = this.chunker.feed(chunk);
                     for (const textChunk of chunks) {
-                        // 记录首次TTS调用时间（在分段产生时立即记录，而非 Promise 执行时）
+                        // 记录首次TTS调用时间
                         if (!this._firstTTSCallTime) {
                             this._firstTTSCallTime = performance.now();
                             console.log(`[RealtimeClient] 🎤 首次TTS文本分段产生，文本: "${textChunk}"`);
@@ -281,7 +262,7 @@ class RealtimeClient {
 
                         // 链式执行，保证顺序
                         const isFirst = this._isFirstTTSChunk;
-                        this._isFirstTTSChunk = false; // 后续分段不再是首包
+                        this._isFirstTTSChunk = false;
                         this._ttsPromiseChain = this._ttsPromiseChain.then(() => {
                             return this._sendToTTS(textChunk, onAudio, onError, isFirst);
                         });
@@ -290,7 +271,7 @@ class RealtimeClient {
                 this._abortController.signal
             );
 
-            // 刷新剩余内容（等待之前的TTS完成后再发送）
+            // 刷新剩余内容
             const remaining = this.chunker.flush();
             if (remaining) {
                 const isFirst = this._isFirstTTSChunk;
@@ -328,14 +309,13 @@ class RealtimeClient {
     _buildMessages() {
         const messages = [];
 
-        // 简单的系统提示
         messages.push({
             role: 'system',
             content: '你是一个友好的对话助手。请保持回复简洁，适合语音朗读。'
         });
 
         // 添加历史消息（最多保留 10 轮）
-        const maxHistory = 20; // 10 轮 = 20 条消息
+        const maxHistory = 20;
         const history = this.conversationHistory.slice(-maxHistory);
         messages.push(...history);
 
@@ -343,13 +323,11 @@ class RealtimeClient {
     }
 
     /**
-     * 发送文本到TTS并流式播放（边下载边播放）
-     * @param {boolean} isFirstChunk - 是否是第一个文本块（用于首包延迟优化）
+     * 发送文本到TTS并流式播放
      */
     async _sendToTTS(text, onAudio, onError, isFirstChunk = false) {
         console.log(`[RealtimeClient] 发送TTS: "${text}" (isFirstChunk: ${isFirstChunk})`);
 
-        // 验证必要参数
         if (!this.config.refAudioPath) {
             const error = '❌ ref_audio_path 为空！请先配置参考音频路径';
             console.error(`[RealtimeClient] ${error}`);
@@ -370,7 +348,7 @@ class RealtimeClient {
                     ref_audio_path: this.config.refAudioPath,
                     prompt_text: this.config.promptText,
                     text_lang: this.config.textLang,
-                    is_first_chunk: isFirstChunk  // 首包优化标记
+                    is_first_chunk: isFirstChunk
                 }),
                 signal: this._abortController?.signal
             });
@@ -382,14 +360,12 @@ class RealtimeClient {
                 throw new Error(`TTS API错误: ${response.status} - ${errorText}`);
             }
 
-            // 检查是否有流式播放器可用（只要设置了就使用）
+            // 检查是否有流式播放器可用
             const useStreamingPlayer = !!this._streamingPlayer;
 
             if (useStreamingPlayer) {
-                // ===== 边下边播模式 =====
+                // 边下边播模式
                 console.log('[RealtimeClient] 🚀 使用流式播放器');
-
-                // 使用 startNewSegment 而不是 startSession，保留之前的播放队列
                 this._streamingPlayer.startNewSegment();
                 const reader = response.body.getReader();
 
@@ -397,18 +373,15 @@ class RealtimeClient {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    // 记录首个 chunk 的时间
                     if (!firstChunkTime && value.length > 0) {
                         firstChunkTime = performance.now() - startTime;
                         console.log(`[RealtimeClient] 🎵 首个 chunk: ${Math.round(firstChunkTime)}ms, ${value.length} 字节`);
                     }
 
-                    // 将数据传给流式播放器
                     await this._streamingPlayer.feedChunk(value, () => {
                         if (!firstPlayTime) {
                             firstPlayTime = performance.now() - startTime;
                             console.log(`[RealtimeClient] 🔊 开始播放: ${Math.round(firstPlayTime)}ms`);
-                            // 通知回调（用于更新 UI 统计）
                             if (onAudio) onAudio(null, firstChunkTime, firstPlayTime);
                         }
                     });
@@ -418,7 +391,7 @@ class RealtimeClient {
                 console.log(`[RealtimeClient] ✅ 流式播放完成`);
 
             } else {
-                // ===== 传统模式（等待完整下载后播放）=====
+                // 传统模式（等待完整下载后播放）
                 console.log('[RealtimeClient] 📦 使用传统播放模式');
 
                 const reader = response.body.getReader();
@@ -465,11 +438,9 @@ class RealtimeClient {
 
     /**
      * 设置流式播放器
-     * @param {StreamingPlayer} player - 流式播放器实例
      */
     setStreamingPlayer(player) {
         this._streamingPlayer = player;
-        // 清空并禁用旧的 AudioQueue，防止双重播放
         if (this.audioQueue) {
             this.audioQueue.clear();
         }
@@ -500,15 +471,14 @@ class RealtimeClient {
 
 
 /**
- * 文本分段器 (前端版本)
+ * 内联 TextChunker (向后兼容)
+ * 如果模块环境可用，优先使用导入的版本
  */
 class TextChunker {
     constructor(options = {}) {
         this.minLength = options.minLength || 5;
         this.maxLength = options.maxLength || 50;
         this.buffer = '';
-
-        // 分段标点
         this.sentenceEndings = /[。！？!?]/;
         this.clauseEndings = /[，,；;：:]/;
     }
@@ -516,7 +486,6 @@ class TextChunker {
     feed(text) {
         this.buffer += text;
         const chunks = [];
-
         while (true) {
             const chunk = this._tryExtract();
             if (chunk) {
@@ -525,7 +494,6 @@ class TextChunker {
                 break;
             }
         }
-
         return chunks;
     }
 
@@ -543,11 +511,8 @@ class TextChunker {
     }
 
     _tryExtract() {
-        if (this.buffer.length < this.minLength) {
-            return null;
-        }
+        if (this.buffer.length < this.minLength) return null;
 
-        // 寻找句子结束符
         const match = this.buffer.match(this.sentenceEndings);
         if (match && match.index >= this.minLength - 1) {
             const end = match.index + 1;
@@ -556,9 +521,7 @@ class TextChunker {
             return chunk.trim();
         }
 
-        // 达到最大长度，强制分段
         if (this.buffer.length >= this.maxLength) {
-            // 尝试在子句处分段
             const clauseMatch = this.buffer.slice(0, this.maxLength).match(this.clauseEndings);
             if (clauseMatch && clauseMatch.index >= this.minLength - 1) {
                 const end = clauseMatch.index + 1;
@@ -566,8 +529,6 @@ class TextChunker {
                 this.buffer = this.buffer.slice(end);
                 return chunk.trim();
             }
-
-            // 强制分段
             const chunk = this.buffer.slice(0, this.maxLength);
             this.buffer = this.buffer.slice(this.maxLength);
             return chunk.trim();
@@ -579,7 +540,8 @@ class TextChunker {
 
 
 /**
- * 音频队列管理器
+ * 内联 AudioQueue (向后兼容)
+ * 如果模块环境可用，优先使用导入的版本
  */
 class AudioQueue {
     constructor() {
@@ -596,7 +558,6 @@ class AudioQueue {
         };
 
         this.audio.onerror = (e) => {
-            // 获取更详细的错误信息
             const mediaError = this.audio.error;
             let errorMsg = '未知错误';
             if (mediaError) {
@@ -614,28 +575,11 @@ class AudioQueue {
                         errorMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED: 不支持的音频格式';
                         break;
                 }
-                errorMsg += ` (message: ${mediaError.message || 'N/A'})`;
             }
             console.error(`[AudioQueue] ❌ 播放错误: ${errorMsg}`);
-            console.error(`[AudioQueue] 当前src: ${this.audio.src}`);
-            console.error(`[AudioQueue] 当前状态: readyState=${this.audio.readyState}, networkState=${this.audio.networkState}`);
-
             this._cleanup();
             this.isPlaying = false;
             this._playNext();
-        };
-
-        // 添加更多事件监听用于调试
-        this.audio.onloadstart = () => {
-            console.log('[AudioQueue] 开始加载音频...');
-        };
-
-        this.audio.onloadedmetadata = () => {
-            console.log(`[AudioQueue] 元数据加载完成: duration=${this.audio.duration}s`);
-        };
-
-        this.audio.oncanplay = () => {
-            console.log('[AudioQueue] 可以播放');
         };
     }
 
@@ -647,7 +591,7 @@ class AudioQueue {
     }
 
     add(audioBlob) {
-        console.log(`[AudioQueue] 添加到队列: size=${audioBlob.size}, type=${audioBlob.type}, 队列长度=${this.queue.length + 1}`);
+        console.log(`[AudioQueue] 添加到队列: size=${audioBlob.size}`);
         this.queue.push(audioBlob);
         if (!this.isPlaying) {
             this._playNext();
@@ -664,30 +608,20 @@ class AudioQueue {
     }
 
     _playNext() {
-        if (this.queue.length === 0) {
-            console.log('[AudioQueue] 队列为空，等待新音频');
-            return;
-        }
+        if (this.queue.length === 0) return;
 
         const blob = this.queue.shift();
-        console.log(`[AudioQueue] 准备播放: size=${blob.size}, type=${blob.type}, 剩余=${this.queue.length}`);
-
-        // 清理之前的URL
         this._cleanup();
-
         this._currentUrl = URL.createObjectURL(blob);
-        console.log(`[AudioQueue] 创建ObjectURL: ${this._currentUrl}`);
-
         this.audio.src = this._currentUrl;
         this.isPlaying = true;
 
         this.audio.play().then(() => {
             console.log('[AudioQueue] 🎵 开始播放');
         }).catch(e => {
-            console.error('[AudioQueue] 播放失败:', e.name, e.message);
+            console.error('[AudioQueue] 播放失败:', e.message);
             this._cleanup();
             this.isPlaying = false;
-            // 继续尝试下一个
             setTimeout(() => this._playNext(), 100);
         });
     }
