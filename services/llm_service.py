@@ -5,16 +5,9 @@ from typing import Dict, Optional
 class LLMService:
     """LLM交互服务"""
     
-    # ⚠️ 警告: 以下方法存在网络问题,已弃用!
-    # 问题: 从服务器端调用LLM服务时返回502错误
-    # 原因: LLM服务可能只接受浏览器请求,不接受服务器端请求
-    # 解决方案: 使用前端 LLM_Client.callLLM() 代替
-    # 请勿在新代码中使用此方法!
     @staticmethod
-    async def call_DEPRECATED_DO_NOT_USE(config: Dict, prompt: str) -> str:
+    async def call(config: Dict, prompt: str) -> str:
         """
-        ⚠️ 已弃用 - 请使用前端 LLM_Client.callLLM() 代替
-        
         调用LLM API (支持多种响应格式)
         
         Args:

@@ -208,24 +208,15 @@ class RealtimeClient {
     }
 
     /**
-     * 开始流式对话
+     * 开始流式对话 (使用后端 LLM 服务)
      */
     async chat(userMessage, callbacks = {}) {
         const { onToken, onAudio, onFirstTTSCall, onError, onComplete } = callbacks;
-
-        // 检查 LLM 配置
-        if (!this.llmConfig || !this.llmConfig.api_url || !this.llmConfig.api_key) {
-            const error = 'LLM 配置未设置，请先调用 init() 或 setLLMConfig()';
-            console.error('[RealtimeClient]', error);
-            if (onError) onError(error);
-            return;
-        }
 
         this._abortController = new AbortController();
         this._ttsPromiseChain = Promise.resolve();
         this._firstTTSCallTime = null;
         this._isFirstTTSChunk = true;
-        this.chunker.clear();
 
         // 添加用户消息到历史
         this.conversationHistory.push({
@@ -234,51 +225,88 @@ class RealtimeClient {
         });
 
         try {
-            const messages = this._buildMessages();
             console.log('[RealtimeClient] 开始流式对话，历史消息数:', this.conversationHistory.length);
+            let fullResponse = '';
 
-            // 使用 LLM_Client.callLLMStream 进行流式调用
-            const fullResponse = await window.LLM_Client.callLLMStream(
-                {
-                    api_url: this.llmConfig.api_url,
-                    api_key: this.llmConfig.api_key,
-                    model: this.llmConfig.model,
-                    temperature: this.llmConfig.temperature,
-                    max_tokens: this.llmConfig.max_tokens,
-                    messages: messages
-                },
-                (chunk) => {
-                    if (onToken) onToken(chunk);
+            // 调用后端 /chat_stream SSE 端点
+            const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/chat_stream`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_input: userMessage,
+                    messages: this.conversationHistory.slice(0, -1),  // 不包含刚添加的用户消息
+                    system_prompt: this.systemPrompt || null
+                }),
+                signal: this._abortController.signal
+            });
 
-                    // 分段并发送 TTS（串行化，保证顺序）
-                    const chunks = this.chunker.feed(chunk);
-                    for (const textChunk of chunks) {
-                        // 记录首次TTS调用时间
-                        if (!this._firstTTSCallTime) {
-                            this._firstTTSCallTime = performance.now();
-                            console.log(`[RealtimeClient] 🎤 首次TTS文本分段产生，文本: "${textChunk}"`);
-                            if (onFirstTTSCall) onFirstTTSCall(textChunk);
-                        }
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+            }
 
-                        // 链式执行，保证顺序
-                        const isFirst = this._isFirstTTSChunk;
-                        this._isFirstTTSChunk = false;
-                        this._ttsPromiseChain = this._ttsPromiseChain.then(() => {
-                            return this._sendToTTS(textChunk, onAudio, onError, isFirst);
-                        });
+            // 解析 SSE 事件流
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';  // 保留未完成的行
+
+                for (const line of lines) {
+                    if (line.startsWith('event: ')) {
+                        const eventType = line.slice(7).trim();
+                        continue;
                     }
-                },
-                this._abortController.signal
-            );
 
-            // 刷新剩余内容
-            const remaining = this.chunker.flush();
-            if (remaining) {
-                const isFirst = this._isFirstTTSChunk;
-                this._isFirstTTSChunk = false;
-                this._ttsPromiseChain = this._ttsPromiseChain.then(() =>
-                    this._sendToTTS(remaining, onAudio, onError, isFirst)
-                );
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+
+                            if (data.content) {
+                                // token 事件
+                                fullResponse += data.content;
+                                if (onToken) onToken(data.content);
+                            }
+
+                            if (data.text) {
+                                // tts_start 事件 - 分段文本到达
+                                const textChunk = data.text;
+
+                                // 记录首次TTS调用时间
+                                if (!this._firstTTSCallTime) {
+                                    this._firstTTSCallTime = performance.now();
+                                    console.log(`[RealtimeClient] 🎤 首次TTS文本分段产生，文本: "${textChunk}"`);
+                                    if (onFirstTTSCall) onFirstTTSCall(textChunk);
+                                }
+
+                                // 链式执行 TTS，保证顺序
+                                const isFirst = this._isFirstTTSChunk;
+                                this._isFirstTTSChunk = false;
+                                this._ttsPromiseChain = this._ttsPromiseChain.then(() => {
+                                    return this._sendToTTS(textChunk, onAudio, onError, isFirst);
+                                });
+                            }
+
+                            if (data.full_response) {
+                                // done 事件
+                                fullResponse = data.full_response;
+                            }
+
+                            if (data.error) {
+                                throw new Error(data.error);
+                            }
+                        } catch (parseError) {
+                            if (parseError.message !== 'Unexpected end of JSON input') {
+                                console.warn('[RealtimeClient] SSE 解析警告:', parseError);
+                            }
+                        }
+                    }
+                }
             }
 
             // 等待所有TTS请求完成

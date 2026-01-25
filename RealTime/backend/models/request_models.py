@@ -56,3 +56,10 @@ class BuildPromptRequest(BaseModel):
     user_input: str
     event_type: Optional[str] = None
 
+
+class ChatStreamRequest(BaseModel):
+    """流式对话请求"""
+    user_input: str
+    messages: Optional[List[Dict[str, str]]] = None  # 可选：覆盖历史消息
+    system_prompt: Optional[str] = None  # 可选：系统提示词
+

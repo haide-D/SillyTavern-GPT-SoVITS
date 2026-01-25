@@ -7,7 +7,8 @@ from .request_models import (
     SwitchRefAudioRequest,
     UpdateContextRequest,
     SwitchSceneRequest,
-    BuildPromptRequest
+    BuildPromptRequest,
+    ChatStreamRequest
 )
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     'SwitchRefAudioRequest',
     'UpdateContextRequest',
     'SwitchSceneRequest',
-    'BuildPromptRequest'
+    'BuildPromptRequest',
+    'ChatStreamRequest'
 ]
 

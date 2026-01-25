@@ -3,9 +3,10 @@
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Optional
+import json
 
-from .models import TTSRequest, WarmupRequest, SwitchRefAudioRequest
-from .services import ConfigService, TTSService, WarmupService
+from .models import TTSRequest, WarmupRequest, SwitchRefAudioRequest, ChatStreamRequest
+from .services import ConfigService, TTSService, WarmupService, get_llm_service
 from .text_chunker import TextChunker
 
 router = APIRouter(tags=["realtime"])
@@ -15,6 +16,7 @@ _config = ConfigService()
 _tts = TTSService(_config)
 _warmup = WarmupService(_config)
 _chunker = TextChunker(min_length=5, max_length=50)
+_llm = get_llm_service()
 
 
 # ===================== TTS 核心接口 =====================
@@ -109,6 +111,80 @@ async def health():
         "service": "realtime",
         "sovits_host": _config.sovits_host
     }
+
+
+# ===================== 流式对话接口 =====================
+
+@router.post("/chat_stream")
+async def chat_stream(request: ChatStreamRequest):
+    """
+    流式对话 - 后端处理 LLM + TTS
+    
+    接收用户输入，返回 SSE 事件流：
+    - event: token - LLM 生成的文本片段
+    - event: tts_start - TTS 开始生成（包含分段文本）
+    - event: done - 对话完成
+    
+    Returns:
+        text/event-stream SSE 响应
+    """
+    if not request.user_input.strip():
+        raise HTTPException(status_code=400, detail="用户输入不能为空")
+    
+    print(f"[RealtimeRouter] 💬 收到对话请求: '{request.user_input[:50]}...'")
+    
+    async def generate_stream():
+        """生成 SSE 事件流"""
+        full_response = ""
+        text_buffer = ""
+        
+        # 构建消息列表
+        messages = request.messages or []
+        if request.system_prompt:
+            messages = [{"role": "system", "content": request.system_prompt}] + messages
+        elif not any(m.get("role") == "system" for m in messages):
+            messages = [{"role": "system", "content": "你是一个友好的对话助手。请保持回复简洁，适合语音朗读。"}] + messages
+        
+        messages.append({"role": "user", "content": request.user_input})
+        
+        try:
+            # 流式调用 LLM
+            async for token in _llm.call_stream(messages):
+                full_response += token
+                text_buffer += token
+                
+                # 发送 token 事件
+                yield f"event: token\ndata: {json.dumps({'content': token}, ensure_ascii=False)}\n\n"
+                
+                # 尝试分段
+                chunks = _chunker.feed(token)
+                for chunk in chunks:
+                    # 发送 TTS 开始事件
+                    yield f"event: tts_start\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+            
+            # 刷新剩余内容
+            remaining = _chunker.flush()
+            if remaining:
+                yield f"event: tts_start\ndata: {json.dumps({'text': remaining}, ensure_ascii=False)}\n\n"
+            
+            # 发送完成事件
+            yield f"event: done\ndata: {json.dumps({'full_response': full_response}, ensure_ascii=False)}\n\n"
+            
+            print(f"[RealtimeRouter] ✅ 对话完成，长度: {len(full_response)}")
+            
+        except Exception as e:
+            print(f"[RealtimeRouter] ❌ 对话错误: {e}")
+            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 # ===================== 预热相关接口 =====================
