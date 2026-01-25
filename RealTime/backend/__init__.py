@@ -4,6 +4,7 @@ from .realtime_router import router
 from .text_chunker import TextChunker
 from .services import ConfigService, TTSService, WarmupService
 from .models import TTSRequest, WarmupRequest, SwitchRefAudioRequest
+from .session_manager import session_manager, SessionManager
 
 __all__ = [
     'router',
@@ -13,5 +14,8 @@ __all__ = [
     'WarmupService',
     'TTSRequest',
     'WarmupRequest',
-    'SwitchRefAudioRequest'
+    'SwitchRefAudioRequest',
+    'session_manager',
+    'SessionManager'
 ]
+

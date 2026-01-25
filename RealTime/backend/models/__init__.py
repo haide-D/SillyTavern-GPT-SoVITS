@@ -4,12 +4,19 @@ from .request_models import (
     TTSRequest,
     InterruptRequest,
     WarmupRequest,
-    SwitchRefAudioRequest
+    SwitchRefAudioRequest,
+    UpdateContextRequest,
+    SwitchSceneRequest,
+    BuildPromptRequest
 )
 
 __all__ = [
     'TTSRequest',
     'InterruptRequest',
     'WarmupRequest',
-    'SwitchRefAudioRequest'
+    'SwitchRefAudioRequest',
+    'UpdateContextRequest',
+    'SwitchSceneRequest',
+    'BuildPromptRequest'
 ]
+

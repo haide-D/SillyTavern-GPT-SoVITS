@@ -168,3 +168,146 @@ async def warmup_status():
         {is_warmed_up, ref_audio_path, prompt_text, prompt_lang}
     """
     return _warmup.get_warmup_status()
+
+
+# ===================== 会话管理接口 =====================
+
+from .models import UpdateContextRequest, SwitchSceneRequest, BuildPromptRequest
+from .session_manager import session_manager
+from .prompt import SceneManager
+
+@router.post("/session/update_context")
+async def update_context(request: UpdateContextRequest):
+    """
+    更新上下文（接收酒馆数据）
+    
+    支持两种方式:
+    1. 传入完整的酒馆上下文 (context 字段)
+    2. 分别传入角色和消息 (character, messages 字段)
+    
+    Returns:
+        {success, message, status}
+    """
+    data = {}
+    
+    # 优先使用完整上下文
+    if request.context:
+        data = request.context
+    else:
+        if request.character:
+            data["character"] = request.character
+        if request.messages:
+            data["messages"] = request.messages
+        if request.chat_id:
+            data["chatId"] = request.chat_id
+    
+    if not data:
+        raise HTTPException(status_code=400, detail="没有提供有效数据")
+    
+    success = session_manager.update_from_sillytavern(data)
+    
+    return {
+        "success": success,
+        "message": "上下文已更新" if success else "更新失败",
+        "status": session_manager.get_status()
+    }
+
+
+@router.post("/session/switch_scene")
+async def switch_scene(request: SwitchSceneRequest):
+    """
+    切换场景
+    
+    Returns:
+        {success, current_scene, available_scenes}
+    """
+    success = session_manager.switch_scene(request.scene_id)
+    
+    return {
+        "success": success,
+        "current_scene": session_manager.get_current_scene(),
+        "available_scenes": SceneManager.list_scenes()
+    }
+
+
+@router.get("/session/scenes")
+async def list_scenes():
+    """
+    获取所有可用场景
+    
+    Returns:
+        {scenes: [{id, name}, ...], current: {id, name}}
+    """
+    return {
+        "scenes": SceneManager.list_scenes(),
+        "current": session_manager.get_current_scene()
+    }
+
+
+@router.post("/session/build_prompt")
+async def build_prompt(request: BuildPromptRequest):
+    """
+    构建 LLM 提示词（测试用）
+    
+    Returns:
+        {messages: [...], scene_id, character_name}
+    """
+    messages = session_manager.build_messages(
+        user_input=request.user_input,
+        event_type=request.event_type
+    )
+    
+    return {
+        "messages": messages,
+        "scene_id": session_manager.context.scene_id,
+        "character_name": session_manager.context.character_name
+    }
+
+
+@router.get("/session/status")
+async def session_status():
+    """
+    获取会话状态
+    
+    Returns:
+        {active, scene, history_count, character_name, ...}
+    """
+    return session_manager.get_status()
+
+
+@router.post("/session/reset")
+async def session_reset():
+    """
+    重置会话
+    
+    清空历史和状态
+    
+    Returns:
+        {success, message}
+    """
+    session_manager.reset()
+    return {
+        "success": True,
+        "message": "会话已重置"
+    }
+
+
+@router.post("/session/check_silence")
+async def check_silence():
+    """
+    检查沉默事件
+    
+    Returns:
+        {triggered, event} 或 {triggered: false}
+    """
+    event = session_manager.check_silence()
+    
+    if event:
+        return {
+            "triggered": True,
+            "event": event
+        }
+    return {
+        "triggered": False
+    }
+
