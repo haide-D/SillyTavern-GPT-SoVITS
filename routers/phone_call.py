@@ -841,6 +841,69 @@ async def get_auto_call_history(char_name: str, limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/phone_call/auto/history_by_branch/{chat_branch:path}")
+async def get_auto_call_history_by_branch(chat_branch: str, limit: int = 50):
+    """
+    根据对话分支获取自动生成历史记录
+    
+    Args:
+        chat_branch: 对话分支ID
+        limit: 返回记录数量限制
+        
+    Returns:
+        历史记录列表
+    """
+    try:
+        check_phone_call_enabled()
+        from database import DatabaseManager
+        
+        db = DatabaseManager()
+        history = db.get_auto_call_history_by_chat_branch(chat_branch, limit)
+        
+        return {
+            "status": "success",
+            "chat_branch": chat_branch,
+            "history": history,
+            "total": len(history)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class FingerprintHistoryRequest(BaseModel):
+    """按指纹查询历史请求"""
+    fingerprints: List[str]
+    limit: Optional[int] = 50
+
+
+@router.post("/phone_call/auto/history_by_fingerprints")
+async def get_auto_call_history_by_fingerprints(req: FingerprintHistoryRequest):
+    """
+    根据指纹列表获取自动生成历史记录（支持跨分支匹配）
+    
+    Args:
+        req: 包含指纹列表和限制数量
+        
+    Returns:
+        历史记录列表
+    """
+    try:
+        check_phone_call_enabled()
+        from database import DatabaseManager
+        
+        db = DatabaseManager()
+        history = db.get_auto_call_history_by_fingerprints(req.fingerprints, req.limit)
+        
+        return {
+            "status": "success",
+            "fingerprints_count": len(req.fingerprints),
+            "history": history,
+            "total": len(history)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/phone_call/auto/latest/{char_name}")
 async def get_latest_auto_call(char_name: str):
     """
