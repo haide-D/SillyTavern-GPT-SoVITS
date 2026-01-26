@@ -1,7 +1,7 @@
 ﻿from typing import List, Dict
 from datetime import datetime
-from phone_call_utils.context_converter import ContextConverter
-from phone_call_utils.message_filter import MessageFilter
+from st_utils.context_converter import ContextConverter
+from st_utils.message_filter import MessageFilter
 
 
 class PromptBuilder:

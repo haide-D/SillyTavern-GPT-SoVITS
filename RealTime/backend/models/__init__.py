@@ -8,7 +8,10 @@ from .request_models import (
     UpdateContextRequest,
     SwitchSceneRequest,
     BuildPromptRequest,
-    ChatStreamRequest
+    ChatStreamRequest,
+    CallStartRequest,
+    CallMessageRequest,
+    CallEndRequest
 )
 
 __all__ = [
@@ -19,6 +22,9 @@ __all__ = [
     'UpdateContextRequest',
     'SwitchSceneRequest',
     'BuildPromptRequest',
-    'ChatStreamRequest'
+    'ChatStreamRequest',
+    'CallStartRequest',
+    'CallMessageRequest',
+    'CallEndRequest'
 ]
 

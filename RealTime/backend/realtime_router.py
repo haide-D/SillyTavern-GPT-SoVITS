@@ -387,3 +387,109 @@ async def check_silence():
         "triggered": False
     }
 
+
+# ===================== 通话记忆管理接口 =====================
+
+from .models import CallStartRequest, CallMessageRequest, CallEndRequest
+from .call_memory import call_memory
+
+
+@router.post("/call/start")
+async def call_start(request: CallStartRequest):
+    """
+    开始通话，收集初始上下文
+    
+    Args:
+        request.context: 初始上下文（角色、历史等）
+        request.filter_config: 过滤配置（可选）
+        
+    Returns:
+        {success, call_id, character_name}
+    """
+    try:
+        call_id = call_memory.start(
+            initial_context=request.context,
+            filter_config=request.filter_config
+        )
+        
+        session = call_memory.get_session(call_id)
+        
+        return {
+            "success": True,
+            "call_id": call_id,
+            "character_name": session.character_name if session else ""
+        }
+    except Exception as e:
+        print(f"[RealtimeRouter] ❌ 开始通话失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/call/message")
+async def call_message(request: CallMessageRequest):
+    """
+    添加通话消息
+    
+    Args:
+        request.call_id: 通话ID
+        request.role: "user" | "assistant"
+        request.content: 消息内容
+        
+    Returns:
+        {success, message_count}
+    """
+    success = call_memory.add_message(
+        call_id=request.call_id,
+        role=request.role,
+        content=request.content
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="通话不存在或已结束")
+    
+    messages = call_memory.get_messages(request.call_id)
+    
+    return {
+        "success": True,
+        "message_count": len(messages)
+    }
+
+
+@router.post("/call/end")
+async def call_end(request: CallEndRequest):
+    """
+    结束通话，返回全部记录（用于注入酒馆）
+    
+    Args:
+        request.call_id: 通话ID
+        
+    Returns:
+        完整通话记录
+    """
+    result = call_memory.end(request.call_id)
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="通话不存在")
+    
+    return {
+        "success": True,
+        **result
+    }
+
+
+@router.get("/call/status/{call_id}")
+async def call_status(call_id: str):
+    """
+    获取通话状态
+    
+    Args:
+        call_id: 通话ID
+        
+    Returns:
+        通话状态信息
+    """
+    session = call_memory.get_session(call_id)
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="通话不存在")
+    
+    return session.to_dict()

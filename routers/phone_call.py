@@ -5,7 +5,7 @@ from typing import List, Dict, Optional, Union
 from services.phone_call_service import PhoneCallService
 from services.llm_service import LLMService
 from services.emotion_service import EmotionService
-from phone_call_utils.data_extractor import DataExtractor
+from st_utils.data_extractor import DataExtractor
 from phone_call_utils.prompt_builder import PromptBuilder
 from phone_call_utils.response_parser import ResponseParser
 from config import load_json, SETTINGS_FILE

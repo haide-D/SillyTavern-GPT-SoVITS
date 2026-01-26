@@ -63,3 +63,22 @@ class ChatStreamRequest(BaseModel):
     messages: Optional[List[Dict[str, str]]] = None  # 可选：覆盖历史消息
     system_prompt: Optional[str] = None  # 可选：系统提示词
 
+
+# ==================== 通话记忆管理 ====================
+
+class CallStartRequest(BaseModel):
+    """开始通话请求"""
+    context: Dict[str, Any]  # 初始上下文（角色、历史等）
+    filter_config: Optional[Dict[str, Any]] = None  # 过滤配置
+
+
+class CallMessageRequest(BaseModel):
+    """添加通话消息请求"""
+    call_id: str
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class CallEndRequest(BaseModel):
+    """结束通话请求"""
+    call_id: str

@@ -4,7 +4,7 @@ from typing import List, Dict
 from config import load_json, SETTINGS_FILE, get_current_dirs, get_sovits_host
 from services.llm_service import LLMService
 from services.emotion_service import EmotionService
-from phone_call_utils.data_extractor import DataExtractor
+from st_utils.data_extractor import DataExtractor
 from phone_call_utils.prompt_builder import PromptBuilder
 from phone_call_utils.response_parser import ResponseParser, EmotionSegment
 from phone_call_utils.tts_service import TTSService
