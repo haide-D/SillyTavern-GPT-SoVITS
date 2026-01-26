@@ -15,7 +15,7 @@ class PromptBuilder:
     }
     
     # 默认 JSON 格式 Prompt 模板
-    DEFAULT_JSON_TEMPLATE = """You are an AI assistant helping to determine which character should make a phone call based on the conversation context.必须模仿电话的这种形式，电话内容必须合理且贴切，必须要有一件或者多个电话主题，围绕这个主题展开电话内容。
+    DEFAULT_JSON_TEMPLATE = """You are an AI assistant helping to determine which character should make a phone call based on the conversation context.必须模仿电话的这种形式，电话内容必须合理且贴切，必须要有一件或者多个电话主题，围绕这个主题展开电话内容。不可以脱离当前的场景。
 
 **Available Speakers and Their Emotions:**
 {{speakers_emotions}}
@@ -47,9 +47,9 @@ class PromptBuilder:
 ```
 
 **Field Requirements**:
-- **speaker**: MUST be one of the available speakers listed above ({{speakers}})
+- **speaker**: MUST be one of the available speakers listed above ({{speakers}})可以优先选择跟{{user_name}}关系最接近来作为speaker,或者当前刚离场的人物，注意区分当前说话人知道哪些事情，不知道哪些事情。
 - **emotion**: must be one of the emotions available for the selected speaker，注意情绪要符合这次的电话主题，可以使用一种情绪，或者几种情绪的组合。但是千万不能为了符合情绪而改变说话内容。情绪是为内容服务的，宁愿情绪少，也不能硬凑情绪。
-- **text**: what to say in {{lang_display}},必须{{lang_display}}说话内容, make it natural and emotional，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。
+- **text**: what to say in {{lang_display}},必须{{lang_display}}说话内容, make it natural and emotional，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。电话内容必须是当前场景下的事情，不能让打电话人突然脱离场景。
   * Use multiple short segments instead of one long segment
 - **pause_after**: pause duration after this segment (0.2-0.8 seconds, null for default 0.3s)
   * Use longer pauses (0.7-0.8s) for major emotion transitions
@@ -78,7 +78,8 @@ class PromptBuilder:
         speakers_emotions: Dict[str, List[str]] = None,  # 新增: 说话人情绪映射
         text_lang: str = "zh",  # 新增: 文本语言配置
         extract_tag: str = "",  # 新增: 消息提取标签
-        filter_tags: str = ""  # 新增: 消息过滤标签
+        filter_tags: str = "",  # 新增: 消息过滤标签
+        user_name: str = None  # 新增: 用户名，用于区分用户身份
     ) -> str:
         """
         构建LLM提示词
@@ -126,14 +127,15 @@ class PromptBuilder:
         formatted_context = PromptBuilder._format_context(
             limited_context, 
             extract_tag=extract_tag, 
-            filter_tags=filter_tags
+            filter_tags=filter_tags,
+            user_name=user_name  # 传递用户名用于替换 "User"
         )
         formatted_data = PromptBuilder._format_extracted_data(extracted_data)
         formatted_emotions = ", ".join(emotions)
         
-        # 新增: 格式化说话人和情绪信息
-        formatted_speakers = PromptBuilder._format_speakers_emotions(speakers, speakers_emotions)
-        speakers_list = ", ".join(speakers)
+        # 新增: 格式化说话人和情绪信息（排除用户）
+        formatted_speakers = PromptBuilder._format_speakers_emotions(speakers, speakers_emotions, user_name)
+        speakers_list = ", ".join([s for s in speakers if s != user_name])  # 说话人列表中排除用户
         
         # 内置变量
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -168,19 +170,23 @@ class PromptBuilder:
         return prompt
     
     @staticmethod
-    def _format_speakers_emotions(speakers: List[str], speakers_emotions: Dict[str, List[str]]) -> str:
+    def _format_speakers_emotions(speakers: List[str], speakers_emotions: Dict[str, List[str]], user_name: str = None) -> str:
         """
         格式化说话人和情绪信息
         
         Args:
             speakers: 说话人列表
             speakers_emotions: 说话人情绪映射
+            user_name: 用户名，用于排除
             
         Returns:
             格式化的字符串
         """
         lines = []
         for speaker in speakers:
+            # 排除用户，用户不需要打电话
+            if user_name and speaker == user_name:
+                continue
             emotions = speakers_emotions.get(speaker, [])
             emotions_str = ", ".join(emotions) if emotions else "无可用情绪"
             lines.append(f"- {speaker}: [{emotions_str}]")
@@ -189,7 +195,7 @@ class PromptBuilder:
     
     
     @staticmethod
-    def _format_context(context: List[Dict], extract_tag: str = "", filter_tags: str = "") -> str:
+    def _format_context(context: List[Dict], extract_tag: str = "", filter_tags: str = "", user_name: str = None) -> str:
         """
         格式化上下文为文本
         
@@ -197,6 +203,7 @@ class PromptBuilder:
             context: 对话上下文,标准格式 [{"role": "user"|"assistant"|"system", "content": "..."}]
             extract_tag: 消息提取标签
             filter_tags: 消息过滤标签
+            user_name: 用户名，用于替换 "User" 显示
             
         Returns:
             格式化的文本
@@ -213,9 +220,9 @@ class PromptBuilder:
             if content:
                 content = MessageFilter.extract_and_filter(content, extract_tag, filter_tags)
             
-            # 使用英文标签和 emoji
+            # 使用英文标签和 emoji，如果有用户名则使用用户名
             if role == 'user':
-                role_display = "👤 User"
+                role_display = f"👤 {user_name}" if user_name else "👤 User"
             elif role == 'assistant':
                 role_display = "🤖 Assistant"
             elif role == 'system':

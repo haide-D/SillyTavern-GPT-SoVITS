@@ -29,6 +29,34 @@
     return models;
 }
 
+/**
+ * 判断是否为网络错误（可重试）
+ */
+function isNetworkError(error) {
+    const networkErrorPatterns = [
+        'Failed to fetch',
+        'NetworkError',
+        'ERR_CONNECTION_RESET',
+        'ERR_CONNECTION_REFUSED',
+        'ERR_CONNECTION_TIMED_OUT',
+        'ERR_NETWORK',
+        'net::ERR_',
+        'ECONNRESET',
+        'ETIMEDOUT',
+        'ENOTFOUND'
+    ];
+
+    const errorMessage = error.message || error.toString();
+    return networkErrorPatterns.some(pattern => errorMessage.includes(pattern));
+}
+
+/**
+ * 延迟函数
+ */
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function callLLM(config) {
     let llmUrl = config.api_url.trim();
 
@@ -47,22 +75,45 @@ async function callLLM(config) {
         requestBody.max_tokens = config.max_tokens;
     }
 
-    const response = await fetch(llmUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.api_key}`
-        },
-        body: JSON.stringify(requestBody)
-    });
+    const MAX_RETRIES = 3;
+    let lastError = null;
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const response = await fetch(llmUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${config.api_key}`
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+            }
+
+            const data = await response.json();
+            return parseResponse(data);
+
+        } catch (error) {
+            lastError = error;
+
+            // 只有网络错误才重试
+            if (isNetworkError(error) && attempt < MAX_RETRIES) {
+                console.warn(`[LLM_Client] ⚠️ 网络错误,第 ${attempt}/${MAX_RETRIES} 次重试... (${error.message})`);
+                await delay(1000 * attempt);  // 递增延迟: 1s, 2s, 3s
+                continue;
+            }
+
+            // 非网络错误或已用尽重试次数,直接抛出
+            throw error;
+        }
     }
 
-    const data = await response.json();
-    return parseResponse(data);
+    // 理论上不会到这里,但以防万一
+    throw lastError;
 }
 
 function parseResponse(data) {

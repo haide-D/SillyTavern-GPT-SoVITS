@@ -63,6 +63,12 @@ export const TTS_Scheduler = {
         const charName = $btn.data('voice-name');
         const text = $btn.data('text');
         const key = this.getTaskKey(charName, text);
+
+        // 【修复】规范化情绪参数：空字符串、null、undefined 统一转为 'default'
+        const rawEmotion = $btn.data('voice-emotion');
+        const normalizedEmotion = (rawEmotion && rawEmotion.trim() !== '') ? rawEmotion : 'default';
+
+        // 一级缓存
         if (CACHE.audioMemory[key]) {
             $btn.data('audio-url', CACHE.audioMemory[key]);
             this.updateStatus($btn, 'ready');
@@ -75,7 +81,7 @@ export const TTS_Scheduler = {
 
         this.updateStatus($btn, 'queued');
         CACHE.pendingTasks.add(key);
-        this.queue.push({ charName, emotion: $btn.data('voice-emotion'), text, key, $btn });
+        this.queue.push({ charName, emotion: normalizedEmotion, text, key, $btn });
     },
 
     async run() {
@@ -279,5 +285,3 @@ export const TTS_Scheduler = {
         console.log("✅[Scheduler] 调度器已加载");
     }
 };
-
-

@@ -62,6 +62,12 @@ class DatabaseManager:
             )
         ''')
         
+        # 创建 context_fingerprint 索引以提高查询效率
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_auto_calls_fingerprint 
+            ON auto_phone_calls(context_fingerprint)
+        ''')
+        
         # 数据库迁移:为现有表添加 audio_url 字段(如果不存在)
         try:
             cursor.execute("SELECT audio_url FROM auto_phone_calls LIMIT 1")
@@ -406,6 +412,67 @@ class DatabaseManager:
             except:
                 d["segments"] = []
         return d
+    
+    def get_auto_call_history_by_chat_branch(self, chat_branch: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        根据对话分支获取自动电话历史记录
+        
+        Args:
+            chat_branch: 对话分支ID
+            limit: 返回记录数量限制
+            
+        Returns:
+            记录列表,按创建时间倒序
+        """
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT * FROM auto_phone_calls 
+                WHERE chat_branch = ? 
+                ORDER BY created_at DESC 
+                LIMIT ?
+            ''', (chat_branch, limit))
+            rows = cursor.fetchall()
+            return [self._auto_call_row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
+    
+    def get_auto_call_history_by_fingerprints(self, fingerprints: List[str], limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        根据指纹列表获取自动电话历史记录（支持跨分支匹配）
+        
+        Args:
+            fingerprints: 上下文指纹列表
+            limit: 返回记录数量限制
+            
+        Returns:
+            记录列表,按创建时间倒序
+        """
+        if not fingerprints:
+            return []
+        
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            # 使用 IN 查询，利用索引
+            placeholders = ','.join('?' * len(fingerprints))
+            query = f'''
+                SELECT * FROM auto_phone_calls 
+                WHERE context_fingerprint IN ({placeholders})
+                AND status = 'completed'
+                ORDER BY created_at DESC 
+                LIMIT ?
+            '''
+            cursor.execute(query, fingerprints + [limit])
+            rows = cursor.fetchall()
+            return [self._auto_call_row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
     
     # ==================== 对话说话人管理相关方法 ====================
     

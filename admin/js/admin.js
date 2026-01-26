@@ -570,6 +570,7 @@ async function loadSettings() {
 
         modelSelect.value = savedModel;
         document.getElementById('setting-llm-temperature').value = llm.temperature || 0.8;
+        document.getElementById('setting-llm-max-tokens').value = llm.max_tokens || 5000;
 
         // TTS 配置
         const tts = settings.phone_call?.tts_config || {};
@@ -608,7 +609,8 @@ async function saveSettings() {
                 api_url: document.getElementById('setting-llm-api-url').value.trim(),
                 api_key: document.getElementById('setting-llm-api-key').value.trim(),
                 model: document.getElementById('setting-llm-model').value.trim(),
-                temperature: parseFloat(document.getElementById('setting-llm-temperature').value) || 0.8
+                temperature: parseFloat(document.getElementById('setting-llm-temperature').value) || 0.8,
+                max_tokens: parseInt(document.getElementById('setting-llm-max-tokens').value) || 5000
             },
             tts_config: {
                 text_lang: document.getElementById('setting-tts-text-lang').value,

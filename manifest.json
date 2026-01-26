@@ -1,7 +1,7 @@
 {
     "name": "GPT-SoVITS Connector",
     "display_name": "GPT-SoVITS TTS Support",
-    "version": "1.4.0",
+    "version": "1.4.7",
     "author": "haide-D",
     "description": "Adds deep integration for GPT-SoVITS with voice bubbles, auto-switching models, and audio caching.",
     "loading_location": "before_body",

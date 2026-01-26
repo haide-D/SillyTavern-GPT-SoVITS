@@ -64,36 +64,31 @@ export async function render(container, createNavbar) {
     `);
     container.append($content);
 
-    // 获取当前角色名
-    let charName = "";
+    // 获取当前对话的所有指纹
+    let fingerprints = [];
     try {
-        if (window.SillyTavern && window.SillyTavern.getContext) {
-            const ctx = window.SillyTavern.getContext();
-            if (ctx.characters && ctx.characterId !== undefined) {
-                const charObj = ctx.characters[ctx.characterId];
-                if (charObj && charObj.name) {
-                    charName = charObj.name;
-                }
-            }
+        if (window.TTS_Utils && window.TTS_Utils.getCurrentContextFingerprints) {
+            fingerprints = window.TTS_Utils.getCurrentContextFingerprints();
+            console.log('[Mobile] 获取到指纹数量:', fingerprints.length);
         }
     } catch (e) {
-        console.error('[Mobile] 获取角色名失败:', e);
+        console.error('[Mobile] 获取指纹失败:', e);
     }
 
-    if (!charName) {
+    if (!fingerprints || fingerprints.length === 0) {
         $content.html(`
             <div style="text-align:center; padding:40px 20px; color:#888;">
                 <div style="font-size:24px; margin-bottom:10px;">⚠️</div>
-                <div>未检测到角色</div>
+                <div>未检测到对话</div>
             </div>
         `);
         return;
     }
 
-    // 获取历史记录
+    // 获取历史记录 (按指纹列表查询，支持跨分支匹配)
     try {
-        console.log('[Mobile] 获取来电历史:', charName);
-        const result = await window.TTS_API.getAutoCallHistory(charName, 20);
+        console.log('[Mobile] 获取来电历史 (by fingerprints):', fingerprints.length, '条指纹');
+        const result = await window.TTS_API.getAutoCallHistoryByFingerprints(fingerprints, 500);
 
         if (result.status !== 'success' || !result.history || result.history.length === 0) {
             $content.html(`

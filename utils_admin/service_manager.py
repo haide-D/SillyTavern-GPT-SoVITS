@@ -24,7 +24,8 @@ class ServiceManager:
     def check_sovits_service(host: str) -> Dict[str, Any]:
         """检查 GPT-SoVITS 服务状态"""
         try:
-            response = requests.get(f"{host}/", timeout=2)
+            # 禁用代理,避免端口重定向
+            response = requests.get(f"{host}/", timeout=2, proxies={'http': None, 'https': None})
             return {
                 "status": "running",
                 "accessible": True,

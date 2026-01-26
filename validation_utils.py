@@ -83,8 +83,8 @@ def check_sovits_connection(sovits_host: str, timeout: int = 3) -> None:
         HTTPException: 服务不可达时抛出 503 错误
     """
     try:
-        # 尝试访问健康检查端点或根路径
-        response = requests.get(f"{sovits_host}/", timeout=timeout)
+        # 尝试访问健康检查端点或根路径,禁用代理避免端口重定向
+        response = requests.get(f"{sovits_host}/", timeout=timeout, proxies={'http': None, 'https': None})
         # 只要能连接上就算成功,不严格要求 200 状态码
         if response.status_code >= 500:
             raise HTTPException(

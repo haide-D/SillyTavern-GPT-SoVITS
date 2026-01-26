@@ -71,7 +71,7 @@ def init_settings():
                 "api_key": "",  # 用户自定义
                 "model": "gemini-2.5-flash",
                 "temperature": 0.8,
-                "max_tokens": 500
+                "max_tokens": 5000
             },
             "data_extractors": [
                 {
@@ -108,7 +108,7 @@ def init_settings():
             }
         }
         dirty = True
-    
+
     # 确保 phone_call 配置包含所有必需字段(向后兼容)
     phone_call = settings.get("phone_call", {})
     if "extract_tag" not in phone_call:

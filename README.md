@@ -2,6 +2,8 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue) ![Python](https://img.shields.io/badge/python-3.8+-yellow) ![SillyTavern](https://img.shields.io/badge/SillyTavern-Extension-purple)
 
+赞助我，支持插件继续开发更多功能：https://afdian.com/a/2742159495abc
+
 这是一个为 **SillyTavern (酒馆)** 量身打造的 **GPT-SoVITS** 深度集成插件。
 
 它不仅仅是一个简单的 TTS 连接器，它包含一个 Python 后端管理器和一个前端 JS 插件，提供了模型自动切换、音频缓存、以及**多达 12 种不同风格**的沉浸式语音气泡体验。
@@ -86,6 +88,7 @@
 * **SQLite 数据库**:收藏的语音数据使用 SQLite 进行持久化存储,确保数据安全可靠。
 * **指纹机制**:基于消息 ID 和内容哈希生成唯一指纹 (`m{mesid}_{content_hash}`),精准匹配和管理语音数据。
 * **Iframe 兼容**:通过 `window.SillyTavern.getContext().chat` API 获取消息数据,完美支持美化卡的 Iframe 环境。
+
 
 ---
 

@@ -57,7 +57,13 @@ def proxy_set_gpt_weights(weights_path: str):
     # 2. 尝试连接服务并切换权重
     try:
         url = f"{get_sovits_host()}/set_gpt_weights"
-        resp = requests.get(url, params={"weights_path": weights_path}, timeout=10)
+        # 禁用代理,避免端口重定向;增加超时到 120 秒,权重加载可能需要较长时间
+        resp = requests.get(
+            url, 
+            params={"weights_path": weights_path}, 
+            timeout=120,
+            proxies={'http': None, 'https': None}
+        )
         
         if resp.status_code != 200:
             raise HTTPException(
@@ -97,7 +103,13 @@ def proxy_set_sovits_weights(weights_path: str):
     # 2. 尝试连接服务并切换权重
     try:
         url = f"{get_sovits_host()}/set_sovits_weights"
-        resp = requests.get(url, params={"weights_path": weights_path}, timeout=10)
+        # 禁用代理,避免端口重定向;增加超时到 120 秒,权重加载可能需要较长时间
+        resp = requests.get(
+            url, 
+            params={"weights_path": weights_path}, 
+            timeout=120,
+            proxies={'http': None, 'https': None}
+        )
         
         if resp.status_code != 200:
             raise HTTPException(
@@ -211,8 +223,13 @@ def tts_proxy(
         }
 
         try:
-            # 去掉 stream=True，增加超时时间
-            r = requests.get(url, params=params, timeout=120)
+            # 去掉 stream=True，增加超时时间,禁用代理
+            r = requests.get(
+                url, 
+                params=params, 
+                timeout=120,
+                proxies={'http': None, 'https': None}
+            )
         except requests.exceptions.RequestException:
             raise HTTPException(status_code=503, detail="无法连接到 SoVITS 服务，请检查 9880 端口")
 

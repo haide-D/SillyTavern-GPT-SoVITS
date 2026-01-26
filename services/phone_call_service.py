@@ -24,7 +24,7 @@ class PhoneCallService:
         self.tts_service = TTSService(get_sovits_host())
         self.audio_merger = AudioMerger()
     
-    async def generate(self, chat_branch: str, speakers: List[str], context: List[Dict], generate_audio: bool = True) -> Dict:
+    async def generate(self, chat_branch: str, speakers: List[str], context: List[Dict], generate_audio: bool = True, user_name: str = None) -> Dict:
         """
         生成主动电话内容
         
@@ -51,6 +51,7 @@ class PhoneCallService:
             speakers: 说话人列表
             context: 对话上下文
             generate_audio: 是否生成音频(默认True)
+            user_name: 用户名，用于在prompt中区分用户身份
             
         Returns:
             包含prompt、llm_config的字典 (不包含segments,需要前端调用LLM后再处理)
@@ -74,12 +75,25 @@ class PhoneCallService:
         # 2. 提取上下文数据
         extracted_data = self.data_extractor.extract(context, extractors)
         
-        # 3. 获取所有说话人的可用情绪
+        # 3. 获取所有说话人的可用情绪 (跳过未绑定模型的角色)
         speakers_emotions = {}
+        valid_speakers = []
         for speaker in speakers:
-            emotions = self.emotion_service.get_available_emotions(speaker)
-            speakers_emotions[speaker] = emotions
-            print(f"[PhoneCallService] {speaker} 可用情绪: {emotions}")
+            try:
+                emotions = self.emotion_service.get_available_emotions(speaker)
+                speakers_emotions[speaker] = emotions
+                valid_speakers.append(speaker)
+                print(f"[PhoneCallService] {speaker} 可用情绪: {emotions}")
+            except Exception as e:
+                print(f"[PhoneCallService] ⚠️ 跳过角色 {speaker}: {e}")
+        
+        # 如果所有角色都未绑定，终止
+        if not valid_speakers:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="所有角色都未绑定模型，无法生成电话")
+        
+        # 更新speakers为有效的说话人列表
+        speakers = valid_speakers
         
         # 4. 构建提示词 (包含说话人和情绪信息)
         prompt = self.prompt_builder.build(
@@ -92,7 +106,8 @@ class PhoneCallService:
             speakers_emotions=speakers_emotions,  # 新增: 传递说话人情绪映射
             text_lang=text_lang,  # 新增: 传递语言配置
             extract_tag=extract_tag,  # 新增: 传递提取标签
-            filter_tags=filter_tags  # 新增: 传递过滤标签
+            filter_tags=filter_tags,  # 新增: 传递过滤标签
+            user_name=user_name  # 新增: 传递用户名
         )
         
         print(f"[PhoneCallService] ✅ Prompt构建完成: {len(prompt)} 字符")

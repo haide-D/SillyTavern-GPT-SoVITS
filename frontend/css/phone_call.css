@@ -40,23 +40,41 @@
     }
 }
 
-/* 来电图标 */
+/* 来电头像 */
 .call-icon {
-    font-size: 80px;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
     margin-bottom: 30px;
-    animation: ring-animation 1s ease-in-out infinite;
+    animation: avatar-ring 2s ease-in-out infinite;
     z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 0 8px 32px rgba(102, 126, 234, 0.6);
+    overflow: hidden;
 }
 
-@keyframes ring-animation {
+.call-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+@keyframes avatar-ring {
 
     0%,
     100% {
-        transform: rotate(-15deg);
+        transform: scale(1);
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.6);
     }
 
     50% {
-        transform: rotate(15deg);
+        transform: scale(1.08);
+        box-shadow: 0 12px 48px rgba(102, 126, 234, 0.9), 0 0 0 15px rgba(102, 126, 234, 0.2);
     }
 }
 
@@ -196,6 +214,14 @@
     margin: 0 auto 20px;
     box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
     animation: avatar-pulse 2s ease-in-out infinite;
+    overflow: hidden;
+}
+
+.call-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
 }
 
 @keyframes avatar-pulse {

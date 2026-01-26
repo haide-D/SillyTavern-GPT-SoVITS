@@ -261,5 +261,27 @@ export const TTS_API = {
         const res = await fetch(this._url(`/api/phone_call/auto/history/${encodeURIComponent(charName)}?limit=${limit}`));
         if (!res.ok) throw new Error("Get auto call history failed");
         return await res.json();
+    },
+
+    /**
+     * 根据对话分支获取来电历史记录
+     */
+    async getAutoCallHistoryByChatBranch(chatBranch, limit = 50) {
+        const res = await fetch(this._url(`/api/phone_call/auto/history_by_branch/${encodeURIComponent(chatBranch)}?limit=${limit}`));
+        if (!res.ok) throw new Error("Get auto call history by branch failed");
+        return await res.json();
+    },
+
+    /**
+     * 根据指纹列表获取来电历史记录（支持跨分支匹配）
+     */
+    async getAutoCallHistoryByFingerprints(fingerprints, limit = 50) {
+        const res = await fetch(this._url('/api/phone_call/auto/history_by_fingerprints'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fingerprints, limit })
+        });
+        if (!res.ok) throw new Error("Get auto call history by fingerprints failed");
+        return await res.json();
     }
 };
