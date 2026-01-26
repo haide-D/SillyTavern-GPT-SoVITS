@@ -111,6 +111,7 @@ function initPlugin() {
     // 强制加载 CSS (修复版)
     const mobileCssUrl = `${MANAGER_API}/static/css/mobile.css?t=${new Date().getTime()}`;
     const phoneCallCssUrl = `${MANAGER_API}/static/css/phone_call.css?t=${new Date().getTime()}`;
+    const mobileAppsCssUrl = `${MANAGER_API}/static/css/mobile_apps.css?t=${new Date().getTime()}`;
 
     // 加载 mobile.css
     fetch(mobileCssUrl)
@@ -144,6 +145,20 @@ function initPlugin() {
         })
         .catch(err => {
             console.error("❌ [TTS] 通话界面 CSS 加载失败:", err);
+        });
+
+    // 加载 mobile_apps.css (App 页面样式)
+    fetch(mobileAppsCssUrl)
+        .then(response => response.text())
+        .then(cssText => {
+            const style = document.createElement('style');
+            style.id = 'tts-mobile-apps-style';
+            style.textContent = cssText;
+            document.head.appendChild(style);
+            console.log("✅ [TTS] 手机 App 样式 CSS 已加载成功！");
+        })
+        .catch(err => {
+            console.error("❌ [TTS] 手机 App 样式 CSS 加载失败:", err);
         });
 
     // 4. 定义核心回调函数 (传给 UI 模块使用)
