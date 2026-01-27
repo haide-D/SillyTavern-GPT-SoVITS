@@ -481,6 +481,39 @@
         </div>
     </div>
 
+    <!-- 通告对话框 -->
+    <div id="notice-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog">
+            <div class="dialog-header">
+                <h3>📢 重要通知</h3>
+            </div>
+            <div class="dialog-body">
+                <div class="notice-content" style="line-height: 1.8; color: var(--text-primary);">
+                    <p>欢迎使用 SillyTavern GPT-SoVITS 管理面板！</p>
+                    <p>V1.4版本 主动电话功能已上线！</p>
+                    <p>请前往系统配置完成设置后使用：</p>
+                    <ul style="padding-left: 20px; margin: 10px 0;">
+                        <li>确认填好api与密钥</li>
+                        <li>测试连接是否正常，保存设置</li>
+                    </ul>
+                    <div
+                        style="margin-top: 15px; padding: 12px; background: rgba(0, 217, 255, 0.1); border: 1px solid rgba(0, 217, 255, 0.2); border-radius: 8px; text-align: center;">
+                        <p
+                            style="margin: 0; font-size: 1.1em; font-weight: bold; color: #00d9ff; text-shadow: 0 0 10px rgba(0, 217, 255, 0.3);">
+                            🎉 欢迎加入大本营Q群：571745067
+                        </p>
+                        <p style="margin: 5px 0 0; font-size: 0.9em; color: var(--text-secondary);">
+                            资源分享 · 版本通知 · 日常交流
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button class="btn btn-primary" onclick="closeDialog('notice-dialog')">我知道了</button>
+            </div>
+        </div>
+    </div>
+
     <script src="js/admin.js"></script>
 </body>
 

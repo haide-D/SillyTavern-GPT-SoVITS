@@ -56,67 +56,81 @@ def init_settings():
             settings[key] = val
             dirty = True
 
-    # phone_call 配置默认值
-    if "phone_call" not in settings:
-        settings["phone_call"] = {
-            "enabled": True,
-            "extract_tag": "",  # 消息提取标签,默认为空(不提取)
-            "filter_tags": "<small>, [statbar]",  # 消息过滤标签,默认过滤常见标签
-            "trigger": {
-                "type": "message_count",
-                "threshold": 5
-            },
-            "llm": {
-                "api_url": "",  # 用户自定义
-                "api_key": "",  # 用户自定义
-                "model": "gemini-2.5-flash",
-                "temperature": 0.8,
-                "max_tokens": 5000
-            },
-            "data_extractors": [
-                {
-                    "name": "summary",
-                    "pattern": "<总结>([\\s\\S]*?)</总结>",
-                    "scope": "character_only",
-                    "description": "提取角色消息中的总结内容"
-                }
-            ],
-            "response_parser": {
-                "format": "json",
-                "fallback_emotion": "default",
-                "validate_speed_range": [0.5, 2.0],
-                "validate_pause_range": [0.1, 3.0]
-            },
-            "audio_merge": {
-                "silence_between_segments": 0.5,
-                "normalize_volume": False,
-                "output_format": "wav"
-            },
-            "tts_config": {
-                "text_lang": "zh",
-                "prompt_lang": "zh",
-                "text_split_method": "cut0",
-                "use_aux_ref_audio": False
-            },
-            "auto_generation": {
-                "enabled": True,
-                "trigger_strategy": "floor_interval",
-                "floor_interval": 3,
-                "start_floor": 3,
-                "max_context_messages": 10,
-                "notification_method": "websocket"
+    # phone_call 配置 - 使用深度合并,只补充缺失字段,不覆盖用户设置
+    phone_call_defaults = {
+        "enabled": True,
+        "extract_tag": "",
+        "filter_tags": "<small>, [statbar]",
+        "trigger": {
+            "type": "message_count",
+            "threshold": 5
+        },
+        "llm": {
+            "api_url": "",
+            "api_key": "",
+            "model": "gemini-2.5-flash",
+            "temperature": 0.8,
+            "max_tokens": 5000
+        },
+        "data_extractors": [
+            {
+                "name": "summary",
+                "pattern": "<总结>([\\s\\S]*?)</总结>",
+                "scope": "character_only",
+                "description": "提取角色消息中的总结内容"
             }
+        ],
+        "response_parser": {
+            "format": "json",
+            "fallback_emotion": "default",
+            "validate_speed_range": [0.5, 2.0],
+            "validate_pause_range": [0.1, 3.0]
+        },
+        "audio_merge": {
+            "silence_between_segments": 0.5,
+            "normalize_volume": False,
+            "output_format": "wav"
+        },
+        "tts_config": {
+            "text_lang": "zh",
+            "prompt_lang": "zh",
+            "text_split_method": "cut0",
+            "use_aux_ref_audio": False
+        },
+        "auto_generation": {
+            "enabled": True,
+            "trigger_strategy": "floor_interval",
+            "floor_interval": 3,
+            "start_floor": 3,
+            "max_context_messages": 10,
+            "notification_method": "websocket"
         }
-        dirty = True
+    }
 
-    # 确保 phone_call 配置包含所有必需字段(向后兼容)
-    phone_call = settings.get("phone_call", {})
-    if "extract_tag" not in phone_call:
-        phone_call["extract_tag"] = ""
+    # 深度合并函数
+    def deep_merge(defaults: dict, user_config: dict) -> bool:
+        """深度合并配置,只补充缺失字段,返回是否有修改"""
+        modified = False
+        for key, default_val in defaults.items():
+            if key not in user_config:
+                user_config[key] = default_val
+                modified = True
+            elif isinstance(default_val, dict) and isinstance(user_config.get(key), dict):
+                # 递归合并嵌套字典
+                if deep_merge(default_val, user_config[key]):
+                    modified = True
+        return modified
+
+    # 初始化或深度合并 phone_call 配置
+    if "phone_call" not in settings:
+        settings["phone_call"] = phone_call_defaults
         dirty = True
-    if "filter_tags" not in phone_call:
-        phone_call["filter_tags"] = "<small>, [statbar]"
-        dirty = True
+    else:
+        # 深度合并,保留用户已有设置
+        if deep_merge(phone_call_defaults, settings["phone_call"]):
+            dirty = True
+
+    phone_call = settings["phone_call"]
 
     if dirty:
         save_json(SETTINGS_FILE, settings)

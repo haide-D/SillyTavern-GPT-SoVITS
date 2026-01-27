@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     bindFetchModelsButton();
     // 绑定测试 LLM 连接按钮
     bindTestConnectionButton();
+
+    // 显示通告弹窗
+    document.getElementById('notice-dialog').style.display = 'flex';
 });
 
 function switchPage(pageName) {
