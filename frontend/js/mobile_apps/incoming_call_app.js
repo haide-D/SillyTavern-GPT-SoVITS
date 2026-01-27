@@ -15,9 +15,14 @@ export async function render(container, createNavbar) {
     if (callData) {
         container.empty();
 
+        // 生成头像 HTML
+        const avatarHtml = callData.avatar_url
+            ? `<img src="${callData.avatar_url}" alt="${callData.char_name}">`
+            : '📞';
+
         const $content = $(`
             <div class="incoming-call-container">
-                <div class="call-icon">📞</div>
+                <div class="call-icon">${avatarHtml}</div>
                 <div class="caller-name">${callData.char_name}</div>
                 <div class="call-status">来电中...</div>
                 
@@ -308,7 +313,7 @@ function showInCallUI(container, callData) {
     const $inCallContent = $(`
         <div class="in-call-container">
             <div class="call-header">
-                <div class="call-avatar">👤</div>
+                <div class="call-avatar">${callData.avatar_url ? `<img src="${callData.avatar_url}" alt="${callData.char_name}">` : '👤'}</div>
                 <div class="call-name">${callData.char_name}</div>
                 <div class="call-duration">00:00</div>
             </div>
