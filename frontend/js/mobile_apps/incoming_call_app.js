@@ -297,27 +297,14 @@ export async function render(container, createNavbar) {
 }
 
 /**
- * 显示通话中界面
+ * 显示通话中界面 (新版 - Apple Music 风格字幕)
  * @param {jQuery} container - App 容器
  * @param {Object} callData - 来电数据
  */
 function showInCallUI(container, callData) {
     container.empty();
 
-    // 生成segments HTML
-    const segmentsHTML = (callData.segments || []).map((seg, index) => {
-        const displayText = seg.translation || seg.text || '';
-        const startTime = seg.start_time || 0;
-
-        return `
-            <div class="call-segment" data-index="${index}" data-start-time="${startTime}">
-                <div class="segment-emotion-tag">${seg.emotion || '默认'}</div>
-                <div class="segment-text-content">${displayText}</div>
-            </div>
-        `;
-    }).join('');
-
-    // 创建通话中界面
+    // 创建通话中界面 (新版布局)
     const $inCallContent = $(`
         <div class="in-call-container">
             <div class="call-header">
@@ -326,17 +313,20 @@ function showInCallUI(container, callData) {
                 <div class="call-duration">00:00</div>
             </div>
             
-            <!-- 对话内容区域 -->
-            <div class="call-segments-container">
-                ${segmentsHTML}
-            </div>
-
+            <!-- 音频可视化 -->
             <div class="audio-visualizer">
                 <div class="audio-bar"></div>
                 <div class="audio-bar"></div>
                 <div class="audio-bar"></div>
                 <div class="audio-bar"></div>
                 <div class="audio-bar"></div>
+            </div>
+
+            <!-- 新版字幕区域 - 底部固定 -->
+            <div class="call-subtitle-area">
+                <div class="subtitle-line">
+                    <span class="subtitle-text"></span>
+                </div>
             </div>
 
             <div class="audio-progress">
@@ -355,9 +345,60 @@ function showInCallUI(container, callData) {
 
     container.append($inCallContent);
 
+    // 字幕相关变量
+    const $subtitleLine = $inCallContent.find('.subtitle-line');
+    const $subtitleText = $inCallContent.find('.subtitle-text');
+    let currentSegmentIndex = -1;
+
+    /**
+     * 更新字幕显示 - 逐字高亮
+     * @param {number} segmentIndex - 当前句子索引
+     * @param {number} charProgress - 字符进度 (0-1)
+     */
+    function updateSubtitle(segmentIndex, charProgress) {
+        const segments = callData.segments || [];
+        if (segmentIndex < 0 || segmentIndex >= segments.length) {
+            $subtitleLine.removeClass('visible');
+            return;
+        }
+
+        const seg = segments[segmentIndex];
+        const text = seg.translation || seg.text || '';
+
+        // 切换到新句子
+        if (segmentIndex !== currentSegmentIndex) {
+            currentSegmentIndex = segmentIndex;
+
+            // 将句子拆分为单个字符
+            const chars = text.split('').map((char, i) =>
+                `<span class="subtitle-char" data-index="${i}">${char}</span>`
+            ).join('');
+
+            $subtitleText.html(chars);
+
+            // 触发显示动画
+            $subtitleLine.removeClass('visible');
+            setTimeout(() => $subtitleLine.addClass('visible'), 50);
+        }
+
+        // 更新逐字高亮
+        const totalChars = text.length;
+        const activeCharIndex = Math.floor(charProgress * totalChars);
+
+        $subtitleText.find('.subtitle-char').each(function (index) {
+            const $char = $(this);
+            $char.removeClass('passed active');
+
+            if (index < activeCharIndex) {
+                $char.addClass('passed');
+            } else if (index === activeCharIndex) {
+                $char.addClass('active');
+            }
+        });
+    }
+
     // 播放音频
     if (callData.audio_url) {
-        // 转换为完整URL
         let fullUrl = callData.audio_url;
         if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
             fullUrl = window.TTS_API.baseUrl + fullUrl;
@@ -386,46 +427,44 @@ function showInCallUI(container, callData) {
             $inCallContent.find('.total-time').text(`${mins}:${secs.toString().padStart(2, '0')}`);
         });
 
-        // 更新进度
+        // 更新进度 + 字幕同步
         audio.addEventListener('timeupdate', function () {
-            const progress = (audio.currentTime / audio.duration) * 100;
+            const currentTime = audio.currentTime;
+            const duration = audio.duration;
+
+            // 更新进度条
+            const progress = (currentTime / duration) * 100;
             $inCallContent.find('.progress-bar-fill').css('width', progress + '%');
 
-            const currentMins = Math.floor(audio.currentTime / 60);
-            const currentSecs = Math.floor(audio.currentTime % 60);
+            const currentMins = Math.floor(currentTime / 60);
+            const currentSecs = Math.floor(currentTime % 60);
             $inCallContent.find('.current-time').text(
                 `${currentMins}:${currentSecs.toString().padStart(2, '0')}`
             );
 
-            // 🎯 音轨同步 - 高亮当前segment
-            const currentTime = audio.currentTime;
-            const $segments = $inCallContent.find('.call-segment');
-
-            // 找到当前时间对应的segment
+            // 🎯 字幕同步 - 找到当前 segment 并计算字符进度
+            const segments = callData.segments || [];
             let activeIndex = -1;
-            for (let i = 0; i < (callData.segments || []).length; i++) {
-                const seg = callData.segments[i];
-                const segStartTime = seg.start_time || 0;
-                const duration = seg.audio_duration || 0;
-                const endTime = segStartTime + duration;
+            let charProgress = 0;
 
-                if (currentTime >= segStartTime && currentTime < endTime) {
+            for (let i = 0; i < segments.length; i++) {
+                const seg = segments[i];
+                const segStart = seg.start_time || 0;
+                const segDuration = seg.audio_duration || 0;
+                const segEnd = segStart + segDuration;
+
+                if (currentTime >= segStart && currentTime < segEnd) {
                     activeIndex = i;
+                    // 计算当前句子内的进度 (0-1)，添加0.5秒补偿让字幕提前
+                    const compensatedTime = currentTime + 0.5;
+                    const adjustedProgress = (compensatedTime - segStart) / segDuration;
+                    charProgress = segDuration > 0 ? Math.min(1, Math.max(0, adjustedProgress)) : 0;
                     break;
                 }
             }
 
-            // 更新高亮状态
-            $segments.each(function (index) {
-                const $seg = $(this);
-                if (index === activeIndex) {
-                    $seg.addClass('active');
-                    // 自动滚动到当前segment
-                    this.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                } else {
-                    $seg.removeClass('active');
-                }
-            });
+            // 更新字幕
+            updateSubtitle(activeIndex, charProgress);
         });
 
         // 播放音频
