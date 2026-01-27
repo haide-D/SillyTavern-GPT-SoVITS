@@ -402,14 +402,16 @@
     #tts-mobile-trigger {
         width: 40px !important;
         height: 40px !important;
-        top: 50%;
-        right: 10px;
+        top: 50% !important;
+        right: 10px !important;
         bottom: auto !important;
-        left: auto;
-        transform: translateY(-50%);
+        left: auto !important;
+        transform: translateY(-50%) !important;
         z-index: 2147483647 !important;
         display: flex !important;
         touch-action: none;
+        animation: none !important;
+        /* 禁用动画避免 transform 冲突 */
     }
 
     /* 手机外壳 */

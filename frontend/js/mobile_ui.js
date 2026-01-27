@@ -1,6 +1,11 @@
 ﻿/**
- * 手机界面核心框架
- * 负责渲染手机壳、处理拖拽交互、管理 App 路由
+ * 模拟手机 UI 核心框架 (非真实移动端)
+ * 
+ * 注意: 这是在浏览器中渲染的一个"虚拟小手机"界面，
+ *       并非针对移动设备的适配代码。该模块模拟手机外壳、
+ *       内置 App 路由、来电/通话等功能，用于桌面端的沉浸式交互体验。
+ * 
+ * 负责: 渲染手机壳、处理拖拽交互、管理 App 路由
  */
 
 // 导入 App 模块
@@ -131,6 +136,47 @@ export const TTS_Mobile = window.TTS_Mobile;
         `;
         $('body').append(html);
         renderHomeScreen();
+
+        // 🔍 调试 + 修复：检查悬浮球位置，并在手机端强制居中
+        setTimeout(() => {
+            const $trigger = $('#tts-mobile-trigger');
+            const el = $trigger[0];
+            if (el) {
+                const computed = window.getComputedStyle(el);
+                const rect = el.getBoundingClientRect();
+                const isMobile = window.matchMedia('(max-width: 768px)').matches;
+
+                console.log('🔍 [Debug] 悬浮球调试信息:');
+                console.log('  - 屏幕尺寸:', window.innerWidth, 'x', window.innerHeight);
+                console.log('  - 媒体查询 max-width:768px 匹配:', isMobile);
+                console.log('  - 计算样式 top:', computed.top);
+                console.log('  - 计算样式 right:', computed.right);
+                console.log('  - 计算样式 transform:', computed.transform);
+                console.log('  - 内联样式:', el.style.cssText || '(无)');
+                console.log('  - getBoundingClientRect:', JSON.stringify(rect));
+                console.log('  - 预期垂直中心位置:', window.innerHeight / 2);
+                console.log('  - 实际垂直中心位置:', rect.top + rect.height / 2);
+
+                // 🔧 修复：如果是手机端且位置不对，直接用JS设置
+                if (isMobile) {
+                    const expectedTop = (window.innerHeight - 40) / 2; // 40是悬浮球高度
+                    const actualCenter = rect.top + rect.height / 2;
+                    const expectedCenter = window.innerHeight / 2;
+
+                    if (Math.abs(actualCenter - expectedCenter) > 50) {
+                        console.log('🔧 [Fix] 检测到位置异常，强制修复！');
+                        console.log('  - 设置 top:', expectedTop + 'px');
+                        // 用原生 setProperty 才能覆盖 CSS 的 !important
+                        el.style.setProperty('top', expectedTop + 'px', 'important');
+                        el.style.setProperty('transform', 'none', 'important');
+                        el.style.setProperty('animation', 'none', 'important');
+                        console.log('  - 修复后内联样式:', el.style.cssText);
+                    }
+                }
+            } else {
+                console.log('🔍 [Debug] 悬浮球元素未找到!');
+            }
+        }, 500);
     }
 
     // ==================== 渲染主屏幕 ====================
@@ -224,17 +270,18 @@ export const TTS_Mobile = window.TTS_Mobile;
             const point = e.type === 'touchmove' ? e.touches[0] : e;
             const currentX = point.clientX;
             const currentY = point.clientY;
+            const el = $trigger[0];
 
             if (!hasMoved) {
                 const moveDis = Math.sqrt(Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2));
                 if (moveDis < DRAG_THRESHOLD) return;
                 hasMoved = true;
-                $trigger.css({
-                    position: 'fixed',
-                    right: 'auto',
-                    bottom: 'auto',
-                    transform: 'none'
-                });
+                // 用 setProperty 覆盖 !important
+                el.style.setProperty('position', 'fixed', 'important');
+                el.style.setProperty('right', 'auto', 'important');
+                el.style.setProperty('bottom', 'auto', 'important');
+                el.style.setProperty('transform', 'none', 'important');
+                el.style.setProperty('animation', 'none', 'important');
             }
 
             let newLeft = currentX - shiftX;
@@ -243,10 +290,9 @@ export const TTS_Mobile = window.TTS_Mobile;
             newLeft = Math.max(0, Math.min(winW - 60, newLeft));
             newTop = Math.max(0, Math.min(winH - 60, newTop));
 
-            $trigger.css({
-                left: newLeft + 'px',
-                top: newTop + 'px'
-            });
+            // 用 setProperty 覆盖 !important
+            el.style.setProperty('left', newLeft + 'px', 'important');
+            el.style.setProperty('top', newTop + 'px', 'important');
         }
 
         function onUp(e) {
@@ -265,10 +311,19 @@ export const TTS_Mobile = window.TTS_Mobile;
         }
 
         function snapToEdge() {
-            const rect = $trigger[0].getBoundingClientRect();
+            const el = $trigger[0];
+            const rect = el.getBoundingClientRect();
             const midX = winW / 2;
-            const targetLeft = (rect.left + 30 < midX) ? 10 : (winW - 70);
-            $trigger.animate({ left: targetLeft }, 200);
+            const targetLeft = (rect.left + 30 < midX) ? 10 : (winW - 50);
+
+            // 用 setProperty 覆盖 !important，并用 CSS transition 做动画
+            el.style.setProperty('transition', 'left 0.2s ease', 'important');
+            el.style.setProperty('left', targetLeft + 'px', 'important');
+
+            // 动画结束后移除 transition
+            setTimeout(() => {
+                el.style.removeProperty('transition');
+            }, 200);
         }
 
         // 电源键关闭
