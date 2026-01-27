@@ -486,6 +486,10 @@ export const AutoPhoneCallListener = {
 
             // 移动版悬浮球
             if ($mobileTrigger.length) {
+                // 🔧 修复：移除拖动时可能残留的内联样式，确保来电动画正常
+                // 来电震动动画使用 animation + transform，必须移除这两个内联样式
+                $mobileTrigger[0].style.removeProperty('animation');
+                $mobileTrigger[0].style.removeProperty('transform');
                 $mobileTrigger.addClass('incoming-call');
                 $mobileTrigger.attr('title', `${char_name} 来电中...`);
                 console.log('[AutoPhoneCallListener] ✅ 移动版悬浮球震动已触发,当前class:', $mobileTrigger.attr('class'));
