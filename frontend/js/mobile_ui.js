@@ -320,9 +320,12 @@ export const TTS_Mobile = window.TTS_Mobile;
             el.style.setProperty('transition', 'left 0.2s ease', 'important');
             el.style.setProperty('left', targetLeft + 'px', 'important');
 
-            // 动画结束后移除 transition
+            // 动画结束后移除 transition、animation 和 transform 限制
             setTimeout(() => {
                 el.style.removeProperty('transition');
+                // 🔧 修复：移除拖动时强制设置的样式，恢复来电震动动画
+                el.style.removeProperty('animation');
+                el.style.removeProperty('transform');
             }, 200);
         }
 

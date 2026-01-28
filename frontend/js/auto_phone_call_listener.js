@@ -455,13 +455,33 @@ export const AutoPhoneCallListener = {
             console.log('  - 原始 audio_url:', audio_url);
             console.log('  - 完整 URL:', fullAudioUrl);
 
+            // 🖼️ 获取角色头像 URL
+            let avatarUrl = null;
+            try {
+                const context = window.SillyTavern?.getContext?.();
+                if (context) {
+                    const { characters, characterId } = context;
+                    // 优先按角色名查找，再按 characterId 查找
+                    const char = characters?.find(c => c.name === char_name) ||
+                        characters?.find(c => c.avatar === characterId);
+                    if (char?.avatar) {
+                        // SillyTavern 角色头像路径格式: /characters/{avatar}
+                        avatarUrl = `/characters/${char.avatar}`;
+                        console.log('[AutoPhoneCallListener] 🖼️ 头像 URL:', avatarUrl);
+                    }
+                }
+            } catch (e) {
+                console.warn('[AutoPhoneCallListener] ⚠️ 获取头像失败:', e);
+            }
+
             // 存储来电数据
             window.TTS_IncomingCall = {
                 call_id,
                 char_name,
                 segments,
                 audio_path,
-                audio_url: fullAudioUrl  // 使用完整 URL
+                audio_url: fullAudioUrl,  // 使用完整 URL
+                avatar_url: avatarUrl     // 角色头像
             };
 
             console.log('[AutoPhoneCallListener] ✅ 来电数据已存储到 window.TTS_IncomingCall:', window.TTS_IncomingCall);
@@ -486,6 +506,10 @@ export const AutoPhoneCallListener = {
 
             // 移动版悬浮球
             if ($mobileTrigger.length) {
+                // 🔧 修复：移除拖动时可能残留的内联样式，确保来电动画正常
+                // 来电震动动画使用 animation + transform，必须移除这两个内联样式
+                $mobileTrigger[0].style.removeProperty('animation');
+                $mobileTrigger[0].style.removeProperty('transform');
                 $mobileTrigger.addClass('incoming-call');
                 $mobileTrigger.attr('title', `${char_name} 来电中...`);
                 console.log('[AutoPhoneCallListener] ✅ 移动版悬浮球震动已触发,当前class:', $mobileTrigger.attr('class'));
