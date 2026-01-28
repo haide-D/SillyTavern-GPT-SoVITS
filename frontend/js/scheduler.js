@@ -34,7 +34,7 @@ export const TTS_Scheduler = {
         }
 
         if (missing.length > 0) {
-            alert(`模型 "${modelName}" 缺失: ${missing.join(', ')}`);
+            window.TTS_Utils.showNotification(`模型 "${modelName}" 缺失: ${missing.join(', ')}`, 'error');
             return false;
         }
         return true;
@@ -152,7 +152,7 @@ export const TTS_Scheduler = {
                 } catch (e) {
                     console.error("模型切换或生成失败:", e);
                     const errorMsg = e.message || "未知错误";
-                    alert(`❌ 模型切换失败: ${errorMsg}`);
+                    window.TTS_Utils.showNotification(`❌ 模型切换失败: ${errorMsg}`, 'error');
                     tasksToGenerate.forEach(t => {
                         this.updateStatus(t.$btn, 'error');
                         CACHE.pendingTasks.delete(t.key);
@@ -252,7 +252,7 @@ export const TTS_Scheduler = {
             console.error("生成失败:", e);
             // 显示详细错误信息给用户
             const errorMsg = e.message || "未知错误";
-            alert(`❌ TTS 生成失败: ${errorMsg}`);
+            window.TTS_Utils.showNotification(`❌ TTS 生成失败: ${errorMsg}`, 'error');
             this.updateStatus($btn, 'error');
             CACHE.pendingTasks.delete(key);
         }

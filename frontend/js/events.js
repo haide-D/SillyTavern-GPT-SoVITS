@@ -326,7 +326,7 @@ export const TTS_Events = {
                     URL.revokeObjectURL(downloadUrl);
                 }, 100);
 
-                alert("✅ 下载成功: " + filename);
+                window.TTS_Utils.showNotification("✅ 下载成功: " + filename, "success");
             } catch (e) {
                 console.error("下载失败:", e);
                 alert("❌下载失败: " + e.message);
@@ -341,7 +341,7 @@ export const TTS_Events = {
                 a.click();
                 document.body.removeChild(a);
 
-                alert("✅ 下载成功: " + filename);
+                window.TTS_Utils.showNotification("✅ 下载成功: " + filename, "success");
             } catch (e) {
                 console.error("下载失败:", e);
                 alert("❌下载失败: " + e.message);
@@ -466,7 +466,7 @@ export const TTS_Events = {
 
             try {
                 await window.TTS_API.addFavorite(favItem);
-                alert("✅ 已收藏到分支: " + branchId);
+                window.TTS_Utils.showNotification("✅ 已收藏到分支: " + branchId, "success");
             } catch (e) {
                 console.error(e);
                 alert("收藏失败: " + e.message);

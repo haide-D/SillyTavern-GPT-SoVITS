@@ -37,16 +37,100 @@ export async function loadGlobalCSS(url, afterLoadCallback) {
     }
 }
 
-// 3. 通知提示
+// 3. 通知提示 (优化版：支持手机端可靠关闭)
+let notificationTimer = null;
+
 export function showNotification(msg, type = 'error') {
+    // 清除之前的定时器，避免多个通知冲突
+    if (notificationTimer) {
+        clearTimeout(notificationTimer);
+        notificationTimer = null;
+    }
+
     let $bar = $('#tts-notification-bar');
     if ($bar.length === 0) {
-        $('body').append(`<div id="tts-notification-bar"></div>`);
+        $('body').append(`
+            <div id="tts-notification-bar">
+                <span class="tts-notif-msg"></span>
+                <span class="tts-notif-close">✕</span>
+            </div>
+        `);
         $bar = $('#tts-notification-bar');
+
+        // 添加样式（如果尚未添加）
+        if ($('#tts-notif-style').length === 0) {
+            $('head').append(`
+                <style id="tts-notif-style">
+                    #tts-notification-bar {
+                        position: fixed;
+                        top: 20px;
+                        left: 50%;
+                        transform: translateX(-50%) translateY(-100px);
+                        padding: 12px 40px 12px 16px;
+                        border-radius: 8px;
+                        color: white;
+                        font-size: 14px;
+                        z-index: 99999;
+                        opacity: 0;
+                        transition: transform 0.3s ease, opacity 0.3s ease;
+                        cursor: pointer;
+                        max-width: 90%;
+                        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    #tts-notification-bar.show {
+                        transform: translateX(-50%) translateY(0);
+                        opacity: 1;
+                    }
+                    #tts-notification-bar .tts-notif-close {
+                        position: absolute;
+                        right: 12px;
+                        top: 50%;
+                        transform: translateY(-50%);
+                        font-size: 16px;
+                        opacity: 0.7;
+                        cursor: pointer;
+                        padding: 4px;
+                    }
+                    #tts-notification-bar .tts-notif-close:hover {
+                        opacity: 1;
+                    }
+                </style>
+            `);
+        }
+
+        // 点击通知栏任意位置关闭
+        $bar.on('click', function () {
+            hideNotification();
+        });
     }
-    const bgColor = type === 'error' ? '#d32f2f' : '#43a047';
-    $bar.text(msg).css('background', bgColor).addClass('show');
-    setTimeout(() => { $bar.removeClass('show'); }, 4000);
+
+    const bgColor = type === 'error' ? '#d32f2f' : (type === 'success' ? '#43a047' : '#1976d2');
+    $bar.find('.tts-notif-msg').text(msg);
+    $bar.css('background', bgColor);
+
+    // 使用 requestAnimationFrame 确保样式应用后再添加动画类
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            $bar.addClass('show');
+        });
+    });
+
+    // 4秒后自动关闭
+    notificationTimer = setTimeout(() => {
+        hideNotification();
+    }, 4000);
+}
+
+function hideNotification() {
+    if (notificationTimer) {
+        clearTimeout(notificationTimer);
+        notificationTimer = null;
+    }
+    const $bar = $('#tts-notification-bar');
+    $bar.removeClass('show');
 }
 
 // 4. 拖拽逻辑
