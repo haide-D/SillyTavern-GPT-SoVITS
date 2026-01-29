@@ -115,6 +115,9 @@ async def health():
 
 # ===================== 流式对话接口 =====================
 
+from .session_manager import session_manager
+
+
 @router.post("/chat_stream")
 async def chat_stream(request: ChatStreamRequest):
     """
@@ -138,14 +141,14 @@ async def chat_stream(request: ChatStreamRequest):
         full_response = ""
         text_buffer = ""
         
-        # 构建消息列表
-        messages = request.messages or []
-        if request.system_prompt:
-            messages = [{"role": "system", "content": request.system_prompt}] + messages
-        elif not any(m.get("role") == "system" for m in messages):
-            messages = [{"role": "system", "content": "你是一个友好的对话助手。请保持回复简洁，适合语音朗读。"}] + messages
+        # 使用 session_manager 构建消息（集成 prompt 模块和酒馆历史上下文）
+        messages = session_manager.build_messages(
+            user_input=request.user_input,
+            event_type=None
+        )
         
-        messages.append({"role": "user", "content": request.user_input})
+        print(f"[RealtimeRouter] 📝 使用 prompt 模块构建消息: {len(messages)} 条")
+
         
         try:
             # 流式调用 LLM
@@ -493,3 +496,93 @@ async def call_status(call_id: str):
         raise HTTPException(status_code=404, detail="通话不存在")
     
     return session.to_dict()
+
+
+# ===================== 上下文提供者接口 =====================
+
+from .context_provider import context_provider, ContextConfig
+from .models import SyncContextRequest, GetContextRequest
+
+@router.post("/context/sync")
+async def sync_context(request: SyncContextRequest):
+    """
+    同步上下文数据（前端推送）
+    
+    Args:
+        request.context: 酒馆上下文数据
+        
+    Returns:
+        {success, message, character_name, message_count}
+    """
+    success = context_provider.update_context(request.context)
+    
+    if success:
+        provider = context_provider.get()
+        return {
+            "success": True,
+            "message": "上下文已同步",
+            "character_name": provider.get_character_name() if provider else "",
+            "message_count": len(provider._messages) if provider else 0
+        }
+    else:
+        raise HTTPException(status_code=500, detail="同步失败")
+
+
+@router.post("/context/get")
+async def get_context(request: GetContextRequest = None):
+    """
+    获取历史上下文
+    
+    Args:
+        request.max_messages: 最大消息数（可选）
+        request.filter_config: 过滤配置（可选）
+        request.extractors: 数据提取器配置（可选）
+        
+    Returns:
+        HistoryContext 数据
+    """
+    config = None
+    if request:
+        from st_utils.message_filter import FilterConfig
+        
+        filter_cfg = None
+        if request.filter_config:
+            filter_cfg = FilterConfig(
+                extract_tag=request.filter_config.get("extract_tag"),
+                filter_tags=request.filter_config.get("filter_tags", [])
+            )
+        
+        config = ContextConfig(
+            max_messages=request.max_messages or 20,
+            filter_config=filter_cfg,
+            extractors=request.extractors or []
+        )
+    
+    ctx = context_provider.get_context(config)
+    return ctx.to_dict()
+
+
+@router.get("/context/status")
+async def context_status():
+    """
+    获取上下文状态
+    
+    Returns:
+        {available, character_name, message_count, source}
+    """
+    provider = context_provider.get()
+    
+    if provider:
+        return {
+            "available": provider.is_available(),
+            "character_name": provider.get_character_name(),
+            "message_count": len(provider._messages),
+            "source": provider.source_name
+        }
+    
+    return {
+        "available": False,
+        "character_name": "",
+        "message_count": 0,
+        "source": ""
+    }

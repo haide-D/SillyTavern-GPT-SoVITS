@@ -90,6 +90,22 @@ class LLMService:
         
         print(f"[LLMService] 🚀 流式请求: {model}")
         print(f"[LLMService] 📝 消息数: {len(messages)}")
+        print(f"[LLMService] ════════════ LLM 请求详情 ════════════")
+        print(f"[LLMService] API URL: {api_url}")
+        print(f"[LLMService] Model: {model}")
+        print(f"[LLMService] Temperature: {cfg.get('temperature', 0.8)}")
+        print(f"[LLMService] Max Tokens: {cfg.get('max_tokens', 2048)}")
+        print(f"[LLMService] ──────────── Messages ────────────")
+        for i, msg in enumerate(messages):
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            # 限制每条消息的显示长度
+            content_preview = content[:500] + '...' if len(content) > 500 else content
+            print(f"[LLMService] [{i}] {role}:")
+            for line in content_preview.split('\n'):
+                print(f"[LLMService]     {line}")
+        print(f"[LLMService] ════════════════════════════════════")
+
         
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(

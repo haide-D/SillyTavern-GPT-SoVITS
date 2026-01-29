@@ -90,29 +90,41 @@ class SessionManager:
             是否成功更新
         """
         try:
+            print(f"[SessionManager] 📥 收到上下文更新，数据键: {list(data.keys())}")
+            
             # 检查是否是完整上下文
             if "characters" in data or "chat" in data:
+                print(f"[SessionManager] 📋 使用完整上下文模式")
                 self.data_source.update_from_context(data)
             else:
                 # 分别更新
                 if "character" in data:
-                    self.data_source.update_character(data["character"])
+                    char_data = data["character"]
+                    print(f"[SessionManager] 👤 更新角色: name={char_data.get('name')}, persona长度={len(char_data.get('persona', ''))}")
+                    self.data_source.update_character(char_data)
                 if "messages" in data:
+                    msgs = data["messages"]
+                    print(f"[SessionManager] 💬 更新消息: {len(msgs)} 条")
                     self.data_source.update_conversation(
-                        data["messages"],
+                        msgs,
                         data.get("chatId", "")
                     )
             
             # 同步到对话上下文
             self._sync_from_data_source()
             
+            # 打印同步结果
+            print(f"[SessionManager] ✅ 同步完成: 角色={self.context.character_name}, persona长度={len(self.context.character_persona)}, 历史={len(self.context.history)}条")
+            
             self._last_activity_time = time.time()
-            print("[SessionManager] ✅ 上下文已更新")
             return True
             
         except Exception as e:
+            import traceback
             print(f"[SessionManager] ❌ 更新失败: {e}")
+            traceback.print_exc()
             return False
+
     
     def _sync_from_data_source(self) -> None:
         """从数据源同步数据到对话上下文"""

@@ -14,6 +14,7 @@ import * as SettingsApp from './mobile_apps/settings_app.js';
 import * as FavoritesApp from './mobile_apps/favorites_app.js';
 import * as LlmTestApp from './mobile_apps/llm_test_app.js';
 import * as PhoneCallApp from './mobile_apps/phone_call_app.js';
+import * as RealtimeApp from './mobile_apps/realtime_app.js';
 
 if (!window.TTS_Mobile) {
     window.TTS_Mobile = {};
@@ -85,6 +86,14 @@ export const TTS_Mobile = window.TTS_Mobile;
             bg: '#10b981',
             render: async (container) => {
                 await PhoneCallApp.render(container, createNavbar);
+            }
+        },
+        'realtime': {
+            name: '实时对话',
+            icon: '🎙️',
+            bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            render: async (container) => {
+                await RealtimeApp.render(container, createNavbar);
             }
         }
     };

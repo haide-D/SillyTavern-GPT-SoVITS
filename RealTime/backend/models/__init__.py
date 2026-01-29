@@ -11,7 +11,9 @@ from .request_models import (
     ChatStreamRequest,
     CallStartRequest,
     CallMessageRequest,
-    CallEndRequest
+    CallEndRequest,
+    SyncContextRequest,
+    GetContextRequest
 )
 
 __all__ = [
@@ -25,6 +27,9 @@ __all__ = [
     'ChatStreamRequest',
     'CallStartRequest',
     'CallMessageRequest',
-    'CallEndRequest'
+    'CallEndRequest',
+    'SyncContextRequest',
+    'GetContextRequest'
 ]
+
 

@@ -208,6 +208,73 @@ class RealtimeClient {
     }
 
     /**
+     * 同步酒馆上下文到后端
+     * 
+     * @param {Object} options - 配置选项
+     * @param {number} options.maxMessages - 最大消息数 (默认20)
+     * @param {boolean} options.includeCharacter - 包含角色信息 (默认true)
+     * @returns {Object} {success, character_name, message_count}
+     */
+    async syncContext(options = {}) {
+        console.log('[RealtimeClient] 📚 开始同步上下文...');
+
+        try {
+            // 使用 ContextCollector 收集酒馆上下文
+            const ContextCollector = window.ContextCollector;
+            if (!ContextCollector) {
+                console.warn('[RealtimeClient] ⚠️ ContextCollector 不可用');
+                return { success: false, message: 'ContextCollector 不可用' };
+            }
+
+            const context = ContextCollector.collect({
+                maxMessages: options.maxMessages || 20,
+                includeCharacter: options.includeCharacter !== false,
+                includeMetadata: false
+            });
+
+            if (!context.messages.length && !context.character) {
+                console.warn('[RealtimeClient] ⚠️ 没有可用的上下文数据');
+                return { success: false, message: '没有可用数据' };
+            }
+
+            // 发送到后端 session_manager（正确的接口）
+            const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/session/update_context`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ context })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const status = result.status || {};
+                console.log(`[RealtimeClient] ✅ 上下文已同步: ${status.character_name || '未知角色'}, ${status.history_count || 0} 条消息`);
+            } else {
+                console.warn('[RealtimeClient] ⚠️ 同步失败:', result.message);
+            }
+
+            return result;
+        } catch (e) {
+            console.error('[RealtimeClient] ❌ 同步异常:', e);
+            return { success: false, message: e.message };
+        }
+    }
+
+    /**
+     * 获取上下文状态
+     */
+    async getContextStatus() {
+        try {
+            const response = await fetch(`${this.config.apiBaseUrl}/api/realtime/context/status`);
+            return await response.json();
+        } catch (e) {
+            console.error('[RealtimeClient] ❌ 获取上下文状态失败:', e);
+            return { available: false };
+        }
+    }
+
+
+    /**
      * 开始流式对话 (使用后端 LLM 服务)
      */
     async chat(userMessage, callbacks = {}) {
@@ -660,3 +727,7 @@ class AudioQueue {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = { RealtimeClient, TextChunker, AudioQueue };
 }
+
+// ES6 导出 (供 ES Module 环境使用)
+export { RealtimeClient, TextChunker, AudioQueue };
+

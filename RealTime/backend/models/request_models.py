@@ -82,3 +82,17 @@ class CallMessageRequest(BaseModel):
 class CallEndRequest(BaseModel):
     """结束通话请求"""
     call_id: str
+
+
+# ==================== 上下文提供者 ====================
+
+class SyncContextRequest(BaseModel):
+    """同步上下文请求"""
+    context: Dict[str, Any]  # 酒馆上下文数据
+
+
+class GetContextRequest(BaseModel):
+    """获取上下文请求"""
+    max_messages: Optional[int] = 20
+    filter_config: Optional[Dict[str, Any]] = None  # {extract_tag, filter_tags}
+    extractors: Optional[List[Dict[str, Any]]] = None  # 数据提取器配置

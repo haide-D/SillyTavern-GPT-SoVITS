@@ -22,6 +22,8 @@ import { LLM_Client } from './frontend/js/llm_client.js';
 import { TTS_Mobile } from './frontend/js/mobile_ui.js';
 import { WebSocketManager } from './frontend/js/websocket_manager.js';
 import { AutoPhoneCallListener } from './frontend/js/auto_phone_call_listener.js';
+import { ContextCollector } from './frontend/js/context_collector.js';  // 上下文收集器
+
 
 // ================= 1. 配置区域 =================
 const lsConfig = localStorage.getItem('tts_plugin_remote_config');
@@ -61,6 +63,8 @@ window.TTS_Scheduler = TTS_Scheduler;
 window.TTS_Events = TTS_Events;
 window.TTS_Templates = TTS_Templates;
 window.LLM_Client = LLM_Client;  // 暴露 LLM_Client 供 mobile_ui.js 使用
+window.ContextCollector = ContextCollector;  // 暴露 ContextCollector 供 RealtimeClient 使用
+
 // 不要覆盖整个 window.TTS_UI,只添加 Templates
 // ui_main.js 的 IIFE 已经初始化了 window.TTS_UI.CTX
 if (!window.TTS_UI.Templates) {
@@ -159,6 +163,21 @@ function initPlugin() {
         })
         .catch(err => {
             console.error("❌ [TTS] 手机 App 样式 CSS 加载失败:", err);
+        });
+
+    // 加载 realtime.css (实时对话样式)
+    const realtimeCssUrl = `${MANAGER_API}/static/css/realtime.css?t=${new Date().getTime()}`;
+    fetch(realtimeCssUrl)
+        .then(response => response.text())
+        .then(cssText => {
+            const style = document.createElement('style');
+            style.id = 'tts-realtime-style';
+            style.textContent = cssText;
+            document.head.appendChild(style);
+            console.log("✅ [TTS] 实时对话 CSS 已加载成功！");
+        })
+        .catch(err => {
+            console.error("❌ [TTS] 实时对话 CSS 加载失败:", err);
         });
 
     // 4. 定义核心回调函数 (传给 UI 模块使用)
