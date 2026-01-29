@@ -110,3 +110,83 @@ class AudioMerger:
         output = BytesIO()
         merged.export(output, format=output_fmt)
         return output.getvalue()
+    
+    @staticmethod
+    def merge_multi_speaker_segments(
+        segments: List["MultiSpeakerSegment"],
+        audio_bytes_list: List[bytes],
+        config: Dict
+    ) -> bytes:
+        """
+        合并多说话人音频，说话人切换时使用更长停顿
+        
+        Args:
+            segments: 多说话人片段列表（包含 speaker 信息）
+            audio_bytes_list: 对应的音频字节列表
+            config: 合并配置
+                - speaker_change_pause: 说话人切换时的停顿(秒)，默认 0.6
+                - same_speaker_pause: 同一说话人内的停顿(秒)，默认 0.3
+                - normalize_volume: 是否归一化音量
+                - output_format: 输出格式(wav/mp3)
+                
+        Returns:
+            合并后的音频字节
+        """
+        from phone_call_utils.models import MultiSpeakerSegment
+        
+        if not audio_bytes_list:
+            raise ValueError("音频列表为空")
+        
+        if len(segments) != len(audio_bytes_list):
+            raise ValueError(f"片段数({len(segments)})与音频数({len(audio_bytes_list)})不匹配")
+        
+        speaker_change_pause_ms = int(config.get("speaker_change_pause", 0.6) * 1000)
+        same_speaker_pause_ms = int(config.get("same_speaker_pause", 0.3) * 1000)
+        normalize_vol = config.get("normalize_volume", True)
+        output_fmt = config.get("output_format", "wav")
+        
+        # 加载所有音频片段
+        audio_segments = []
+        for audio_bytes in audio_bytes_list:
+            audio_seg = AudioSegment.from_file(BytesIO(audio_bytes), format="wav")
+            audio_segments.append(audio_seg)
+        
+        # 合并音频
+        merged = audio_segments[0]
+        previous_speaker = segments[0].speaker
+        
+        for i in range(1, len(audio_segments)):
+            current_speaker = segments[i].speaker
+            prev_segment = segments[i - 1]
+            
+            # 确定停顿时长
+            if current_speaker != previous_speaker:
+                # 说话人切换，使用更长停顿
+                silence_ms = speaker_change_pause_ms
+                print(f"[AudioMerger] 说话人切换: {previous_speaker} -> {current_speaker}, 停顿 {silence_ms}ms")
+            else:
+                # 同一说话人，使用较短停顿
+                # 优先使用 segment 指定的 pause_after
+                if prev_segment.pause_after is not None:
+                    silence_ms = int(prev_segment.pause_after * 1000)
+                else:
+                    silence_ms = same_speaker_pause_ms
+            
+            # 添加停顿
+            silence = AudioSegment.silent(duration=silence_ms)
+            merged += silence
+            
+            # 添加当前片段
+            merged += audio_segments[i]
+            previous_speaker = current_speaker
+        
+        # 音量归一化
+        if normalize_vol:
+            merged = normalize(merged)
+        
+        # 导出
+        output = BytesIO()
+        merged.export(output, format=output_fmt)
+        
+        print(f"[AudioMerger] ✅ 多说话人音频合并完成: {len(audio_segments)} 段, {len(merged)}ms")
+        return output.getvalue()

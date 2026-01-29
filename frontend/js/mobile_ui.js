@@ -14,6 +14,7 @@ import * as SettingsApp from './mobile_apps/settings_app.js';
 import * as FavoritesApp from './mobile_apps/favorites_app.js';
 import * as LlmTestApp from './mobile_apps/llm_test_app.js';
 import * as PhoneCallApp from './mobile_apps/phone_call_app.js';
+import * as EavesdropApp from './mobile_apps/eavesdrop_app.js';
 
 if (!window.TTS_Mobile) {
     window.TTS_Mobile = {};
@@ -85,6 +86,14 @@ export const TTS_Mobile = window.TTS_Mobile;
             bg: '#10b981',
             render: async (container) => {
                 await PhoneCallApp.render(container, createNavbar);
+            }
+        },
+        'eavesdrop': {
+            name: '对话追踪',
+            icon: '🎧',
+            bg: '#22c55e',
+            render: async (container) => {
+                await EavesdropApp.render(container, createNavbar);
             }
         }
     };
@@ -373,6 +382,19 @@ export const TTS_Mobile = window.TTS_Mobile;
                 openPhone();
             }
             scope.openApp('incoming_call');
+            return;
+        }
+
+        // 检查对话追踪通知
+        if (window.TTS_EavesdropData) {
+            console.log('[Mobile] 检测到对话追踪,打开小手机并显示监听界面');
+            $('#tts-mobile-trigger').removeClass('eavesdrop-available');
+            $('#tts-manager-btn').removeClass('eavesdrop-available');
+
+            if (!STATE.isOpen) {
+                openPhone();
+            }
+            scope.openApp('eavesdrop');
             return;
         }
 

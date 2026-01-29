@@ -451,6 +451,61 @@ export const AutoPhoneCallListener = {
             return;
         }
 
+        // 处理对话追踪 LLM 请求
+        if (data.type === 'eavesdrop_llm_request') {
+            console.log('[AutoPhoneCallListener] 🎧 收到对话追踪LLM请求:', data);
+
+            const { record_id, char_name, prompt, llm_config, speakers, chat_branch, scene_description } = data;
+
+            try {
+                // 显示通知
+                this.showNotification(`正在生成 ${speakers.join(' 和 ')} 的私下对话...`);
+
+                // 调用LLM
+                console.log('[AutoPhoneCallListener] 🤖 调用LLM (对话追踪)...');
+                const llmResponse = await LLM_Client.callLLM({
+                    api_url: llm_config.api_url,
+                    api_key: llm_config.api_key,
+                    model: llm_config.model,
+                    temperature: llm_config.temperature,
+                    max_tokens: llm_config.max_tokens,
+                    prompt: prompt
+                });
+
+                console.log('[AutoPhoneCallListener] ✅ LLM响应成功 (对话追踪),长度:', llmResponse.length);
+
+                // 将结果发送回后端
+                console.log('[AutoPhoneCallListener] 📤 发送对话追踪结果到后端...');
+                const apiHost = this.getApiHost();
+
+                const requestData = {
+                    record_id: record_id,
+                    llm_response: llmResponse,
+                    chat_branch: chat_branch,
+                    speakers: speakers,
+                    char_name: char_name
+                };
+
+                const response = await fetch(`${apiHost}/api/eavesdrop/complete_generation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const result = await response.json();
+                console.log('[AutoPhoneCallListener] ✅ 对话追踪生成完成:', result);
+
+            } catch (error) {
+                console.error('[AutoPhoneCallListener] ❌ 对话追踪处理失败:', error);
+                this.showNotification(`对话追踪生成失败: ${error.message}`, 'error');
+            }
+            return;
+        }
+
         // 处理来电通知
         if (data.type === 'phone_call_ready') {
             console.log('[AutoPhoneCallListener] 📞 收到来电通知:', data);
@@ -533,6 +588,47 @@ export const AutoPhoneCallListener = {
 
             // 显示通知
             this.showNotification(`📞 ${char_name} 来电!`, 'info');
+        }
+
+        // 处理对话追踪通知
+        if (data.type === 'eavesdrop_ready') {
+            console.log('[AutoPhoneCallListener] 🎧 收到对话追踪通知:', data);
+
+            const { record_id, speakers, segments, audio_url, scene_description, notification_text } = data;
+
+            // 将相对路径转换为完整 API URL
+            const apiHost = this.getApiHost();
+            const fullAudioUrl = audio_url ? `${apiHost}${audio_url}` : null;
+
+            // 存储对话追踪数据
+            window.TTS_EavesdropData = {
+                record_id,
+                speakers,
+                segments,
+                audio_url: fullAudioUrl,
+                scene_description
+            };
+
+            console.log('[AutoPhoneCallListener] ✅ 对话追踪数据已存储到 window.TTS_EavesdropData');
+
+            // 触发悬浮球闪烁 (使用不同的样式)
+            const $managerBtn = $('#tts-manager-btn');
+            const $mobileTrigger = $('#tts-mobile-trigger');
+
+            if ($managerBtn.length) {
+                $managerBtn.addClass('eavesdrop-available');
+                $managerBtn.attr('title', notification_text || `${speakers.join(' 和 ')} 正在私聊...`);
+            }
+
+            if ($mobileTrigger.length) {
+                $mobileTrigger[0].style.removeProperty('animation');
+                $mobileTrigger[0].style.removeProperty('transform');
+                $mobileTrigger.addClass('eavesdrop-available');
+                $mobileTrigger.attr('title', notification_text || `${speakers.join(' 和 ')} 正在私聊...`);
+            }
+
+            // 显示通知
+            this.showNotification(notification_text || `🎧 检测到 ${speakers.join(' 和 ')} 正在私聊`, 'info');
         }
     },
 

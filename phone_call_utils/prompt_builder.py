@@ -14,6 +14,82 @@ class PromptBuilder:
         "en": {"name": "English", "display": "英文"}
     }
     
+    # 场景分析模板 - 用于判断当前场景状态
+    SCENE_ANALYSIS_TEMPLATE = """你是一个场景分析助手。根据对话上下文，判断当前场景状态。
+
+**对话历史**:
+{{context}}
+
+**当前角色列表**:
+{{speakers}}
+
+**分析任务**:
+1. 识别当前**在场的角色**（正在对话或被提及在场的）
+2. 识别是否有角色**刚刚离开**（离场、告别、走了）
+3. 判断是否可能存在**私下对话**（多个角色在场，可能在私聊）
+
+**输出格式 (严格 JSON)**:
+```json
+{
+  "characters_present": ["角色A", "角色B"],
+  "character_left": "角色C",
+  "private_conversation_likely": true,
+  "suggested_action": "phone_call",
+  "reason": "简短解释判断原因"
+}
+```
+
+**判断规则**:
+- 如果有角色刚离开 → suggested_action: "phone_call"
+- 如果 2+ 角色在场且可能私聊 → suggested_action: "eavesdrop"
+- 其他情况 → suggested_action: "none"
+- character_left: 离场角色名，如果没有则为 null"""
+
+    # 对话追踪模板 - 用于生成多人私下对话
+    EAVESDROP_TEMPLATE = """你是一个创意编剧，正在编写一段角色之间的私下对话。
+
+**场景背景**:
+{{user_name}} 不在场，但可以"偷听"到以下角色的对话。
+
+**参与角色及其可用情绪**:
+{{speakers_emotions}}
+
+**对话历史参考**:
+{{context}}
+
+**创作要求**:
+1. 生成自然的多人对话，角色之间互相交流
+2. 对话内容可以是：
+   - 讨论 {{user_name}} 的行为或心思
+   - 角色之间的私人话题（关系、秘密、日常）
+   - 透露一些 {{user_name}} 不知道的信息
+3. 每个角色的说话风格要符合其性格
+4. 情绪要自然过渡
+5. 使用 {{lang_display}} 进行对话
+
+**输出格式 (严格 JSON)**:
+```json
+{
+  "scene_description": "场景描述",
+  "segments": [
+    {
+      "speaker": "角色名",
+      "emotion": "情绪标签",
+      "text": "说话内容 ({{lang_display}})",
+      "translation": "中文翻译 (必须)",
+      "pause_after": 0.5
+    }
+  ]
+}
+```
+
+**规则**:
+- speaker 必须是上述角色之一
+- emotion 必须是该角色的可用情绪
+- 生成 15-25 个对话片段
+- 让对话自然流畅，角色交替说话"""
+
+    
     # 默认 JSON 格式 Prompt 模板
     DEFAULT_JSON_TEMPLATE = """You are an AI assistant helping to determine which character should make a phone call based on the conversation context.必须模仿电话的这种形式，电话内容必须合理且贴切，必须要有一件或者多个电话主题，围绕这个主题展开电话内容。不可以脱离当前的场景。
 
@@ -195,12 +271,14 @@ class PromptBuilder:
     
     
     @staticmethod
-    def _format_context(context: List[Dict], extract_tag: str = "", filter_tags: str = "", user_name: str = None) -> str:
+    def _format_context(context: List, extract_tag: str = "", filter_tags: str = "", user_name: str = None) -> str:
         """
         格式化上下文为文本
         
         Args:
-            context: 对话上下文,标准格式 [{"role": "user"|"assistant"|"system", "content": "..."}]
+            context: 对话上下文,支持两种格式:
+                - 标准格式 [{"role": "user"|"assistant"|"system", "content": "..."}]
+                - ContextMessage 格式 [{name, is_user, mes}]
             extract_tag: 消息提取标签
             filter_tags: 消息过滤标签
             user_name: 用户名，用于替换 "User" 显示
@@ -213,15 +291,42 @@ class PromptBuilder:
         
         lines = []
         for msg in context:
-            role = msg.get('role', 'unknown')
-            content = msg.get('content', '')
+            # 兼容两种格式: 字典和 Pydantic 模型
+            if hasattr(msg, 'is_user'):
+                # ContextMessage 格式: {name, is_user, mes}
+                is_user = msg.is_user if hasattr(msg, 'is_user') else getattr(msg, 'is_user', False)
+                name = msg.name if hasattr(msg, 'name') else getattr(msg, 'name', 'unknown')
+                content = msg.mes if hasattr(msg, 'mes') else getattr(msg, 'mes', '')
+                role = 'user' if is_user else 'assistant'
+            elif isinstance(msg, dict):
+                # 检查是否是 ContextMessage 风格的字典
+                if 'is_user' in msg:
+                    is_user = msg.get('is_user', False)
+                    name = msg.get('name', 'unknown')
+                    content = msg.get('mes', '')
+                    role = 'user' if is_user else 'assistant'
+                else:
+                    # 标准格式: {role, content}
+                    role = msg.get('role', 'unknown')
+                    content = msg.get('content', '')
+                    name = None
+            else:
+                role = 'unknown'
+                content = str(msg)
+                name = None
             
             # 应用提取和过滤
             if content:
                 content = MessageFilter.extract_and_filter(content, extract_tag, filter_tags)
             
-            # 使用英文标签和 emoji，如果有用户名则使用用户名
-            if role == 'user':
+            # 确定显示名称
+            # 优先使用 ContextMessage 的 name 字段（真实角色名）
+            if name:
+                if role == 'user':
+                    role_display = f"👤 {name}"
+                else:
+                    role_display = f"🎭 {name}"
+            elif role == 'user':
                 role_display = f"👤 {user_name}" if user_name else "👤 User"
             elif role == 'assistant':
                 role_display = "🤖 Assistant"
@@ -257,3 +362,82 @@ class PromptBuilder:
                 lines.append(f"- {key}: {', '.join(unique_values)}")
         
         return "\n".join(lines) if lines else "无"
+    
+    @staticmethod
+    def build_scene_analysis_prompt(
+        context: List[Dict],
+        speakers: List[str],
+        max_context_messages: int = 10,
+        user_name: str = None
+    ) -> str:
+        """
+        构建场景分析 Prompt
+        
+        Args:
+            context: 对话上下文
+            speakers: 可用角色列表
+            max_context_messages: 最大上下文消息数
+            user_name: 用户名称
+            
+        Returns:
+            格式化的场景分析 Prompt
+        """
+        # 限制上下文长度
+        limited_context = context[-max_context_messages:] if context else []
+        
+        # 格式化上下文
+        context_text = PromptBuilder._format_context(limited_context, user_name=user_name)
+        
+        # 构建 prompt
+        prompt = PromptBuilder.SCENE_ANALYSIS_TEMPLATE
+        prompt = prompt.replace("{{context}}", context_text)
+        prompt = prompt.replace("{{speakers}}", ", ".join(speakers))
+        
+        return prompt
+    
+    @staticmethod
+    def build_eavesdrop_prompt(
+        context: List[Dict],
+        speakers_emotions: Dict[str, List[str]],
+        user_name: str = "用户",
+        text_lang: str = "zh",
+        max_context_messages: int = 20
+    ) -> str:
+        """
+        构建对话追踪 Prompt
+        
+        Args:
+            context: 对话上下文
+            speakers_emotions: 说话人情绪映射 {speaker: [emotions]}
+            user_name: 用户名
+            text_lang: 文本语言
+            max_context_messages: 最大上下文消息数
+            
+        Returns:
+            格式化的对话追踪 Prompt
+        """
+        # 限制上下文长度
+        limited_context = context[-max_context_messages:] if context else []
+        
+        # 格式化上下文
+        context_text = PromptBuilder._format_context(limited_context, user_name=user_name)
+        
+        # 格式化说话人情绪
+        speakers_emotions_text = ""
+        for speaker, emotions in speakers_emotions.items():
+            emotions_str = ", ".join(emotions) if emotions else "neutral"
+            speakers_emotions_text += f"- {speaker}: [{emotions_str}]\n"
+        
+        # 获取语言显示
+        lang_info = PromptBuilder.LANG_MAP.get(text_lang, PromptBuilder.LANG_MAP["zh"])
+        lang_display = lang_info["display"]
+        
+        # 构建 prompt
+        prompt = PromptBuilder.EAVESDROP_TEMPLATE
+        prompt = prompt.replace("{{context}}", context_text)
+        prompt = prompt.replace("{{speakers_emotions}}", speakers_emotions_text.strip())
+        prompt = prompt.replace("{{user_name}}", user_name)
+        prompt = prompt.replace("{{lang_display}}", lang_display)
+        
+        return prompt
+

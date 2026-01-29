@@ -759,6 +759,8 @@ async def message_webhook(req: MessageWebhookRequest):
         check_phone_call_enabled()
         from services.conversation_monitor import ConversationMonitor
         from services.auto_call_scheduler import AutoCallScheduler
+        from services.scene_analyzer import SceneAnalyzer
+        from services.eavesdrop_scheduler import EavesdropScheduler
 
         # 添加详细的请求日志
         print(f"\n[Webhook] 收到请求:")
@@ -779,7 +781,6 @@ async def message_webhook(req: MessageWebhookRequest):
             }
 
         # 使用第一个说话人作为主要角色 (用于触发检测)
-        # TODO: 未来可以改进为根据上下文选择最相关的说话人
         primary_speaker = req.speakers[0]
 
         # 检查是否应该触发
@@ -794,30 +795,84 @@ async def message_webhook(req: MessageWebhookRequest):
         # 提取上下文
         context = monitor.extract_context(req.context)
         trigger_floor = monitor.get_trigger_floor(req.current_floor)
-
-        # 调度生成任务 (传递所有说话人和上下文指纹)
-        scheduler = AutoCallScheduler()
-        call_id = await scheduler.schedule_auto_call(
-            chat_branch=req.chat_branch,
-            speakers=req.speakers,
-            trigger_floor=trigger_floor,
+        
+        # ==================== 场景分析 ====================
+        analyzer = SceneAnalyzer()
+        print(f"[Webhook] 🔍 开始场景分析...")
+        
+        analysis = await analyzer.analyze(
             context=context,
-            context_fingerprint=req.context_fingerprint,
-            user_name=req.user_name,  # 传递用户名
-            char_name=req.char_name   # 传递主角色卡名称，用于 WebSocket 推送
+            speakers=req.speakers,
+            char_name=primary_speaker,
+            user_name=req.user_name
         )
-
-        if call_id is None:
+        
+        suggested_action = analysis.suggested_action
+        print(f"[Webhook] 📊 场景分析结果: action={suggested_action}, reason={analysis.reason}")
+        
+        # ==================== 根据分析结果分流 ====================
+        if suggested_action == "eavesdrop":
+            # 对话追踪流程
+            print(f"[Webhook] 🎧 触发对话追踪")
+            eavesdrop_scheduler = EavesdropScheduler()
+            record_id = await eavesdrop_scheduler.schedule_eavesdrop(
+                chat_branch=req.chat_branch,
+                speakers=req.speakers,
+                trigger_floor=trigger_floor,
+                context=context,
+                context_fingerprint=req.context_fingerprint,
+                user_name=req.user_name,
+                char_name=req.char_name,
+                scene_description=analysis.scene_description
+            )
+            
+            if record_id is None:
+                return {
+                    "status": "duplicate",
+                    "message": "该上下文已生成或正在生成中"
+                }
+            
             return {
-                "status": "duplicate",
-                "message": "该楼层已生成或正在生成中"
+                "status": "scheduled",
+                "action": "eavesdrop",
+                "record_id": record_id,
+                "message": f"已调度对话追踪任务: {req.speakers} @ 楼层{trigger_floor}"
             }
+            
+        elif suggested_action == "phone_call":
+            # 主动电话流程 (原有逻辑)
+            print(f"[Webhook] 📞 触发主动电话")
+            scheduler = AutoCallScheduler()
+            call_id = await scheduler.schedule_auto_call(
+                chat_branch=req.chat_branch,
+                speakers=req.speakers,
+                trigger_floor=trigger_floor,
+                context=context,
+                context_fingerprint=req.context_fingerprint,
+                user_name=req.user_name,
+                char_name=req.char_name
+            )
 
-        return {
-            "status": "scheduled",
-            "call_id": call_id,
-            "message": f"已调度自动生成任务: {req.speakers} @ 楼层{trigger_floor}"
-        }
+            if call_id is None:
+                return {
+                    "status": "duplicate",
+                    "message": "该楼层已生成或正在生成中"
+                }
+
+            return {
+                "status": "scheduled",
+                "action": "phone_call",
+                "call_id": call_id,
+                "message": f"已调度自动生成任务: {req.speakers} @ 楼层{trigger_floor}"
+            }
+        
+        else:
+            # 场景分析建议不触发
+            print(f"[Webhook] ⏭️ 场景分析建议不触发: {analysis.reason}")
+            return {
+                "status": "skipped",
+                "message": f"场景分析建议不触发: {analysis.reason}"
+            }
 
     except Exception as e:
         print(f"[Webhook] ❌ 错误: {str(e)}")

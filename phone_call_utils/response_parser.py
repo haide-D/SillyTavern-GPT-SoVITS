@@ -208,6 +208,121 @@ class ResponseParser:
         return segments
     
     @staticmethod
+    def parse_multi_speaker_response(
+        response: str,
+        parser_config: Optional[Dict] = None,
+        speakers_emotions: Dict[str, List[str]] = None
+    ) -> List["MultiSpeakerSegment"]:
+        """
+        解析多说话人 JSON 格式的 LLM 响应
+        
+        用于对话追踪功能，支持多个角色的对话解析
+        
+        Args:
+            response: LLM 响应文本
+            parser_config: 解析器配置
+                - fallback_emotion: 回退情绪(默认"neutral")
+                - validate_speed_range: 语速范围验证 [min, max]
+                - validate_pause_range: 停顿范围验证 [min, max]
+            speakers_emotions: 说话人情绪映射 {speaker: [emotions]}
+            
+        Returns:
+            多说话人情绪片段列表
+        """
+        import json
+        from phone_call_utils.models import MultiSpeakerSegment
+        
+        if parser_config is None:
+            parser_config = {}
+        
+        if speakers_emotions is None:
+            speakers_emotions = {}
+        
+        fallback_emotion = parser_config.get("fallback_emotion", "neutral")
+        speed_range = parser_config.get("validate_speed_range", [0.5, 2.0])
+        pause_range = parser_config.get("validate_pause_range", [0.1, 3.0])
+        
+        # 提取 JSON
+        json_str = ResponseParser._extract_json(response)
+        
+        if not json_str:
+            print(f"[ResponseParser] ❌ 未找到有效 JSON")
+            return []
+        
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"[ResponseParser] ❌ JSON 解析失败: {e}")
+            return []
+        
+        # 提取 segments
+        if "segments" not in data or not isinstance(data["segments"], list):
+            print(f"[ResponseParser] ❌ JSON 格式错误: 缺少 'segments' 数组")
+            return []
+        
+        segments = []
+        valid_speakers = set(speakers_emotions.keys())
+        
+        for i, seg_data in enumerate(data["segments"]):
+            try:
+                # 必需字段
+                speaker = seg_data.get("speaker", "")
+                emotion = seg_data.get("emotion", fallback_emotion)
+                text = seg_data.get("text", "")
+                
+                if not text:
+                    print(f"[ResponseParser] 警告: 片段 {i} 文本为空,跳过")
+                    continue
+                
+                # 验证说话人
+                if valid_speakers and speaker not in valid_speakers:
+                    print(f"[ResponseParser] 警告: 说话人 '{speaker}' 不在可用列表中,跳过")
+                    continue
+                
+                # 验证情绪（使用该说话人的可用情绪）
+                available_emotions = speakers_emotions.get(speaker, [])
+                if available_emotions and emotion not in available_emotions:
+                    # 尝试使用第一个可用情绪，否则用回退情绪
+                    original_emotion = emotion
+                    emotion = available_emotions[0] if available_emotions else fallback_emotion
+                    print(f"[ResponseParser] 警告: 情绪 '{original_emotion}' 对 {speaker} 不可用,使用 '{emotion}'")
+                
+                # 可选字段
+                pause_after = seg_data.get("pause_after")
+                speed = seg_data.get("speed")
+                filler_word = seg_data.get("filler_word")
+                translation = seg_data.get("translation")
+                
+                # 验证数值范围
+                if pause_after is not None:
+                    if not (pause_range[0] <= pause_after <= pause_range[1]):
+                        pause_after = None
+                
+                if speed is not None:
+                    if not (speed_range[0] <= speed <= speed_range[1]):
+                        speed = None
+                
+                segment = MultiSpeakerSegment(
+                    speaker=speaker,
+                    emotion=emotion,
+                    text=text,
+                    translation=translation,
+                    pause_after=pause_after,
+                    speed=speed,
+                    filler_word=filler_word
+                )
+                segments.append(segment)
+                
+                print(f"[ResponseParser] 片段 {i}: [{speaker}] ({emotion}) {text[:40]}...")
+                
+            except Exception as e:
+                print(f"[ResponseParser] 警告: 解析片段 {i} 失败 - {e}")
+                continue
+        
+        print(f"[ResponseParser] ✅ 多说话人解析完成: {len(segments)} 个片段")
+        return segments
+    
+    @staticmethod
     def _extract_json(text: str) -> Optional[str]:
         """
         从文本中提取 JSON

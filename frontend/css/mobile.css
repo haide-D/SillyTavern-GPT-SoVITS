@@ -344,6 +344,28 @@
 }
 
 /* =========================================
+   📱 对话追踪通知动画 (绿色闪烁)
+   ========================================= */
+
+#tts-mobile-trigger.eavesdrop-available {
+    animation: eavesdrop-pulse-mobile 1.5s ease-in-out infinite !important;
+}
+
+@keyframes eavesdrop-pulse-mobile {
+
+    0%,
+    100% {
+        box-shadow: 0 0 10px rgba(34, 197, 94, 0.5), 0 0 20px rgba(34, 197, 94, 0.3);
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    }
+
+    50% {
+        box-shadow: 0 0 20px rgba(34, 197, 94, 0.8), 0 0 30px rgba(34, 197, 94, 0.5), 0 0 40px rgba(34, 197, 94, 0.3);
+        background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+    }
+}
+
+/* =========================================
    📱 侧边按键
    ========================================= */
 

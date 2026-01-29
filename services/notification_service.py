@@ -73,6 +73,39 @@ class NotificationService:
         await cls.broadcast_to_char(char_name, message)
     
     @classmethod
+    async def notify_eavesdrop_llm_request(cls, record_id: int, char_name: str, prompt: str, 
+                                            llm_config: Dict, speakers: List[str], 
+                                            chat_branch: str, scene_description: Optional[str] = None):
+        """
+        推送对话追踪LLM调用请求通知
+        
+        通知前端需要调用LLM,前端调用后将结果发送到 /api/eavesdrop/complete_generation
+        
+        Args:
+            record_id: 对话追踪记录ID
+            char_name: 角色名称 (用于WebSocket路由)
+            prompt: LLM提示词
+            llm_config: LLM配置
+            speakers: 说话人列表
+            chat_branch: 对话分支ID
+            scene_description: 场景描述
+        """
+        message = {
+            "type": "eavesdrop_llm_request",
+            "record_id": record_id,
+            "char_name": char_name,
+            "prompt": prompt,
+            "llm_config": llm_config,
+            "speakers": speakers,
+            "chat_branch": chat_branch,
+            "scene_description": scene_description,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        print(f"[NotificationService] 📤 通知前端调用LLM(对话追踪): record_id={record_id}, speakers={speakers}")
+        await cls.broadcast_to_char(char_name, message)
+    
+    @classmethod
     async def notify_phone_call_ready(cls, char_name: str, call_id: int, segments: List[Dict], audio_path: Optional[str], audio_url: Optional[str] = None):
         """
         推送电话生成完成通知
@@ -94,6 +127,36 @@ class NotificationService:
             "timestamp": asyncio.get_event_loop().time()
         }
         
+        await cls.broadcast_to_char(char_name, message)
+    
+    @classmethod
+    async def notify_eavesdrop_ready(cls, char_name: str, record_id: int, 
+                                      speakers: List[str], segments: List[Dict],
+                                      audio_url: Optional[str] = None,
+                                      scene_description: Optional[str] = None):
+        """
+        推送对话追踪生成完成通知
+        
+        Args:
+            char_name: 角色名称 (用于确定推送目标)
+            record_id: 记录ID
+            speakers: 参与对话的角色列表
+            segments: 对话片段
+            audio_url: 音频 HTTP URL
+            scene_description: 场景描述
+        """
+        message = {
+            "type": "eavesdrop_ready",
+            "record_id": record_id,
+            "speakers": speakers,
+            "segments": segments,
+            "audio_url": audio_url,
+            "scene_description": scene_description,
+            "notification_text": f"检测到 {' 和 '.join(speakers[:2])} 正在私下对话，点击监听",
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        print(f"[NotificationService] 📤 对话追踪已就绪: speakers={speakers}")
         await cls.broadcast_to_char(char_name, message)
     
     @classmethod
