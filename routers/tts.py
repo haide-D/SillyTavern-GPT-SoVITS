@@ -46,99 +46,51 @@ class TTSRequest(BaseModel):
     min_chunk_length: int = 16
 
 @router.get("/proxy_set_gpt_weights")
-def proxy_set_gpt_weights(weights_path: str):
-    # 1. 检查文件是否存在
-    if not os.path.exists(weights_path):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"GPT 权重文件不存在: {weights_path}"
-        )
+async def proxy_set_gpt_weights(weights_path: str):
+    """
+    切换 GPT 权重（通过统一的 ModelWeightService，带锁保护）
+    """
+    from services.model_weight_service import model_weight_service
     
-    # 2. 尝试连接服务并切换权重
-    try:
-        url = f"{get_sovits_host()}/set_gpt_weights"
-        # 禁用代理,避免端口重定向;增加超时到 120 秒,权重加载可能需要较长时间
-        resp = requests.get(
-            url, 
-            params={"weights_path": weights_path}, 
-            timeout=120,
-            proxies={'http': None, 'https': None}
-        )
-        
-        if resp.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail=f"GPT 权重切换失败 (服务返回 {resp.status_code}): {resp.text}"
-            )
-        
-        return {"status": resp.status_code, "detail": resp.text}
-        
-    except requests.exceptions.ConnectionError:
-        print(f"Set GPT Error: 无法连接到 GPT-SoVITS 服务 (端口 9880)")
-        raise HTTPException(
-            status_code=503, 
-            detail="无法连接到 GPT-SoVITS 服务,请检查服务是否已启动 (端口 9880)"
-        )
-    except requests.exceptions.Timeout:
-        print(f"Set GPT Error: 连接超时")
-        raise HTTPException(
-            status_code=503,
-            detail="连接 GPT-SoVITS 服务超时,请检查服务状态"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Set GPT Error: {e}")
-        raise HTTPException(status_code=500, detail=f"GPT 权重切换失败: {str(e)}")
+    async with model_weight_service.acquire_lock("set_gpt_weights"):
+        result = model_weight_service.set_gpt_weights(weights_path, skip_if_same=False)
+    
+    if not result["success"]:
+        if "不存在" in result["message"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        elif "无法连接" in result["message"]:
+            raise HTTPException(status_code=503, detail=result["message"])
+        elif "超时" in result["message"]:
+            raise HTTPException(status_code=503, detail=result["message"])
+        else:
+            raise HTTPException(status_code=500, detail=f"GPT 权重切换失败: {result['message']}")
+    
+    return {"status": 200, "detail": result["message"]}
 
 @router.get("/proxy_set_sovits_weights")
-def proxy_set_sovits_weights(weights_path: str):
-    # 1. 检查文件是否存在
-    if not os.path.exists(weights_path):
-        raise HTTPException(
-            status_code=400,
-            detail=f"SoVITS 权重文件不存在: {weights_path}"
-        )
+async def proxy_set_sovits_weights(weights_path: str):
+    """
+    切换 SoVITS 权重（通过统一的 ModelWeightService，带锁保护）
+    """
+    from services.model_weight_service import model_weight_service
     
-    # 2. 尝试连接服务并切换权重
-    try:
-        url = f"{get_sovits_host()}/set_sovits_weights"
-        # 禁用代理,避免端口重定向;增加超时到 120 秒,权重加载可能需要较长时间
-        resp = requests.get(
-            url, 
-            params={"weights_path": weights_path}, 
-            timeout=120,
-            proxies={'http': None, 'https': None}
-        )
-        
-        if resp.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail=f"SoVITS 权重切换失败 (服务返回 {resp.status_code}): {resp.text}"
-            )
-        
-        return {"status": resp.status_code, "detail": resp.text}
-        
-    except requests.exceptions.ConnectionError:
-        print(f"Set SoVITS Error: 无法连接到 GPT-SoVITS 服务 (端口 9880)")
-        raise HTTPException(
-            status_code=503,
-            detail="无法连接到 GPT-SoVITS 服务,请检查服务是否已启动 (端口 9880)"
-        )
-    except requests.exceptions.Timeout:
-        print(f"Set SoVITS Error: 连接超时")
-        raise HTTPException(
-            status_code=503,
-            detail="连接 GPT-SoVITS 服务超时,请检查服务状态"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Set SoVITS Error: {e}")
-        raise HTTPException(status_code=500, detail=f"SoVITS 权重切换失败: {str(e)}")
+    async with model_weight_service.acquire_lock("set_sovits_weights"):
+        result = model_weight_service.set_sovits_weights(weights_path, skip_if_same=False)
+    
+    if not result["success"]:
+        if "不存在" in result["message"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        elif "无法连接" in result["message"]:
+            raise HTTPException(status_code=503, detail=result["message"])
+        elif "超时" in result["message"]:
+            raise HTTPException(status_code=503, detail=result["message"])
+        else:
+            raise HTTPException(status_code=500, detail=f"SoVITS 权重切换失败: {result['message']}")
+    
+    return {"status": 200, "detail": result["message"]}
 
 @router.get("/tts_proxy")
-def tts_proxy(
+async def tts_proxy(
     text: str, 
     text_lang: str, 
     ref_audio_path: str, 
@@ -148,6 +100,8 @@ def tts_proxy(
     streaming_mode: Optional[str] = "false", 
     check_only: Optional[str] = None
 ):
+    from services.model_weight_service import model_weight_service
+    
     # ========== 缓存检查逻辑 ==========
     _, cache_dir = get_current_dirs()
 
@@ -170,7 +124,7 @@ def tts_proxy(
             "Access-Control-Expose-Headers": "X-Audio-Filename"
         }
 
-        # 检查缓存是否存在
+        # 检查缓存是否存在 (不需要锁)
         if check_only == "true":
             # 优先检查新缓存,回退检查旧缓存
             cached = os.path.exists(new_cache_path) or os.path.exists(old_cache_path)
@@ -179,11 +133,11 @@ def tts_proxy(
                 "filename": new_filename
             }
 
-        # 优先查找新缓存
+        # 优先查找新缓存 (不需要锁)
         if os.path.exists(new_cache_path):
             return FileResponse(new_cache_path, media_type="audio/wav", headers=custom_headers)
 
-        # 回退查找旧缓存
+        # 回退查找旧缓存 (不需要锁)
         if os.path.exists(old_cache_path):
             # 找到旧缓存,复制到新Key (逐步迁移)
             try:
@@ -194,66 +148,67 @@ def tts_proxy(
                 print(f"[Cache Migration Failed] {e}")
             return FileResponse(old_cache_path, media_type="audio/wav", headers=custom_headers)
 
-        # ========== 缓存未命中,需要生成,进行参数验证 ==========
-        from validation_utils import validate_tts_request
-        
-        try:
-            validate_tts_request(
-                text=text,
-                text_lang=text_lang,
-                ref_audio_path=ref_audio_path,
-                prompt_lang=prompt_lang,
-                sovits_host=get_sovits_host()
-            )
-        except HTTPException:
-            # 验证失败时直接抛出,让 FastAPI 处理
-            raise
+        # ========== 缓存未命中,需要生成,获取锁 ==========
+        async with model_weight_service.acquire_lock(f"tts_proxy_{emotion}"):
+            from validation_utils import validate_tts_request
+            
+            try:
+                validate_tts_request(
+                    text=text,
+                    text_lang=text_lang,
+                    ref_audio_path=ref_audio_path,
+                    prompt_lang=prompt_lang,
+                    sovits_host=get_sovits_host()
+                )
+            except HTTPException:
+                # 验证失败时直接抛出,让 FastAPI 处理
+                raise
 
-        maintain_cache_size(cache_dir)
+            maintain_cache_size(cache_dir)
 
-        # 转发请求给 SoVITS (非流式)
-        url = f"{get_sovits_host()}/tts"
-        params = {
-            "text": text,
-            "text_lang": text_lang,
-            "ref_audio_path": ref_audio_path,
-            "prompt_text": prompt_text,
-            "prompt_lang": prompt_lang,
-            "streaming_mode": "false" # 明确关闭流式
-        }
+            # 转发请求给 SoVITS (非流式)
+            url = f"{get_sovits_host()}/tts"
+            params = {
+                "text": text,
+                "text_lang": text_lang,
+                "ref_audio_path": ref_audio_path,
+                "prompt_text": prompt_text,
+                "prompt_lang": prompt_lang,
+                "streaming_mode": "false" # 明确关闭流式
+            }
 
-        try:
-            # 去掉 stream=True，增加超时时间,禁用代理
-            r = requests.get(
-                url, 
-                params=params, 
-                timeout=120,
-                proxies={'http': None, 'https': None}
-            )
-        except requests.exceptions.RequestException:
-            raise HTTPException(status_code=503, detail="无法连接到 SoVITS 服务，请检查 9880 端口")
+            try:
+                # 去掉 stream=True，增加超时时间,禁用代理
+                r = requests.get(
+                    url, 
+                    params=params, 
+                    timeout=120,
+                    proxies={'http': None, 'https': None}
+                )
+            except requests.exceptions.RequestException:
+                raise HTTPException(status_code=503, detail="无法连接到 SoVITS 服务，请检查 9880 端口")
 
-        if r.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"SoVITS Error: {r.status_code}")
+            if r.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"SoVITS Error: {r.status_code}")
 
-        # 保存到新缓存路径
-        temp_path = new_cache_path + ".tmp"
+            # 保存到新缓存路径
+            temp_path = new_cache_path + ".tmp"
 
-        try:
-            with open(temp_path, "wb") as f:
-                f.write(r.content)
+            try:
+                with open(temp_path, "wb") as f:
+                    f.write(r.content)
 
-            if os.path.exists(new_cache_path):
-                os.remove(new_cache_path)
-            os.rename(temp_path, new_cache_path)
+                if os.path.exists(new_cache_path):
+                    os.remove(new_cache_path)
+                os.rename(temp_path, new_cache_path)
 
-        except Exception as e:
-            print(f"文件保存错误: {e}")
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-            raise HTTPException(status_code=500, detail="Failed to save audio file")
+            except Exception as e:
+                print(f"文件保存错误: {e}")
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                raise HTTPException(status_code=500, detail="Failed to save audio file")
 
-        # 新生成文件返回时,也带上 headers
+        # 新生成文件返回时,也带上 headers (锁已释放)
         return FileResponse(new_cache_path, media_type="audio/wav", headers=custom_headers)
 
     except HTTPException as he:

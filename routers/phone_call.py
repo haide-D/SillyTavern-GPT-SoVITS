@@ -8,7 +8,7 @@ from services.emotion_service import EmotionService
 from st_utils.data_extractor import DataExtractor
 from phone_call_utils.prompt_builder import PromptBuilder
 from phone_call_utils.response_parser import ResponseParser
-from config import load_json, SETTINGS_FILE
+from config import load_json, SETTINGS_FILE, get_current_dirs, get_sovits_host
 
 router = APIRouter()
 
@@ -255,43 +255,46 @@ async def parse_and_generate(req: ParseAndGenerateRequest):
             previous_emotion = None
             previous_ref_audio = None
 
-            for i, segment in enumerate(segments):
-                print(f"[ParseAndGenerate] 生成片段 {i+1}/{len(segments)}: [{segment.emotion}] {segment.text[:30]}...")
+            # 🔧 使用模型锁，确保生成期间不会被其他请求切换权重
+            async with model_weight_service.use_model(req.char_name, f"parse_generate_{req.char_name}") as switch_success:
+                if not switch_success:
+                    print(f"[ParseAndGenerate] ⚠️ 权重切换失败，将使用当前加载的模型继续生成")
 
-                # 选择参考音频
-                ref_audio = _select_ref_audio(req.char_name, segment.emotion)
+                for i, segment in enumerate(segments):
+                    print(f"[ParseAndGenerate] 生成片段 {i+1}/{len(segments)}: [{segment.emotion}] {segment.text[:30]}...")
 
-                if not ref_audio:
-                    print(f"[ParseAndGenerate] 警告: 未找到情绪 '{segment.emotion}' 的参考音频,跳过")
-                    continue
+                    # 选择参考音频
+                    ref_audio = _select_ref_audio(req.char_name, segment.emotion)
 
-                # 检测情绪变化
-                emotion_changed = previous_emotion is not None and previous_emotion != segment.emotion
-                if emotion_changed:
-                    print(f"[ParseAndGenerate] 检测到情绪变化: {previous_emotion} -> {segment.emotion}")
+                    if not ref_audio:
+                        print(f"[ParseAndGenerate] 警告: 未找到情绪 '{segment.emotion}' 的参考音频,跳过")
+                        continue
 
-                # 生成音频 - 如果情绪变化,传入上一个情绪的参考音频进行音色融合
-                try:
-                    audio_bytes = await tts_service.generate_audio(
-                        segment=segment,
-                        ref_audio=ref_audio,
-                        tts_config=tts_config,
-                        previous_ref_audio=previous_ref_audio if emotion_changed else None
-                    )
-                    audio_bytes_list.append(audio_bytes)
-                    print(f"[ParseAndGenerate] ✅ 片段 {i+1} 生成成功: {len(audio_bytes)} 字节")
+                    # 检测情绪变化
+                    emotion_changed = previous_emotion is not None and previous_emotion != segment.emotion
+                    if emotion_changed:
+                        print(f"[ParseAndGenerate] 检测到情绪变化: {previous_emotion} -> {segment.emotion}")
 
-                    # 更新上一个情绪和参考音频
-                    previous_emotion = segment.emotion
-                    previous_ref_audio = ref_audio
+                    # 生成音频 - 如果情绪变化,传入上一个情绪的参考音频进行音色融合
+                    try:
+                        audio_bytes = await tts_service.generate_audio(
+                            segment=segment,
+                            ref_audio=ref_audio,
+                            tts_config=tts_config,
+                            previous_ref_audio=previous_ref_audio if emotion_changed else None
+                        )
+                        audio_bytes_list.append(audio_bytes)
+                        print(f"[ParseAndGenerate] ✅ 片段 {i+1} 生成成功: {len(audio_bytes)} 字节")
 
-                except Exception as e:
-                    print(f"[ParseAndGenerate] ❌ 生成音频失败 - {e}")
-                    continue
+                        # 更新上一个情绪和参考音频
+                        previous_emotion = segment.emotion
+                        previous_ref_audio = ref_audio
 
+                    except Exception as e:
+                        print(f"[ParseAndGenerate] ❌ 生成音频失败 - {e}")
+                        continue
 
-
-            # 合并音频
+            # 合并音频 (锁已释放，合并不需要模型)
             if audio_bytes_list:
                 print(f"[ParseAndGenerate] 合并 {len(audio_bytes_list)} 段音频...")
                 try:
@@ -436,46 +439,51 @@ async def complete_generation(req: CompleteGenerationRequest):
         previous_emotion = None
         previous_ref_audio = None
 
-        for i, segment in enumerate(segments):
-            print(f"[CompleteGeneration] 生成片段 {i+1}/{len(segments)}: [{segment.emotion}] {segment.text[:30]}...")
+        # 🔧 使用模型锁，确保生成期间不会被其他请求切换权重
+        async with model_weight_service.use_model(selected_speaker, f"phone_call_{req.call_id}") as switch_success:
+            if not switch_success:
+                print(f"[CompleteGeneration] ⚠️ 权重切换失败，将使用当前加载的模型继续生成")
 
-            # 选择参考音频
-            ref_audio = _select_ref_audio(selected_speaker, segment.emotion)
+            for i, segment in enumerate(segments):
+                print(f"[CompleteGeneration] 生成片段 {i+1}/{len(segments)}: [{segment.emotion}] {segment.text[:30]}...")
 
-            if not ref_audio:
-                print(f"[CompleteGeneration] 警告: 未找到情绪 '{segment.emotion}' 的参考音频,跳过")
-                continue
+                # 选择参考音频
+                ref_audio = _select_ref_audio(selected_speaker, segment.emotion)
 
-            # 检测情绪变化
-            emotion_changed = previous_emotion is not None and previous_emotion != segment.emotion
+                if not ref_audio:
+                    print(f"[CompleteGeneration] 警告: 未找到情绪 '{segment.emotion}' 的参考音频,跳过")
+                    continue
 
-            # 生成音频
-            try:
-                audio_bytes = await tts_service.generate_audio(
-                    segment=segment,
-                    ref_audio=ref_audio,
-                    tts_config=tts_config,
-                    previous_ref_audio=previous_ref_audio if emotion_changed else None
-                )
+                # 检测情绪变化
+                emotion_changed = previous_emotion is not None and previous_emotion != segment.emotion
 
-                # 获取音频时长(用于音轨同步)
-                from pydub import AudioSegment as PydubSegment
-                from io import BytesIO
-                audio_seg = PydubSegment.from_file(BytesIO(audio_bytes), format="wav")
-                duration_seconds = len(audio_seg) / 1000.0  # 毫秒转秒
-                segment.audio_duration = duration_seconds
-                print(f"[CompleteGeneration] 音频时长: {duration_seconds:.2f}秒")
+                # 生成音频
+                try:
+                    audio_bytes = await tts_service.generate_audio(
+                        segment=segment,
+                        ref_audio=ref_audio,
+                        tts_config=tts_config,
+                        previous_ref_audio=previous_ref_audio if emotion_changed else None
+                    )
 
-                audio_bytes_list.append(audio_bytes)
+                    # 获取音频时长(用于音轨同步)
+                    from pydub import AudioSegment as PydubSegment
+                    from io import BytesIO
+                    audio_seg = PydubSegment.from_file(BytesIO(audio_bytes), format="wav")
+                    duration_seconds = len(audio_seg) / 1000.0  # 毫秒转秒
+                    segment.audio_duration = duration_seconds
+                    print(f"[CompleteGeneration] 音频时长: {duration_seconds:.2f}秒")
 
-                previous_emotion = segment.emotion
-                previous_ref_audio = ref_audio
+                    audio_bytes_list.append(audio_bytes)
 
-            except Exception as e:
-                print(f"[CompleteGeneration] 错误: 生成音频失败 - {e}")
-                continue
+                    previous_emotion = segment.emotion
+                    previous_ref_audio = ref_audio
 
-        # 合并音频
+                except Exception as e:
+                    print(f"[CompleteGeneration] 错误: 生成音频失败 - {e}")
+                    continue
+
+        # 合并音频 (锁已释放，合并不需要模型)
         audio_path = None
         audio_url = None
         if audio_bytes_list:
@@ -660,6 +668,10 @@ def _select_ref_audio(char_name: str, emotion: str) -> Optional[Dict]:
         "path": selected["path"],
         "text": selected["text"]
     }
+
+
+# 使用统一的模型权重管理服务
+from services.model_weight_service import model_weight_service
 
 
 @router.post("/phone_call/generate")
