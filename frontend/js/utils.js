@@ -311,7 +311,7 @@ export function generateSimpleHash(text) {
 
 /**
  * 获取当前聊天上下文中所有消息的增强指纹
- * 用于收藏匹配功能
+ * 用于收藏匹配、电话历史功能
  * 
  * ✅ 使用 SillyTavern API,不依赖 DOM
  */
@@ -334,27 +334,10 @@ export function getCurrentContextFingerprints() {
                 const msgText = msg.mes || '';
                 if (!msgText) continue;
 
-                // 🔥 性能优化:只处理包含 [TTSVoice 标签的消息
-                if (!msgText.includes('[TTSVoice')) continue;
-
-                // 提取所有 TTS 文本片段
-                const REGEX = /\[TTSVoice[:\uff1a]\s*([^:\uff1a]+)\s*[:\uff1a]\s*([^:\uff1a]*)\s*[:\uff1a]\s*(.*?)\]/gi;
-                let match;
-
-                while ((match = REGEX.exec(msgText)) !== null) {
-                    const ttsText = match[3];
-                    if (!ttsText || !ttsText.trim()) continue;
-
-                    // 清理文本 (移除 HTML 标签)
-                    const cleanText = ttsText.replace(/<[^>]+>|&lt;[^&]+&gt;/g, '').trim();
-                    if (!cleanText) continue;
-
-                    // 生成指纹
-                    const textHash = generateSimpleHash(cleanText);
-                    const fp = `m${i}_${textHash}`;
-
-                    fps.push(fp);
-                }
+                // 生成消息指纹（基于消息索引 + 内容哈希）
+                const textHash = generateSimpleHash(msgText);
+                const fp = `m${i}_${textHash}`;
+                fps.push(fp);
             }
 
             return fps;
