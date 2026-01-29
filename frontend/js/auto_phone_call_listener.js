@@ -255,18 +255,28 @@ export const AutoPhoneCallListener = {
             console.log('[AutoPhoneCallListener] 👤 用户名:', userName);
             console.log('[AutoPhoneCallListener] 🎭 主角色名:', charName);
 
-            // 计算上下文指纹
+            // 计算上下文指纹 - 使用最后一条消息的指纹，用于来电历史匹配
             let contextFingerprint = 'empty';
             try {
                 if (window.TTS_Utils && window.TTS_Utils.getCurrentContextFingerprints) {
                     const fingerprints = window.TTS_Utils.getCurrentContextFingerprints();
-                    contextFingerprint = this.generateContextFingerprint(fingerprints);
-                    console.log(`[AutoPhoneCallListener] 🔐 上下文指纹: ${contextFingerprint} (基于 ${fingerprints.length} 条消息)`);
+                    // 使用最后一条消息的指纹作为触发指纹，而不是合并哈希
+                    // 这样查询时可以用消息指纹列表直接匹配
+                    if (fingerprints.length > 0) {
+                        contextFingerprint = fingerprints[fingerprints.length - 1];
+                        console.log(`[AutoPhoneCallListener] 🔐 触发消息指纹: ${contextFingerprint} (最后一条消息)`);
+                    } else {
+                        // 回退：如果没有 TTS 指纹，使用楼层作为标识
+                        contextFingerprint = `floor_${floor}`;
+                        console.log(`[AutoPhoneCallListener] 🔐 使用楼层指纹: ${contextFingerprint}`);
+                    }
                 } else {
-                    console.warn('[AutoPhoneCallListener] ⚠️ TTS_Utils.getCurrentContextFingerprints 不可用,使用默认指纹');
+                    console.warn('[AutoPhoneCallListener] ⚠️ TTS_Utils.getCurrentContextFingerprints 不可用,使用楼层指纹');
+                    contextFingerprint = `floor_${floor}`;
                 }
             } catch (error) {
                 console.error('[AutoPhoneCallListener] ❌ 计算指纹失败:', error);
+                contextFingerprint = `floor_${floor}`;
             }
 
             // 构建请求数据
