@@ -451,11 +451,126 @@ export const AutoPhoneCallListener = {
             return;
         }
 
+        // 处理场景分析 LLM 请求
+        if (data.type === 'scene_analysis_request') {
+            console.log('[AutoPhoneCallListener] 🔍 收到场景分析LLM请求:', data);
+
+            const { request_id, char_name, prompt, llm_config, speakers, chat_branch,
+                trigger_floor, context_fingerprint, context, user_name } = data;
+
+            try {
+                console.log('[AutoPhoneCallListener] 🤖 调用LLM进行场景分析...');
+                const llmResponse = await LLM_Client.callLLM({
+                    api_url: llm_config.api_url,
+                    api_key: llm_config.api_key,
+                    model: llm_config.model,
+                    temperature: llm_config.temperature,
+                    max_tokens: llm_config.max_tokens,
+                    prompt: prompt
+                });
+
+                console.log('[AutoPhoneCallListener] ✅ 场景分析LLM响应成功, 长度:', llmResponse.length);
+                console.log('[AutoPhoneCallListener] 场景分析结果:', llmResponse.substring(0, 300));
+
+                // 将结果发送回后端
+                console.log('[AutoPhoneCallListener] 📤 发送场景分析结果到后端...');
+                const apiHost = this.getApiHost();
+
+                const requestData = {
+                    request_id: request_id,
+                    llm_response: llmResponse,
+                    chat_branch: chat_branch,
+                    speakers: speakers,
+                    trigger_floor: trigger_floor,
+                    context_fingerprint: context_fingerprint,
+                    context: context,
+                    char_name: char_name,
+                    user_name: user_name
+                };
+
+                const response = await fetch(`${apiHost}/api/scene_analysis/complete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const result = await response.json();
+                console.log('[AutoPhoneCallListener] ✅ 场景分析完成:', result);
+                console.log(`[AutoPhoneCallListener] 📊 分析结果: action=${result.action}, status=${result.status}`);
+
+            } catch (error) {
+                console.error('[AutoPhoneCallListener] ❌ 场景分析处理失败:', error);
+            }
+            return;
+        }
+
+        // 处理对话追踪 LLM 请求
+        if (data.type === 'eavesdrop_llm_request') {
+            console.log('[AutoPhoneCallListener] 🎧 收到对话追踪LLM请求:', data);
+
+            const { record_id, char_name, prompt, llm_config, speakers, chat_branch, scene_description } = data;
+
+            try {
+                // 显示通知
+                this.showNotification(`正在生成 ${speakers.join(' 和 ')} 的私下对话...`);
+
+                // 调用LLM
+                console.log('[AutoPhoneCallListener] 🤖 调用LLM (对话追踪)...');
+                const llmResponse = await LLM_Client.callLLM({
+                    api_url: llm_config.api_url,
+                    api_key: llm_config.api_key,
+                    model: llm_config.model,
+                    temperature: llm_config.temperature,
+                    max_tokens: llm_config.max_tokens,
+                    prompt: prompt
+                });
+
+                console.log('[AutoPhoneCallListener] ✅ LLM响应成功 (对话追踪),长度:', llmResponse.length);
+
+                // 将结果发送回后端
+                console.log('[AutoPhoneCallListener] 📤 发送对话追踪结果到后端...');
+                const apiHost = this.getApiHost();
+
+                const requestData = {
+                    record_id: record_id,
+                    llm_response: llmResponse,
+                    chat_branch: chat_branch,
+                    speakers: speakers,
+                    char_name: char_name
+                };
+
+                const response = await fetch(`${apiHost}/api/eavesdrop/complete_generation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const result = await response.json();
+                console.log('[AutoPhoneCallListener] ✅ 对话追踪生成完成:', result);
+
+            } catch (error) {
+                console.error('[AutoPhoneCallListener] ❌ 对话追踪处理失败:', error);
+                this.showNotification(`对话追踪生成失败: ${error.message}`, 'error');
+            }
+            return;
+        }
+
         // 处理来电通知
         if (data.type === 'phone_call_ready') {
             console.log('[AutoPhoneCallListener] 📞 收到来电通知:', data);
 
-            const { call_id, char_name, segments, audio_path, audio_url } = data;
+            const { call_id, char_name, selected_speaker, segments, audio_path, audio_url } = data;
+
+            // selected_speaker 是 LLM 选择的实际打电话人，char_name 是角色卡名（用于 WebSocket 路由）
+            const actualCaller = selected_speaker || char_name;
 
             // 将相对路径转换为完整 API URL
             const apiHost = this.getApiHost();
@@ -464,6 +579,7 @@ export const AutoPhoneCallListener = {
             console.log('[AutoPhoneCallListener] 🎵 音频 URL 转换:');
             console.log('  - 原始 audio_url:', audio_url);
             console.log('  - 完整 URL:', fullAudioUrl);
+            console.log('  - 实际打电话人 (selected_speaker):', actualCaller);
 
             // 🖼️ 获取角色头像 URL
             let avatarUrl = null;
@@ -471,8 +587,9 @@ export const AutoPhoneCallListener = {
                 const context = window.SillyTavern?.getContext?.();
                 if (context) {
                     const { characters, characterId } = context;
-                    // 优先按角色名查找，再按 characterId 查找
-                    const char = characters?.find(c => c.name === char_name) ||
+                    // 优先按实际打电话人查找，再按角色卡名查找，最后按 characterId 查找
+                    const char = characters?.find(c => c.name === actualCaller) ||
+                        characters?.find(c => c.name === char_name) ||
                         characters?.find(c => c.avatar === characterId);
                     if (char?.avatar) {
                         // SillyTavern 角色头像路径格式: /characters/{avatar}
@@ -484,10 +601,10 @@ export const AutoPhoneCallListener = {
                 console.warn('[AutoPhoneCallListener] ⚠️ 获取头像失败:', e);
             }
 
-            // 存储来电数据
+            // 存储来电数据 - 使用 selected_speaker 作为实际打电话人
             window.TTS_IncomingCall = {
                 call_id,
-                char_name,
+                char_name: actualCaller,  // 使用实际打电话人替代角色卡名
                 segments,
                 audio_path,
                 audio_url: fullAudioUrl,  // 使用完整 URL
@@ -533,6 +650,47 @@ export const AutoPhoneCallListener = {
 
             // 显示通知
             this.showNotification(`📞 ${char_name} 来电!`, 'info');
+        }
+
+        // 处理对话追踪通知
+        if (data.type === 'eavesdrop_ready') {
+            console.log('[AutoPhoneCallListener] 🎧 收到对话追踪通知:', data);
+
+            const { record_id, speakers, segments, audio_url, scene_description, notification_text } = data;
+
+            // 将相对路径转换为完整 API URL
+            const apiHost = this.getApiHost();
+            const fullAudioUrl = audio_url ? `${apiHost}${audio_url}` : null;
+
+            // 存储对话追踪数据
+            window.TTS_EavesdropData = {
+                record_id,
+                speakers,
+                segments,
+                audio_url: fullAudioUrl,
+                scene_description
+            };
+
+            console.log('[AutoPhoneCallListener] ✅ 对话追踪数据已存储到 window.TTS_EavesdropData');
+
+            // 触发悬浮球闪烁 (使用不同的样式)
+            const $managerBtn = $('#tts-manager-btn');
+            const $mobileTrigger = $('#tts-mobile-trigger');
+
+            if ($managerBtn.length) {
+                $managerBtn.addClass('eavesdrop-available');
+                $managerBtn.attr('title', notification_text || `${speakers.join(' 和 ')} 正在私聊...`);
+            }
+
+            if ($mobileTrigger.length) {
+                $mobileTrigger[0].style.removeProperty('animation');
+                $mobileTrigger[0].style.removeProperty('transform');
+                $mobileTrigger.addClass('eavesdrop-available');
+                $mobileTrigger.attr('title', notification_text || `${speakers.join(' 和 ')} 正在私聊...`);
+            }
+
+            // 显示通知
+            this.showNotification(notification_text || `🎧 检测到 ${speakers.join(' 和 ')} 正在私聊`, 'info');
         }
     },
 

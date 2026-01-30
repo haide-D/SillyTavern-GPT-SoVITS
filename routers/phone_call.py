@@ -542,7 +542,8 @@ async def complete_generation(req: CompleteGenerationRequest):
             call_id=req.call_id,
             segments=[seg.dict() for seg in segments],
             audio_path=audio_path,
-            audio_url=audio_url
+            audio_url=audio_url,
+            selected_speaker=selected_speaker  # LLM 选择的实际打电话人
         )
 
         # 移除运行中标记(使用 trigger_floor)
@@ -748,6 +749,13 @@ async def message_webhook(req: MessageWebhookRequest):
     接收 SillyTavern 消息 webhook
 
     当用户发送消息时,SillyTavern 调用此接口,触发自动生成检测
+    
+    新流程（基于 LLM 场景分析）:
+    1. 检查触发条件
+    2. 构建场景分析 prompt
+    3. 通过 WebSocket 发送给前端调用 LLM
+    4. 前端返回分析结果到 /scene_analysis/complete
+    5. 根据结果分流到 phone_call 或 eavesdrop
 
     Args:
         req: 包含对话分支、说话人列表、当前楼层和对话上下文
@@ -758,7 +766,9 @@ async def message_webhook(req: MessageWebhookRequest):
     try:
         check_phone_call_enabled()
         from services.conversation_monitor import ConversationMonitor
-        from services.auto_call_scheduler import AutoCallScheduler
+        from services.scene_analyzer import SceneAnalyzer
+        from services.notification_service import NotificationService
+        import uuid
 
         # 添加详细的请求日志
         print(f"\n[Webhook] 收到请求:")
@@ -779,7 +789,6 @@ async def message_webhook(req: MessageWebhookRequest):
             }
 
         # 使用第一个说话人作为主要角色 (用于触发检测)
-        # TODO: 未来可以改进为根据上下文选择最相关的说话人
         primary_speaker = req.speakers[0]
 
         # 检查是否应该触发
@@ -794,33 +803,204 @@ async def message_webhook(req: MessageWebhookRequest):
         # 提取上下文
         context = monitor.extract_context(req.context)
         trigger_floor = monitor.get_trigger_floor(req.current_floor)
-
-        # 调度生成任务 (传递所有说话人和上下文指纹)
-        scheduler = AutoCallScheduler()
-        call_id = await scheduler.schedule_auto_call(
-            chat_branch=req.chat_branch,
-            speakers=req.speakers,
-            trigger_floor=trigger_floor,
+        
+        # ==================== 查询通话历史 ====================
+        from database import DatabaseManager
+        db = DatabaseManager()
+        
+        # 获取近期通话历史（用于判断是否重复触发）
+        call_history = []
+        if req.context_fingerprint:
+            # 使用指纹查询
+            call_history = db.get_auto_call_history_by_fingerprints(
+                fingerprints=[req.context_fingerprint],
+                limit=5
+            )
+            if call_history:
+                print(f"[Webhook] 📞 检测到 {len(call_history)} 条通话历史记录")
+        
+        # ==================== 场景分析 (LLM 版) ====================
+        analyzer = SceneAnalyzer()
+        print(f"[Webhook] 🔍 构建场景分析请求...")
+        
+        # 构建场景分析 prompt（传入通话历史）
+        analysis_data = await analyzer.analyze(
             context=context,
-            context_fingerprint=req.context_fingerprint,
-            user_name=req.user_name,  # 传递用户名
-            char_name=req.char_name   # 传递主角色卡名称，用于 WebSocket 推送
+            speakers=req.speakers,
+            char_name=primary_speaker,
+            user_name=req.user_name,
+            call_history=call_history
         )
-
-        if call_id is None:
-            return {
-                "status": "duplicate",
-                "message": "该楼层已生成或正在生成中"
-            }
-
+        
+        # 生成唯一请求 ID
+        request_id = str(uuid.uuid4())
+        
+        # WebSocket 路由目标
+        ws_target = req.char_name if req.char_name else primary_speaker
+        
+        # 转换 context 为可序列化格式
+        context_serializable = [
+            {"name": c.name, "is_user": c.is_user, "mes": c.mes} 
+            if hasattr(c, 'name') else c 
+            for c in context
+        ]
+        
+        # 通过 WebSocket 通知前端调用 LLM 进行场景分析
+        notification_service = NotificationService()
+        await notification_service.notify_scene_analysis_request(
+            request_id=request_id,
+            char_name=ws_target,
+            prompt=analysis_data["prompt"],
+            llm_config=analysis_data["llm_config"],
+            speakers=req.speakers,
+            chat_branch=req.chat_branch,
+            trigger_floor=trigger_floor,
+            context_fingerprint=req.context_fingerprint,
+            context=context_serializable,
+            user_name=req.user_name
+        )
+        
+        print(f"[Webhook] ✅ 已发送场景分析请求: request_id={request_id}")
+        print(f"[Webhook] ⏳ 等待前端调用 LLM 后返回结果到 /api/scene_analysis/complete")
+        
         return {
-            "status": "scheduled",
-            "call_id": call_id,
-            "message": f"已调度自动生成任务: {req.speakers} @ 楼层{trigger_floor}"
+            "status": "pending_analysis",
+            "request_id": request_id,
+            "message": f"场景分析请求已发送，等待 LLM 返回结果"
         }
 
     except Exception as e:
         print(f"[Webhook] ❌ 错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SceneAnalysisCompleteRequest(BaseModel):
+    """场景分析完成请求"""
+    request_id: str
+    llm_response: str
+    chat_branch: str
+    speakers: List[str]
+    trigger_floor: int
+    context_fingerprint: str
+    context: List[Dict]
+    char_name: Optional[str] = None
+    user_name: Optional[str] = None
+
+
+@router.post("/scene_analysis/complete")
+async def scene_analysis_complete(req: SceneAnalysisCompleteRequest):
+    """
+    接收前端的场景分析 LLM 结果
+    
+    前端调用 LLM 完成场景分析后，将结果发送到此端点。
+    后端解析结果并根据 suggested_action 分流到 phone_call 或 eavesdrop。
+    
+    Args:
+        req: 包含 LLM 响应和原始请求数据
+        
+    Returns:
+        分流结果
+    """
+    try:
+        check_phone_call_enabled()
+        from services.scene_analyzer import SceneAnalyzer
+        from services.auto_call_scheduler import AutoCallScheduler
+        from services.eavesdrop_scheduler import EavesdropScheduler
+        
+        print(f"\n[SceneAnalysisComplete] 收到场景分析结果:")
+        print(f"  - request_id: {req.request_id}")
+        print(f"  - llm_response 长度: {len(req.llm_response)}")
+        print(f"  - speakers: {req.speakers}")
+        print(f"  - trigger_floor: {req.trigger_floor}")
+        
+        # 解析 LLM 响应
+        analyzer = SceneAnalyzer()
+        analysis = analyzer.parse_llm_response(req.llm_response, req.speakers)
+        
+        suggested_action = analysis.suggested_action
+        print(f"[SceneAnalysisComplete] 📊 分析结果: action={suggested_action}, reason={analysis.reason}")
+        
+        # ==================== 根据分析结果分流 ====================
+        if suggested_action == "eavesdrop":
+            # 对话追踪流程
+            print(f"[SceneAnalysisComplete] 🎧 触发对话追踪")
+            eavesdrop_scheduler = EavesdropScheduler()
+            record_id = await eavesdrop_scheduler.schedule_eavesdrop(
+                chat_branch=req.chat_branch,
+                speakers=req.speakers,
+                trigger_floor=req.trigger_floor,
+                context=req.context,
+                context_fingerprint=req.context_fingerprint,
+                user_name=req.user_name,
+                char_name=req.char_name,
+                scene_description=analysis.scene_description
+            )
+            
+            if record_id is None:
+                return {
+                    "status": "duplicate",
+                    "message": "该上下文已生成或正在生成中"
+                }
+            
+            return {
+                "status": "scheduled",
+                "action": "eavesdrop",
+                "record_id": record_id,
+                "analysis": {
+                    "action": suggested_action,
+                    "reason": analysis.reason,
+                    "characters_present": analysis.characters_present
+                },
+                "message": f"已调度对话追踪任务: {req.speakers} @ 楼层{req.trigger_floor}"
+            }
+            
+        elif suggested_action == "phone_call":
+            # 主动电话流程
+            print(f"[SceneAnalysisComplete] 📞 触发主动电话")
+            scheduler = AutoCallScheduler()
+            call_id = await scheduler.schedule_auto_call(
+                chat_branch=req.chat_branch,
+                speakers=req.speakers,
+                trigger_floor=req.trigger_floor,
+                context=req.context,
+                context_fingerprint=req.context_fingerprint,
+                user_name=req.user_name,
+                char_name=req.char_name
+            )
+
+            if call_id is None:
+                return {
+                    "status": "duplicate",
+                    "message": "该楼层已生成或正在生成中"
+                }
+
+            return {
+                "status": "scheduled",
+                "action": "phone_call",
+                "call_id": call_id,
+                "analysis": {
+                    "action": suggested_action,
+                    "reason": analysis.reason,
+                    "character_left": analysis.character_left
+                },
+                "message": f"已调度自动生成任务: {req.speakers} @ 楼层{req.trigger_floor}"
+            }
+        
+        else:
+            # 场景分析建议不触发
+            print(f"[SceneAnalysisComplete] ⏭️ 场景分析建议不触发: {analysis.reason}")
+            return {
+                "status": "skipped",
+                "action": "none",
+                "analysis": {
+                    "action": suggested_action,
+                    "reason": analysis.reason
+                },
+                "message": f"场景分析建议不触发: {analysis.reason}"
+            }
+            
+    except Exception as e:
+        print(f"[SceneAnalysisComplete] ❌ 错误: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

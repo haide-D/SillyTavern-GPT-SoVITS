@@ -133,6 +133,31 @@ class DatabaseManager:
                 UNIQUE(chat_branch)
             )
         ''')
+        
+        # 创建 eavesdrop_records 表 - 对话追踪记录
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS eavesdrop_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_branch TEXT NOT NULL,
+                context_fingerprint TEXT NOT NULL,
+                speakers TEXT NOT NULL,
+                scene_description TEXT,
+                segments TEXT NOT NULL,
+                audio_path TEXT,
+                audio_url TEXT,
+                trigger_floor INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending',
+                error_message TEXT,
+                UNIQUE(chat_branch, context_fingerprint)
+            )
+        ''')
+        
+        # 创建 eavesdrop 索引
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_eavesdrop_fingerprint 
+            ON eavesdrop_records(context_fingerprint)
+        ''')
 
         
         conn.commit()
@@ -553,3 +578,120 @@ class DatabaseManager:
             conn.commit()
         finally:
             conn.close()
+    
+    # ==================== 对话追踪记录相关方法 ====================
+    
+    def add_eavesdrop_record(self, chat_branch: str, context_fingerprint: str,
+                             speakers: List[str], segments: List[Dict],
+                             scene_description: str = None,
+                             audio_path: str = None, audio_url: str = None,
+                             trigger_floor: int = None, status: str = "pending") -> Optional[int]:
+        """
+        添加对话追踪记录
+        
+        Returns:
+            记录ID,如果已存在则返回 None
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        speakers_json = json.dumps(speakers, ensure_ascii=False)
+        segments_json = json.dumps(segments, ensure_ascii=False)
+        
+        try:
+            cursor.execute('''
+                INSERT INTO eavesdrop_records (
+                    chat_branch, context_fingerprint, speakers, segments,
+                    scene_description, audio_path, audio_url, trigger_floor, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (chat_branch, context_fingerprint, speakers_json, segments_json,
+                  scene_description, audio_path, audio_url, trigger_floor, status))
+            conn.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            return None
+        finally:
+            conn.close()
+    
+    def is_eavesdrop_generated(self, chat_branch: str, context_fingerprint: str) -> bool:
+        """
+        检查指定分支和上下文指纹是否已成功生成过对话追踪
+        
+        Args:
+            chat_branch: 对话分支ID
+            context_fingerprint: 上下文指纹
+            
+        Returns:
+            True 表示已成功生成, False 表示未生成或生成失败
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # 只检查状态为 'completed' 的记录,允许 'failed' 状态的记录重试
+            cursor.execute('''
+                SELECT COUNT(*) FROM eavesdrop_records 
+                WHERE chat_branch = ? AND context_fingerprint = ? AND status = 'completed'
+            ''', (chat_branch, context_fingerprint))
+            count = cursor.fetchone()[0]
+            return count > 0
+        finally:
+            conn.close()
+    
+    def update_eavesdrop_status(self, record_id: int, status: str,
+                                 audio_path: str = None, audio_url: str = None,
+                                 error_message: str = None):
+        """更新对话追踪记录状态"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            if audio_path:
+                cursor.execute('''
+                    UPDATE eavesdrop_records 
+                    SET status = ?, audio_path = ?, audio_url = ?, error_message = ?
+                    WHERE id = ?
+                ''', (status, audio_path, audio_url, error_message, record_id))
+            else:
+                cursor.execute('''
+                    UPDATE eavesdrop_records 
+                    SET status = ?, error_message = ?
+                    WHERE id = ?
+                ''', (status, error_message, record_id))
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def get_eavesdrop_history(self, chat_branch: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """获取对话追踪历史记录"""
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT * FROM eavesdrop_records 
+                WHERE chat_branch = ? AND status = 'completed'
+                ORDER BY created_at DESC 
+                LIMIT ?
+            ''', (chat_branch, limit))
+            rows = cursor.fetchall()
+            return [self._eavesdrop_row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
+    
+    def _eavesdrop_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """将对话追踪记录行转换为字典"""
+        d = dict(row)
+        if d.get("speakers"):
+            try:
+                d["speakers"] = json.loads(d["speakers"])
+            except:
+                d["speakers"] = []
+        if d.get("segments"):
+            try:
+                d["segments"] = json.loads(d["segments"])
+            except:
+                d["segments"] = []
+        return d
+

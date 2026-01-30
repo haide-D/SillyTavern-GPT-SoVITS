@@ -24,7 +24,7 @@ class PhoneCallService:
         self.tts_service = TTSService(get_sovits_host())
         self.audio_merger = AudioMerger()
     
-    async def generate(self, chat_branch: str, speakers: List[str], context: List[Dict], generate_audio: bool = True, user_name: str = None) -> Dict:
+    async def generate(self, chat_branch: str, speakers: List[str], context: List[Dict], generate_audio: bool = True, user_name: str = None, last_call_info: Dict = None) -> Dict:
         """
         生成主动电话内容
         
@@ -52,11 +52,14 @@ class PhoneCallService:
             context: 对话上下文
             generate_audio: 是否生成音频(默认True)
             user_name: 用户名，用于在prompt中区分用户身份
+            last_call_info: 上次通话信息，用于二次电话差异化
             
         Returns:
             包含prompt、llm_config的字典 (不包含segments,需要前端调用LLM后再处理)
         """
         print(f"\n[PhoneCallService] 开始准备主动电话: chat_branch={chat_branch}, speakers={speakers}, 上下文={len(context)}条消息")
+        if last_call_info:
+            print(f"[PhoneCallService] 📞 检测到上次通话，将生成二次电话内容")
         
         # 1. 加载配置
         settings = load_json(SETTINGS_FILE)
@@ -95,7 +98,7 @@ class PhoneCallService:
         # 更新speakers为有效的说话人列表
         speakers = valid_speakers
         
-        # 4. 构建提示词 (包含说话人和情绪信息)
+        # 4. 构建提示词 (包含说话人和情绪信息，以及上次通话信息)
         prompt = self.prompt_builder.build(
             template=prompt_template,
             char_name=speakers[0] if speakers else "Unknown",  # 保持兼容性
@@ -107,7 +110,8 @@ class PhoneCallService:
             text_lang=text_lang,  # 新增: 传递语言配置
             extract_tag=extract_tag,  # 新增: 传递提取标签
             filter_tags=filter_tags,  # 新增: 传递过滤标签
-            user_name=user_name  # 新增: 传递用户名
+            user_name=user_name,  # 新增: 传递用户名
+            last_call_info=last_call_info  # 新增: 传递上次通话信息
         )
         
         print(f"[PhoneCallService] ✅ Prompt构建完成: {len(prompt)} 字符")

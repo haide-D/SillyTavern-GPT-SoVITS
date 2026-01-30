@@ -3,6 +3,8 @@
  * 处理来电界面、通话中界面、来电历史记录
  */
 
+import { ChatInjector } from '../chat_injector.js';
+
 /**
  * 渲染来电 App
  * @param {jQuery} container - App 容器
@@ -46,8 +48,23 @@ export async function render(container, createNavbar) {
         });
 
         // 接听来电
-        $content.find('#mobile-answer-call-btn').click(function () {
+        $content.find('#mobile-answer-call-btn').click(async function () {
             console.log('[Mobile] 用户接听来电');
+
+            // 🆕 注入通话内容到聊天
+            try {
+                await ChatInjector.injectAsMessage({
+                    type: 'phone_call',
+                    segments: callData.segments || [],
+                    callerName: callData.char_name,
+                    callId: callData.call_id,
+                    audioUrl: callData.audio_url
+                });
+                console.log('[Mobile] ✅ 通话内容已注入聊天');
+            } catch (error) {
+                console.error('[Mobile] ❌ 注入聊天失败:', error);
+            }
+
             // 显示通话中界面
             showInCallUI(container, callData);
         });

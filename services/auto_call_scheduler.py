@@ -119,13 +119,21 @@ class AutoCallScheduler:
             # 更新状态为 generating
             self.db.update_auto_call_status(call_id, "generating")
             
+            # 查询通话历史（用于二次电话差异化）
+            last_call_info = None
+            call_history = self.db.get_auto_call_history_by_chat_branch(chat_branch, limit=1)
+            if call_history:
+                last_call_info = call_history[0]
+                print(f"[AutoCallScheduler] 📞 检测到上次通话: {last_call_info.get('char_name')}")
+            
             # 第一阶段: 构建prompt
             result = await self.phone_call_service.generate(
                 chat_branch=chat_branch,
                 speakers=speakers,
                 context=context,
                 generate_audio=False,  # 暂时不生成音频
-                user_name=user_name  # 传递用户名
+                user_name=user_name,  # 传递用户名
+                last_call_info=last_call_info  # 传递上次通话信息
             )
             
             prompt = result.get("prompt")

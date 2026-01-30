@@ -1,10 +1,10 @@
 ﻿/**
  * 模拟手机 UI 核心框架 (非真实移动端)
- * 
+ *
  * 注意: 这是在浏览器中渲染的一个"虚拟小手机"界面，
  *       并非针对移动设备的适配代码。该模块模拟手机外壳、
  *       内置 App 路由、来电/通话等功能，用于桌面端的沉浸式交互体验。
- * 
+ *
  * 负责: 渲染手机壳、处理拖拽交互、管理 App 路由
  */
 
@@ -15,6 +15,7 @@ import * as FavoritesApp from './mobile_apps/favorites_app.js';
 import * as LlmTestApp from './mobile_apps/llm_test_app.js';
 import * as PhoneCallApp from './mobile_apps/phone_call_app.js';
 import * as RealtimeApp from './mobile_apps/realtime_app.js';
+import * as EavesdropApp from './mobile_apps/eavesdrop_app.js';
 
 if (!window.TTS_Mobile) {
     window.TTS_Mobile = {};
@@ -86,6 +87,14 @@ export const TTS_Mobile = window.TTS_Mobile;
             bg: '#10b981',
             render: async (container) => {
                 await PhoneCallApp.render(container, createNavbar);
+            }
+        },
+        'eavesdrop': {
+            name: '对话追踪',
+            icon: '🎧',
+            bg: '#22c55e',
+            render: async (container) => {
+                await EavesdropApp.render(container, createNavbar);
             }
         },
         'realtime': {
@@ -382,6 +391,19 @@ export const TTS_Mobile = window.TTS_Mobile;
                 openPhone();
             }
             scope.openApp('incoming_call');
+            return;
+        }
+
+        // 检查对话追踪通知
+        if (window.TTS_EavesdropData) {
+            console.log('[Mobile] 检测到对话追踪,打开小手机并显示监听界面');
+            $('#tts-mobile-trigger').removeClass('eavesdrop-available');
+            $('#tts-manager-btn').removeClass('eavesdrop-available');
+
+            if (!STATE.isOpen) {
+                openPhone();
+            }
+            scope.openApp('eavesdrop');
             return;
         }
 

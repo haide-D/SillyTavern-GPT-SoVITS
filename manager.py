@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from config import FRONTEND_DIR, init_settings
 from routers import data, tts, system
 from config import FRONTEND_DIR
-from routers import data, tts, system, admin, phone_call, speakers
+from routers import data, tts, system, admin, phone_call, speakers, eavesdrop
 
 # 导入自定义日志中间件
 from middleware.logging_middleware import LoggingMiddleware
@@ -123,6 +123,7 @@ app.include_router(system.router, tags=["System Settings"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Panel"])
 app.include_router(phone_call.router, prefix="/api", tags=["Phone Call"])
 app.include_router(speakers.router, prefix="/api", tags=["Speakers Management"])
+app.include_router(eavesdrop.router, prefix="/api/eavesdrop", tags=["Eavesdrop Tracking"])
 
 # 实时对话路由
 try:

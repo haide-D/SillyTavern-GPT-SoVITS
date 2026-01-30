@@ -480,3 +480,217 @@
     font-size: 12px;
     color: #94a3b8;
 }
+
+/* ========================================
+   对话追踪 (Eavesdrop) 界面
+   ======================================== */
+
+/* 对话追踪待机容器 */
+.eavesdrop-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    color: white;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 背景动画 */
+.eavesdrop-container::before {
+    content: '';
+    position: absolute;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+    animation: pulse-bg 3s ease-in-out infinite;
+}
+
+/* 对话追踪图标 */
+.eavesdrop-icon {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    margin-bottom: 30px;
+    animation: avatar-ring 2s ease-in-out infinite;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    box-shadow: 0 8px 32px rgba(34, 197, 94, 0.6);
+}
+
+/* 对话追踪标题 */
+.eavesdrop-title {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    z-index: 1;
+}
+
+/* 状态文字 */
+.eavesdrop-status {
+    font-size: 16px;
+    opacity: 0.9;
+    margin-bottom: 60px;
+    z-index: 1;
+    text-align: center;
+    padding: 0 20px;
+}
+
+/* 按钮容器 */
+.eavesdrop-buttons {
+    display: flex;
+    gap: 30px;
+    justify-content: center;
+    z-index: 1;
+}
+
+/* 对话追踪按钮 */
+.eavesdrop-btn {
+    padding: 16px 32px;
+    border-radius: 50px;
+    border: none;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 忽略按钮 */
+.ignore-btn {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.ignore-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+/* 监听按钮 */
+.listen-btn {
+    background: #166534;
+    box-shadow: 0 4px 20px rgba(22, 101, 52, 0.5);
+}
+
+.listen-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 30px rgba(22, 101, 52, 0.7);
+}
+
+/* ========================================
+   监听中界面
+   ======================================== */
+
+.listening-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, #1e3a2f 0%, #0f1f1a 100%);
+    color: white;
+    padding: 40px 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 监听背景动画 */
+.listening-container::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(34, 197, 94, 0.1) 0%, transparent 50%);
+    animation: rotate-bg 20s linear infinite;
+}
+
+/* 监听顶部信息 */
+.listening-header {
+    text-align: center;
+    z-index: 1;
+}
+
+.listening-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    margin: 0 auto 20px;
+    box-shadow: 0 8px 32px rgba(34, 197, 94, 0.4);
+    animation: avatar-pulse 2s ease-in-out infinite;
+}
+
+.listening-title {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.listening-duration {
+    font-size: 16px;
+    color: #86efac;
+}
+
+/* 监听音频可视化 - 绿色主题 */
+.listening-visualizer .audio-bar {
+    background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
+}
+
+/* 监听字幕区域 */
+.listening-subtitle-area {
+    position: absolute;
+    bottom: 160px;
+    left: 0;
+    width: 100%;
+    padding: 0 24px;
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* 说话人标签 */
+.subtitle-speaker {
+    display: inline-block;
+    background: rgba(34, 197, 94, 0.3);
+    color: #4ade80;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+/* 停止监听按钮 */
+.listening-stop-btn {
+    padding: 16px 40px;
+    border-radius: 50px;
+    border: none;
+    background: #dc2626;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(220, 38, 38, 0.5);
+    transition: all 0.3s;
+    z-index: 1;
+}
+
+.listening-stop-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 30px rgba(220, 38, 38, 0.7);
+}
