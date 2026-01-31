@@ -307,45 +307,35 @@ export const TTS_Events = {
 
         const cleanText = text.substring(0, 50).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
         const filename = `${speaker}:${cleanText}.wav`;
-        const isBlobUrl = audioUrl.startsWith('blob:');
 
-        if (isBlobUrl) {
-            try {
-                const response = await fetch(audioUrl);
-                const blob = await response.blob();
+        try {
+            // 🎯 统一下载逻辑:先 fetch 再下载,避免浏览器直接打开文件
+            console.log('[Download] 开始下载:', audioUrl);
 
-                const downloadUrl = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = downloadUrl;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(downloadUrl);
-                }, 100);
-
-                window.TTS_Utils.showNotification("✅ 下载成功: " + filename, "success");
-            } catch (e) {
-                console.error("下载失败:", e);
-                alert("❌下载失败: " + e.message);
+            const response = await fetch(audioUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        }
-        else {
-            try {
-                const a = document.createElement('a');
-                a.href = audioUrl;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
+
+            const blob = await response.blob();
+            const downloadUrl = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
                 document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
+            }, 100);
 
-                window.TTS_Utils.showNotification("✅ 下载成功: " + filename, "success");
-            } catch (e) {
-                console.error("下载失败:", e);
-                alert("❌下载失败: " + e.message);
-            }
+            console.log('[Download] ✅ 下载成功:', filename);
+            window.TTS_Utils.showNotification("✅ 下载成功: " + filename, "success");
+        } catch (e) {
+            console.error("[Download] ❌ 下载失败:", e);
+            alert("❌下载失败: " + e.message);
         }
     },
 

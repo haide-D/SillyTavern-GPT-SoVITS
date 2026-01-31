@@ -219,6 +219,11 @@ export const TTS_Mobile = window.TTS_Mobile;
 
         $screen.append($grid);
         STATE.currentApp = null;
+
+        // 🎯 返回主屏时清理来电记录 App 资源(停止音频播放)
+        if (IncomingCallApp.cleanup) {
+            IncomingCallApp.cleanup();
+        }
     }
 
     // ==================== 打开 App ====================
@@ -419,6 +424,11 @@ export const TTS_Mobile = window.TTS_Mobile;
     }
 
     function closePhone() {
+        // 🎯 关闭手机时清理来电记录 App 资源(停止音频播放)
+        if (IncomingCallApp.cleanup) {
+            IncomingCallApp.cleanup();
+        }
+
         $('#tts-mobile-root').addClass('minimized');
         $('#tts-mobile-trigger').fadeIn();
         STATE.isOpen = false;
