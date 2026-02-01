@@ -153,15 +153,54 @@ class DatabaseManager:
             )
         ''')
         
+        
         # 创建 eavesdrop 索引
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_eavesdrop_fingerprint 
             ON eavesdrop_records(context_fingerprint)
         ''')
+        
+        # 创建 continuous_analysis 表 - 持续性分析记录
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS continuous_analysis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_branch TEXT NOT NULL,
+                context_fingerprint TEXT NOT NULL,
+                floor INTEGER NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                characters_data TEXT NOT NULL,
+                scene_summary TEXT,
+                summary TEXT,
+                character_states TEXT,
+                raw_llm_response TEXT,
+                UNIQUE(chat_branch, context_fingerprint)
+            )
+        ''')
+        
+        # 创建 continuous_analysis 索引
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_analysis_floor 
+            ON continuous_analysis(chat_branch, floor)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_analysis_fingerprint 
+            ON continuous_analysis(context_fingerprint)
+        ''')
+        
+        # 数据库迁移: 为 continuous_analysis 表添加触发相关字段
+        try:
+            cursor.execute("SELECT suggested_action FROM continuous_analysis LIMIT 1")
+        except sqlite3.OperationalError:
+            print("[Database] 迁移: 添加 suggested_action, trigger_reason, character_left 字段到 continuous_analysis 表")
+            cursor.execute("ALTER TABLE continuous_analysis ADD COLUMN suggested_action TEXT DEFAULT 'none'")
+            cursor.execute("ALTER TABLE continuous_analysis ADD COLUMN trigger_reason TEXT")
+            cursor.execute("ALTER TABLE continuous_analysis ADD COLUMN character_left TEXT")
+
 
         
         conn.commit()
         conn.close()
+
 
     def add_favorite(self, data: Dict[str, Any]):
         """添加新的收藏记录"""
@@ -694,4 +733,169 @@ class DatabaseManager:
             except:
                 d["segments"] = []
         return d
+    
+    # ==================== 持续性分析记录相关方法 ====================
+    
+    def add_analysis_record(self, chat_branch: str, context_fingerprint: str,
+                            floor: int, characters_data: Dict, 
+                            scene_summary: str = None, raw_llm_response: str = None,
+                            summary: str = None, character_states: Dict = None,
+                            suggested_action: str = "none", trigger_reason: str = None,
+                            character_left: str = None) -> Optional[int]:
+        """
+        添加持续性分析记录
+        
+        Args:
+            chat_branch: 对话分支ID
+            context_fingerprint: 上下文指纹
+            floor: 楼层数
+            characters_data: 角色数据字典 {角色名: {present, location, emotion, intent, ...}}
+            scene_summary: 场景摘要
+            raw_llm_response: LLM 原始响应
+            summary: 简短摘要(专门给LLM用,压缩版)
+            character_states: 开放式角色状态(物理、情绪、认知、社交四维度)
+            suggested_action: 触发建议 (phone_call, eavesdrop, none)
+            trigger_reason: 触发原因
+            character_left: 离场角色名
+            
+        Returns:
+            记录ID,如果已存在则返回 None
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        characters_json = json.dumps(characters_data, ensure_ascii=False)
+        character_states_json = json.dumps(character_states, ensure_ascii=False) if character_states else None
+        
+        try:
+            cursor.execute('''
+                INSERT INTO continuous_analysis (
+                    chat_branch, context_fingerprint, floor, characters_data,
+                    scene_summary, raw_llm_response, summary, character_states,
+                    suggested_action, trigger_reason, character_left
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (chat_branch, context_fingerprint, floor, characters_json,
+                  scene_summary, raw_llm_response, summary, character_states_json,
+                  suggested_action, trigger_reason, character_left))
+            conn.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            return None
+        finally:
+            conn.close()
+
+    
+    def get_analysis_history(self, chat_branch: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        获取分析历史记录
+        
+        Args:
+            chat_branch: 对话分支ID
+            limit: 返回记录数量限制
+            
+        Returns:
+            记录列表,按楼层倒序
+        """
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT * FROM continuous_analysis 
+                WHERE chat_branch = ? 
+                ORDER BY floor DESC 
+                LIMIT ?
+            ''', (chat_branch, limit))
+            rows = cursor.fetchall()
+            return [self._analysis_row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
+    
+    def get_latest_analysis(self, chat_branch: str) -> Optional[Dict[str, Any]]:
+        """
+        获取最新的分析记录
+        
+        Args:
+            chat_branch: 对话分支ID
+            
+        Returns:
+            最新记录或 None
+        """
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT * FROM continuous_analysis 
+                WHERE chat_branch = ? 
+                ORDER BY floor DESC 
+                LIMIT 1
+            ''', (chat_branch,))
+            row = cursor.fetchone()
+            if row:
+                return self._analysis_row_to_dict(row)
+            return None
+        finally:
+            conn.close()
+    
+    def get_character_history(self, chat_branch: str, character_name: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        获取特定角色的历史轨迹
+        
+        Args:
+            chat_branch: 对话分支ID
+            character_name: 角色名称
+            limit: 返回记录数量限制
+            
+        Returns:
+            该角色的历史状态记录列表
+        """
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT * FROM continuous_analysis 
+                WHERE chat_branch = ? 
+                ORDER BY floor DESC 
+                LIMIT ?
+            ''', (chat_branch, limit * 2))  # 获取更多记录,因为需要过滤
+            
+            rows = cursor.fetchall()
+            results = []
+            
+            for row in rows:
+                record = self._analysis_row_to_dict(row)
+                if character_name in record.get('characters_data', {}):
+                    char_data = record['characters_data'][character_name]
+                    results.append({
+                        'floor': record['floor'],
+                        'timestamp': record['timestamp'],
+                        **char_data
+                    })
+                    if len(results) >= limit:
+                        break
+            
+            return results
+        finally:
+            conn.close()
+    
+    def _analysis_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """将持续性分析记录行转换为字典"""
+        d = dict(row)
+        if d.get("characters_data"):
+            try:
+                d["characters_data"] = json.loads(d["characters_data"])
+            except:
+                d["characters_data"] = {}
+        if d.get("character_states"):
+            try:
+                d["character_states"] = json.loads(d["character_states"])
+            except:
+                d["character_states"] = {}
+        return d
+
 

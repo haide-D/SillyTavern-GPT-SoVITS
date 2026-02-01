@@ -130,7 +130,24 @@ def init_settings():
         if deep_merge(phone_call_defaults, settings["phone_call"]):
             dirty = True
 
+    # analysis_llm 默认配置 - 用于统一分析系统
+    analysis_llm_defaults = {
+        "api_url": "",
+        "api_key": "",
+        "model": "",
+        "temperature": 0.8,
+        "max_tokens": 5000
+    }
+    
+    if "analysis_llm" not in settings:
+        settings["analysis_llm"] = analysis_llm_defaults
+        dirty = True
+    else:
+        if deep_merge(analysis_llm_defaults, settings["analysis_llm"]):
+            dirty = True
+
     phone_call = settings["phone_call"]
+
 
     if dirty:
         save_json(SETTINGS_FILE, settings)

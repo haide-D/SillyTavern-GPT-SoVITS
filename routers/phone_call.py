@@ -748,14 +748,14 @@ async def message_webhook(req: MessageWebhookRequest):
     """
     接收 SillyTavern 消息 webhook
 
-    当用户发送消息时,SillyTavern 调用此接口,触发自动生成检测
+    当用户发送消息时,SillyTavern 调用此接口,触发统一分析检测
     
-    新流程（基于 LLM 场景分析）:
-    1. 检查触发条件
-    2. 构建场景分析 prompt
+    新流程（统一分析系统）:
+    1. 检查触发条件（基于 settings 配置的分析间隔）
+    2. 构建统一分析 prompt（含角色状态 + 触发建议）
     3. 通过 WebSocket 发送给前端调用 LLM
-    4. 前端返回分析结果到 /scene_analysis/complete
-    5. 根据结果分流到 phone_call 或 eavesdrop
+    4. 前端返回分析结果到 /api/continuous_analysis/complete
+    5. 后端保存分析结果并根据 suggested_action 分流触发
 
     Args:
         req: 包含对话分支、说话人列表、当前楼层和对话上下文
@@ -765,8 +765,7 @@ async def message_webhook(req: MessageWebhookRequest):
     """
     try:
         check_phone_call_enabled()
-        from services.conversation_monitor import ConversationMonitor
-        from services.scene_analyzer import SceneAnalyzer
+        from services.continuous_analyzer import ContinuousAnalyzer
         from services.notification_service import NotificationService
         import uuid
 
@@ -776,10 +775,6 @@ async def message_webhook(req: MessageWebhookRequest):
         print(f"  - speakers: {req.speakers}")
         print(f"  - current_floor: {req.current_floor}")
         print(f"  - context 条数: {len(req.context)}")
-        if req.context:
-            print(f"  - context 示例 (前2条): {req.context[:2]}")
-
-        print(f"\n[Webhook] 收到消息: chat_branch={req.chat_branch}, 说话人={req.speakers}, 楼层={req.current_floor}")
 
         # 如果没有说话人,跳过
         if not req.speakers or len(req.speakers) == 0:
@@ -788,49 +783,43 @@ async def message_webhook(req: MessageWebhookRequest):
                 "message": "没有可用的说话人"
             }
 
-        # 使用第一个说话人作为主要角色 (用于触发检测)
+        # 使用第一个说话人作为主要角色
         primary_speaker = req.speakers[0]
-
-        # 检查是否应该触发
-        monitor = ConversationMonitor()
-
-        if not monitor.should_trigger(primary_speaker, req.current_floor):
+        
+        # ==================== 使用统一分析系统 ====================
+        analyzer = ContinuousAnalyzer()
+        
+        # 检查是否应该触发分析（基于配置的分析间隔）
+        if not analyzer.should_analyze(req.current_floor):
             return {
                 "status": "skipped",
-                "message": "未达到触发条件"
+                "message": f"未达到分析间隔（当前楼层 {req.current_floor}）"
             }
+        
+        print(f"[Webhook] 🔍 触发统一分析: 楼层={req.current_floor}")
 
-        # 提取上下文
-        context = monitor.extract_context(req.context)
-        trigger_floor = monitor.get_trigger_floor(req.current_floor)
+        # 转换 context 为可序列化格式
+        context_serializable = [
+            {"name": c.name, "is_user": c.is_user, "mes": c.mes} 
+            if hasattr(c, 'name') else c 
+            for c in req.context
+        ]
         
-        # ==================== 查询通话历史 ====================
-        from database import DatabaseManager
-        db = DatabaseManager()
-        
-        # 获取近期通话历史（用于判断是否重复触发）
-        call_history = []
-        if req.context_fingerprint:
-            # 使用指纹查询
-            call_history = db.get_auto_call_history_by_fingerprints(
-                fingerprints=[req.context_fingerprint],
-                limit=5
-            )
-            if call_history:
-                print(f"[Webhook] 📞 检测到 {len(call_history)} 条通话历史记录")
-        
-        # ==================== 场景分析 (LLM 版) ====================
-        analyzer = SceneAnalyzer()
-        print(f"[Webhook] 🔍 构建场景分析请求...")
-        
-        # 构建场景分析 prompt（传入通话历史）
-        analysis_data = await analyzer.analyze(
-            context=context,
+        # 构建分析 prompt 并准备请求数据
+        analysis_data = await analyzer.analyze_and_record(
+            chat_branch=req.chat_branch,
+            floor=req.current_floor,
+            context=context_serializable,
             speakers=req.speakers,
-            char_name=primary_speaker,
-            user_name=req.user_name,
-            call_history=call_history
+            context_fingerprint=req.context_fingerprint,
+            user_name=req.user_name
         )
+        
+        if not analysis_data:
+            return {
+                "status": "error",
+                "message": "构建分析请求失败"
+            }
         
         # 生成唯一请求 ID
         request_id = str(uuid.uuid4())
@@ -838,39 +827,35 @@ async def message_webhook(req: MessageWebhookRequest):
         # WebSocket 路由目标
         ws_target = req.char_name if req.char_name else primary_speaker
         
-        # 转换 context 为可序列化格式
-        context_serializable = [
-            {"name": c.name, "is_user": c.is_user, "mes": c.mes} 
-            if hasattr(c, 'name') else c 
-            for c in context
-        ]
-        
-        # 通过 WebSocket 通知前端调用 LLM 进行场景分析
+        # 通过 WebSocket 通知前端调用 LLM 进行统一分析
         notification_service = NotificationService()
-        await notification_service.notify_scene_analysis_request(
-            request_id=request_id,
+        await notification_service.broadcast_to_char(
             char_name=ws_target,
-            prompt=analysis_data["prompt"],
-            llm_config=analysis_data["llm_config"],
-            speakers=req.speakers,
-            chat_branch=req.chat_branch,
-            trigger_floor=trigger_floor,
-            context_fingerprint=req.context_fingerprint,
-            context=context_serializable,
-            user_name=req.user_name
+            message={
+                "type": "continuous_analysis_request",
+                "request_id": request_id,
+                "chat_branch": req.chat_branch,
+                "floor": req.current_floor,
+                "context_fingerprint": req.context_fingerprint,
+                "speakers": req.speakers,
+                "prompt": analysis_data["prompt"],
+                "llm_config": analysis_data["llm_config"]
+            }
         )
         
-        print(f"[Webhook] ✅ 已发送场景分析请求: request_id={request_id}")
-        print(f"[Webhook] ⏳ 等待前端调用 LLM 后返回结果到 /api/scene_analysis/complete")
+        print(f"[Webhook] ✅ 已发送统一分析请求: request_id={request_id}")
+        print(f"[Webhook] ⏳ 等待前端调用 LLM 后返回结果到 /api/continuous_analysis/complete")
         
         return {
             "status": "pending_analysis",
             "request_id": request_id,
-            "message": f"场景分析请求已发送，等待 LLM 返回结果"
+            "message": f"统一分析请求已发送，等待 LLM 返回结果"
         }
 
     except Exception as e:
         print(f"[Webhook] ❌ 错误: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -890,10 +875,11 @@ class SceneAnalysisCompleteRequest(BaseModel):
 @router.post("/scene_analysis/complete")
 async def scene_analysis_complete(req: SceneAnalysisCompleteRequest):
     """
-    接收前端的场景分析 LLM 结果
+    [DEPRECATED] 接收前端的场景分析 LLM 结果
     
-    前端调用 LLM 完成场景分析后，将结果发送到此端点。
-    后端解析结果并根据 suggested_action 分流到 phone_call 或 eavesdrop。
+    ⚠️ 此端点已废弃！请使用 /api/continuous_analysis/complete 代替。
+    
+    保留此端点仅用于向后兼容，新代码应使用统一分析系统。
     
     Args:
         req: 包含 LLM 响应和原始请求数据
@@ -901,6 +887,7 @@ async def scene_analysis_complete(req: SceneAnalysisCompleteRequest):
     Returns:
         分流结果
     """
+
     try:
         check_phone_call_enabled()
         from services.scene_analyzer import SceneAnalyzer
