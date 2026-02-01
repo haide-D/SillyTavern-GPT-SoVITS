@@ -4,10 +4,8 @@
  */
 
 import { ChatInjector } from '../chat_injector.js';
-
-// ==================== 全局音频状态管理 ====================
-let currentPlayingAudio = null; // 当前正在播放的音频对象
-let currentDurationInterval = null; // 当前播放时长的定时器
+import { AudioPlayer, setGlobalPlayer, cleanupGlobalPlayer } from './shared/audio_player.js';
+import { getCharacterAvatar } from './shared/utils.js';
 
 /**
  * 渲染来电 App
@@ -44,10 +42,7 @@ export async function render(container, createNavbar) {
         // 拒绝来电
         $content.find('#mobile-reject-call-btn').click(function () {
             console.log('[Mobile] 用户拒绝来电');
-            delete window.TTS_IncomingCall;
-            $('#tts-manager-btn').removeClass('incoming-call').attr('title', '🔊 TTS配置');
-            $('#tts-mobile-trigger').removeClass('incoming-call');
-            // 返回主屏幕
+            clearCallState();
             $('#mobile-home-btn').click();
         });
 
@@ -55,7 +50,7 @@ export async function render(container, createNavbar) {
         $content.find('#mobile-answer-call-btn').click(async function () {
             console.log('[Mobile] 用户接听来电');
 
-            // 🆕 注入通话内容到聊天
+            // 注入通话内容到聊天
             try {
                 await ChatInjector.injectAsMessage({
                     type: 'phone_call',
@@ -127,156 +122,7 @@ export async function render(container, createNavbar) {
         }
 
         // 渲染历史记录列表
-        const historyHtml = result.history.map(call => {
-            const date = call.created_at ? new Date(call.created_at).toLocaleString('zh-CN') : '未知时间';
-            const statusText = call.status === 'completed' ? '已完成' : call.status === 'failed' ? '失败' : '处理中';
-            const statusClass = call.status === 'completed' ? 'completed' : call.status === 'failed' ? 'failed' : 'processing';
-
-
-
-            // 🖼️ 获取角色卡头像 (说话人共享同一张角色卡)
-            let avatarUrl = call.avatar_url; // 优先使用数据库中的头像(如果有)
-            if (!avatarUrl) {
-                try {
-                    const context = window.SillyTavern?.getContext?.();
-                    console.log('[Mobile] 🔍 调试信息:', {
-                        has_getThumbnailUrl: !!context?.getThumbnailUrl,
-                        has_characters: !!context?.characters,
-                        characters_count: context?.characters?.length || 0,
-                        characterId: context?.characterId,
-                        characterId_type: typeof context?.characterId
-                    });
-
-                    if (context?.getThumbnailUrl && context?.characters && context?.characterId !== undefined) {
-                        // characterId 是数组索引,直接访问
-                        const currentChar = context.characters[context.characterId];
-
-                        if (currentChar?.avatar) {
-                            // 使用 SillyTavern 官方 API,传入 avatar 文件名
-                            avatarUrl = context.getThumbnailUrl('avatar', currentChar.avatar);
-                            console.log('[Mobile] ✅ 获取头像成功:', currentChar.name, avatarUrl);
-                        } else {
-                            console.warn('[Mobile] ❌ 角色没有头像:', context.characterId);
-                        }
-                    } else {
-                        console.warn('[Mobile] ❌ 必要的上下文数据不可用');
-                    }
-                } catch (e) {
-                    console.error('[Mobile] ❌ 获取角色卡头像失败:', e);
-                }
-            }
-
-
-
-
-            // 头像 HTML
-            const avatarHtml = avatarUrl
-                ? `<img src="${avatarUrl}" alt="${call.char_name}">`
-                : `<div class="call-history-avatar-placeholder">👤</div>`;
-
-            return `
-                <div class="call-history-item" data-call-id="${call.id}" data-audio-url="${call.audio_url || ''}" data-char-name="${call.char_name || ''}" data-created-at="${call.created_at || ''}">
-                    <div class="call-history-layout">
-                        <!-- 头像 -->
-                        <div class="call-history-avatar">
-                            ${avatarHtml}
-                        </div>
-
-                        <!-- 内容区域 -->
-                        <div class="call-history-content-area">
-                            <div class="call-history-header">
-                                <strong class="call-history-name">${call.char_name || '未知角色'}</strong>
-                                <span class="call-history-status ${statusClass}">● ${statusText}</span>
-                            </div>
-
-                            <div class="call-history-date">
-                                📅 ${date}
-                            </div>
-
-                            ${call.status === 'completed' && call.audio_url ? `
-                                <div style="display:flex; align-items:center; gap:8px;">
-                                    <div class="play-area" style="flex:1;">
-                                        <div class="call-history-play-area">
-                                            <span class="call-history-play-icon">🎵</span>
-                                            <span class="call-history-play-text">点击播放</span>
-                                            <span class="call-history-play-arrow">→</span>
-                                        </div>
-                                    </div>
-                                    <button class="call-history-download-btn" style="background:transparent; border:none; color:#3b82f6; font-size:20px; padding:5px; cursor:pointer;">📥</button>
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        $content.html(historyHtml);
-
-        // 绑定点击事件 - 全屏播放
-        $content.find('.call-history-item').click(function (e) {
-            // 如果点击的是下载按钮,不触发播放
-            if ($(e.target).closest('.call-history-download-btn').length > 0) {
-                return;
-            }
-
-            const callId = $(this).data('call-id');
-            const call = result.history.find(c => c.id === callId);
-
-            if (!call || call.status !== 'completed' || !call.audio_url) {
-                alert('该来电记录无法播放');
-                return;
-            }
-
-            console.log('[Mobile] 播放历史来电(全屏):', call);
-
-            // 进入全屏播放界面
-            showHistoryPlaybackUI(container, call, createNavbar);
-        });
-
-        // 📥 绑定下载按钮点击事件
-        $content.find('.call-history-download-btn').click(async function (e) {
-            e.stopPropagation(); // 阻止事件冒泡,避免触发播放
-
-            const $item = $(this).closest('.call-history-item');
-            const callId = $item.data('call-id');
-            const call = result.history.find(c => c.id === callId);
-
-            if (!call || !call.audio_url) {
-                alert('该记录没有音频文件');
-                return;
-            }
-
-            console.log('[Mobile] 用户点击下载历史通话');
-
-            let fullUrl = call.audio_url;
-            if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
-                fullUrl = window.TTS_API.baseUrl + fullUrl;
-            }
-
-            const speaker = call.char_name || 'Unknown';
-            const text = call.segments && call.segments.length > 0
-                ? call.segments.map(seg => seg.translation || seg.text || '').join(' ')
-                : '历史通话';
-
-            console.log('📥 下载历史通话音频');
-            console.log('  - audioUrl:', fullUrl);
-            console.log('  - speaker:', speaker);
-            console.log('  - text:', text);
-
-            // 使用 TTS_Events.downloadAudio 下载
-            if (window.TTS_Events && window.TTS_Events.downloadAudio) {
-                try {
-                    await window.TTS_Events.downloadAudio(fullUrl, speaker, text);
-                    console.log('✅ 下载请求已发送');
-                } catch (err) {
-                    console.error('❌ 下载失败:', err);
-                    alert('下载失败: ' + err.message);
-                }
-            } else {
-                alert('下载功能未就绪,请刷新页面');
-            }
-        });
+        renderHistoryList($content, result.history, container, createNavbar);
 
     } catch (error) {
         console.error('[Mobile] 获取历史记录失败:', error);
@@ -290,14 +136,108 @@ export async function render(container, createNavbar) {
 }
 
 /**
- * 显示通话中界面 (新版 - Apple Music 风格字幕)
+ * 渲染历史记录列表
+ */
+function renderHistoryList($content, history, container, createNavbar) {
+    const historyHtml = history.map(call => {
+        const date = call.created_at ? new Date(call.created_at).toLocaleString('zh-CN') : '未知时间';
+        const statusText = call.status === 'completed' ? '已完成' : call.status === 'failed' ? '失败' : '处理中';
+        const statusClass = call.status === 'completed' ? 'completed' : call.status === 'failed' ? 'failed' : 'processing';
+
+        // 获取角色卡头像
+        let avatarUrl = call.avatar_url || getCharacterAvatar(call.char_name);
+
+        // 头像 HTML
+        const avatarHtml = avatarUrl
+            ? `<img src="${avatarUrl}" alt="${call.char_name}">`
+            : `<div class="call-history-avatar-placeholder">👤</div>`;
+
+        return `
+            <div class="call-history-item" data-call-id="${call.id}">
+                <div class="call-history-layout">
+                    <!-- 头像 -->
+                    <div class="call-history-avatar">
+                        ${avatarHtml}
+                    </div>
+
+                    <!-- 内容区域 -->
+                    <div class="call-history-content-area">
+                        <div class="call-history-header">
+                            <strong class="call-history-name">${call.char_name || '未知角色'}</strong>
+                            <span class="call-history-status ${statusClass}">● ${statusText}</span>
+                        </div>
+
+                        <div class="call-history-date">
+                            📅 ${date}
+                        </div>
+
+                        ${call.status === 'completed' && call.audio_url ? `
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div class="play-area" style="flex:1;">
+                                    <div class="call-history-play-area">
+                                        <span class="call-history-play-icon">🎵</span>
+                                        <span class="call-history-play-text">点击播放</span>
+                                        <span class="call-history-play-arrow">→</span>
+                                    </div>
+                                </div>
+                                <button class="call-history-download-btn" style="background:transparent; border:none; color:#3b82f6; font-size:20px; padding:5px; cursor:pointer;">📥</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    $content.html(historyHtml);
+
+    // 绑定点击事件 - 全屏播放
+    $content.find('.call-history-item').click(function (e) {
+        // 如果点击的是下载按钮,不触发播放
+        if ($(e.target).closest('.call-history-download-btn').length > 0) {
+            return;
+        }
+
+        const callId = $(this).data('call-id');
+        const call = history.find(c => c.id === callId);
+
+        if (!call || call.status !== 'completed' || !call.audio_url) {
+            alert('该来电记录无法播放');
+            return;
+        }
+
+        console.log('[Mobile] 播放历史来电(全屏):', call);
+
+        // 进入全屏播放界面
+        showHistoryPlaybackUI(container, call, createNavbar);
+    });
+
+    // 绑定下载按钮点击事件
+    $content.find('.call-history-download-btn').click(async function (e) {
+        e.stopPropagation();
+
+        const $item = $(this).closest('.call-history-item');
+        const callId = $item.data('call-id');
+        const call = history.find(c => c.id === callId);
+
+        if (!call || !call.audio_url) {
+            alert('该记录没有音频文件');
+            return;
+        }
+
+        await downloadAudio(call);
+    });
+}
+
+/**
+ * 显示通话中界面
  * @param {jQuery} container - App 容器
  * @param {Object} callData - 来电数据
  */
 function showInCallUI(container, callData) {
     container.empty();
 
-    // 创建通话中界面 (新版布局)
+    // 创建通话中界面
     const $inCallContent = $(`
         <div class="in-call-container">
             <div class="call-header">
@@ -315,7 +255,7 @@ function showInCallUI(container, callData) {
                 <div class="audio-bar"></div>
             </div>
 
-            <!-- 新版字幕区域 - 底部固定 -->
+            <!-- 字幕区域 -->
             <div class="call-subtitle-area">
                 <div class="subtitle-line">
                     <span class="subtitle-text"></span>
@@ -338,170 +278,48 @@ function showInCallUI(container, callData) {
 
     container.append($inCallContent);
 
-    // 字幕相关变量
-    const $subtitleLine = $inCallContent.find('.subtitle-line');
-    const $subtitleText = $inCallContent.find('.subtitle-text');
-    let currentSegmentIndex = -1;
-
-    /**
-     * 更新字幕显示 - 逐字高亮
-     * @param {number} segmentIndex - 当前句子索引
-     * @param {number} charProgress - 字符进度 (0-1)
-     */
-    function updateSubtitle(segmentIndex, charProgress) {
-        const segments = callData.segments || [];
-        if (segmentIndex < 0 || segmentIndex >= segments.length) {
-            $subtitleLine.removeClass('visible');
-            return;
+    // 使用共享音频播放器
+    const player = new AudioPlayer({
+        $container: $inCallContent,
+        segments: callData.segments || [],
+        showSpeaker: false,
+        onEnd: () => {
+            console.log('[Mobile] 通话结束');
+            endCall();
+        },
+        onError: (err) => {
+            console.error('[Mobile] 播放错误:', err);
+            alert('音频播放失败');
+            endCall();
         }
+    });
 
-        const seg = segments[segmentIndex];
-        const text = seg.translation || seg.text || '';
+    // 设置为全局播放器
+    setGlobalPlayer(player);
 
-        // 切换到新句子
-        if (segmentIndex !== currentSegmentIndex) {
-            currentSegmentIndex = segmentIndex;
+    // 挂断按钮
+    $inCallContent.find('#mobile-hangup-btn').click(function () {
+        console.log('[Mobile] 用户挂断电话');
+        player.stop();
+        endCall();
+    });
 
-            // 将句子拆分为单个字符
-            const chars = text.split('').map((char, i) =>
-                `<span class="subtitle-char" data-index="${i}">${char}</span>`
-            ).join('');
-
-            $subtitleText.html(chars);
-
-            // 触发显示动画
-            $subtitleLine.removeClass('visible');
-            setTimeout(() => $subtitleLine.addClass('visible'), 50);
-        }
-
-        // 更新逐字高亮
-        const totalChars = text.length;
-        const activeCharIndex = Math.floor(charProgress * totalChars);
-
-        $subtitleText.find('.subtitle-char').each(function (index) {
-            const $char = $(this);
-            $char.removeClass('passed active');
-
-            if (index < activeCharIndex) {
-                $char.addClass('passed');
-            } else if (index === activeCharIndex) {
-                $char.addClass('active');
-            }
-        });
-    }
-
-    // 播放音频
+    // 开始播放
     if (callData.audio_url) {
-        let fullUrl = callData.audio_url;
-        if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
-            fullUrl = window.TTS_API.baseUrl + fullUrl;
-        }
-
-        console.log('[Mobile] 完整音频URL:', fullUrl);
-        const audio = new Audio(fullUrl);
-        let startTime = Date.now();
-        let durationInterval = null;
-
-        // 更新通话时长
-        durationInterval = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            $inCallContent.find('.call-duration').text(
-                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-            );
-        }, 1000);
-
-        // 音频加载完成
-        audio.addEventListener('loadedmetadata', function () {
-            const duration = audio.duration;
-            const mins = Math.floor(duration / 60);
-            const secs = Math.floor(duration % 60);
-            $inCallContent.find('.total-time').text(`${mins}:${secs.toString().padStart(2, '0')}`);
-        });
-
-        // 更新进度 + 字幕同步
-        audio.addEventListener('timeupdate', function () {
-            const currentTime = audio.currentTime;
-            const duration = audio.duration;
-
-            // 更新进度条
-            const progress = (currentTime / duration) * 100;
-            $inCallContent.find('.progress-bar-fill').css('width', progress + '%');
-
-            const currentMins = Math.floor(currentTime / 60);
-            const currentSecs = Math.floor(currentTime % 60);
-            $inCallContent.find('.current-time').text(
-                `${currentMins}:${currentSecs.toString().padStart(2, '0')}`
-            );
-
-            // 🎯 字幕同步 - 找到当前 segment 并计算字符进度
-            const segments = callData.segments || [];
-            let activeIndex = -1;
-            let charProgress = 0;
-
-            for (let i = 0; i < segments.length; i++) {
-                const seg = segments[i];
-                const segStart = seg.start_time || 0;
-                const segDuration = seg.audio_duration || 0;
-                const segEnd = segStart + segDuration;
-
-                if (currentTime >= segStart && currentTime < segEnd) {
-                    activeIndex = i;
-                    // 计算当前句子内的进度 (0-1)，添加0.5秒补偿让字幕提前
-                    const compensatedTime = currentTime + 0.5;
-                    const adjustedProgress = (compensatedTime - segStart) / segDuration;
-                    charProgress = segDuration > 0 ? Math.min(1, Math.max(0, adjustedProgress)) : 0;
-                    break;
-                }
-            }
-
-            // 更新字幕
-            updateSubtitle(activeIndex, charProgress);
-        });
-
-        // 播放音频
-        audio.play().catch(err => {
-            console.error('[Mobile] 音频播放失败:', err);
-            alert('音频播放失败: ' + err.message);
-            clearInterval(durationInterval);
-            endCall();
-        });
-
-        // 音频播放结束
-        audio.onended = function () {
-            console.log('[Mobile] 音频播放完成');
-            clearInterval(durationInterval);
-            endCall();
-        };
-
-        // 挂断按钮
-        $inCallContent.find('#mobile-hangup-btn').click(function () {
-            console.log('[Mobile] 用户挂断电话');
-            audio.pause();
-            clearInterval(durationInterval);
-            endCall();
-        });
-
-        function endCall() {
-            delete window.TTS_IncomingCall;
-            $('#tts-manager-btn').removeClass('incoming-call').attr('title', '🔊 TTS配置');
-            $('#tts-mobile-trigger').removeClass('incoming-call');
-            // 返回主屏幕
-            $('#mobile-home-btn').click();
-        }
+        player.play(callData.audio_url);
     } else {
         console.warn('[Mobile] 没有音频 URL');
-        delete window.TTS_IncomingCall;
-        $('#tts-manager-btn').removeClass('incoming-call').attr('title', '🔊 TTS配置');
-        $('#tts-mobile-trigger').removeClass('incoming-call');
-        // 返回主屏幕
+        endCall();
+    }
+
+    function endCall() {
+        clearCallState();
         $('#mobile-home-btn').click();
     }
 }
 
 /**
- * 显示历史记录播放界面 (全屏,带字幕)
+ * 显示历史记录播放界面
  * @param {jQuery} container - App 容器
  * @param {Object} call - 历史来电数据
  * @param {Function} createNavbar - 创建导航栏函数
@@ -513,44 +331,22 @@ function showHistoryPlaybackUI(container, call, createNavbar) {
     const $navbar = createNavbar("播放历史通话");
     container.append($navbar);
 
-    // 🎯 监听返回按钮点击 - 停止音频播放
+    // 监听返回按钮点击 - 停止音频播放
     $navbar.find('.nav-left').off('click').on('click', function () {
         console.log('[Mobile] 用户点击返回,停止音频播放');
-        stopCurrentAudio();
+        cleanupGlobalPlayer();
         $('#mobile-home-btn').click();
     });
 
-    // 🖼️ 获取角色卡头像 (说话人共享同一张角色卡)
-    let avatarUrl = call.avatar_url; // 优先使用数据库中的头像(如果有)
-    if (!avatarUrl) {
-        try {
-            const context = window.SillyTavern?.getContext?.();
-            if (context?.getThumbnailUrl && context?.characters && context?.characterId !== undefined) {
-                // characterId 是数组索引,直接访问
-                const currentChar = context.characters[context.characterId];
-                if (currentChar?.avatar) {
-                    // 使用 SillyTavern 官方 API,传入 avatar 文件名
-                    avatarUrl = context.getThumbnailUrl('avatar', currentChar.avatar);
-                    console.log('[Mobile播放] ✅ 获取头像成功:', currentChar.name, avatarUrl);
-                } else {
-                    console.warn('[Mobile播放] ❌ 角色没有头像:', context.characterId);
-                }
-            } else {
-                console.warn('[Mobile播放] ❌ 必要的上下文数据不可用');
-            }
-        } catch (e) {
-            console.error('[Mobile播放] ❌ 获取角色卡头像失败:', e);
-        }
-    }
-
-
+    // 获取角色卡头像
+    const avatarUrl = call.avatar_url || getCharacterAvatar(call.char_name);
 
     // 生成头像 HTML
     const avatarHtml = avatarUrl
         ? `<img src="${avatarUrl}" alt="${call.char_name}">`
         : '👤';
 
-    // 创建播放界面 (复用通话中样式)
+    // 创建播放界面
     const $playbackContent = $(`
         <div class="in-call-container">
             <div class="call-header">
@@ -568,7 +364,7 @@ function showHistoryPlaybackUI(container, call, createNavbar) {
                 <div class="audio-bar"></div>
             </div>
 
-            <!-- 字幕区域 - 逐字高亮 -->
+            <!-- 字幕区域 -->
             <div class="call-subtitle-area">
                 <div class="subtitle-line">
                     <span class="subtitle-text"></span>
@@ -585,216 +381,103 @@ function showHistoryPlaybackUI(container, call, createNavbar) {
                 </div>
             </div>
 
-            <button id="history-stop-btn" class="hangup-btn">⏹</button>
+            <div class="call-playback-buttons">
+                <button id="history-stop-btn" class="hangup-btn">⏹</button>
+                <button id="history-download-btn" class="call-download-btn">📥</button>
+            </div>
         </div>
     `);
 
     container.append($playbackContent);
 
-    // 字幕相关变量
-    const $subtitleLine = $playbackContent.find('.subtitle-line');
-    const $subtitleText = $playbackContent.find('.subtitle-text');
-    let currentSegmentIndex = -1;
-
-    /**
-     * 更新字幕显示 - 逐字高亮
-     * @param {number} segmentIndex - 当前句子索引
-     * @param {number} charProgress - 字符进度 (0-1)
-     */
-    function updateSubtitle(segmentIndex, charProgress) {
-        const segments = call.segments || [];
-        if (segmentIndex < 0 || segmentIndex >= segments.length) {
-            $subtitleLine.removeClass('visible');
-            return;
-        }
-
-        const seg = segments[segmentIndex];
-        const text = seg.translation || seg.text || '';
-
-        // 切换到新句子
-        if (segmentIndex !== currentSegmentIndex) {
-            currentSegmentIndex = segmentIndex;
-
-            // 将句子拆分为单个字符
-            const chars = text.split('').map((char, i) =>
-                `<span class="subtitle-char" data-index="${i}">${char}</span>`
-            ).join('');
-
-            $subtitleText.html(chars);
-
-            // 触发显示动画
-            $subtitleLine.removeClass('visible');
-            setTimeout(() => $subtitleLine.addClass('visible'), 50);
-        }
-
-        // 更新逐字高亮
-        const totalChars = text.length;
-        const activeCharIndex = Math.floor(charProgress * totalChars);
-
-        $subtitleText.find('.subtitle-char').each(function (index) {
-            const $char = $(this);
-            $char.removeClass('passed active');
-
-            if (index < activeCharIndex) {
-                $char.addClass('passed');
-            } else if (index === activeCharIndex) {
-                $char.addClass('active');
-            }
-        });
-    }
-
-    // 播放音频
-    if (call.audio_url) {
-        let fullUrl = call.audio_url;
-        if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
-            fullUrl = window.TTS_API.baseUrl + fullUrl;
-        }
-
-        console.log('[Mobile] 历史播放音频URL:', fullUrl);
-        const audio = new Audio(fullUrl);
-        let startTime = Date.now();
-        let durationInterval = null;
-
-        // 🎯 保存到全局状态,以便外部控制
-        currentPlayingAudio = audio;
-
-        // 更新播放时长
-        durationInterval = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            $playbackContent.find('.call-duration').text(
-                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-            );
-        }, 1000);
-
-        // 🎯 更新全局引用(在 setInterval 创建后)
-        currentDurationInterval = durationInterval;
-
-        // 音频加载完成
-        audio.addEventListener('loadedmetadata', function () {
-            const duration = audio.duration;
-            const mins = Math.floor(duration / 60);
-            const secs = Math.floor(duration % 60);
-            $playbackContent.find('.total-time').text(`${mins}:${secs.toString().padStart(2, '0')}`);
-        });
-
-        // 更新进度 + 字幕同步
-        audio.addEventListener('timeupdate', function () {
-            const currentTime = audio.currentTime;
-            const duration = audio.duration;
-
-            // 更新进度条
-            const progress = (currentTime / duration) * 100;
-            $playbackContent.find('.progress-bar-fill').css('width', progress + '%');
-
-            const currentMins = Math.floor(currentTime / 60);
-            const currentSecs = Math.floor(currentTime % 60);
-            $playbackContent.find('.current-time').text(
-                `${currentMins}:${currentSecs.toString().padStart(2, '0')}`
-            );
-
-            // 🎯 字幕同步 - 找到当前 segment 并计算字符进度
-            const segments = call.segments || [];
-            let activeIndex = -1;
-            let charProgress = 0;
-
-            for (let i = 0; i < segments.length; i++) {
-                const seg = segments[i];
-                const segStart = seg.start_time || 0;
-                const segDuration = seg.audio_duration || 0;
-                const segEnd = segStart + segDuration;
-
-                if (currentTime >= segStart && currentTime < segEnd) {
-                    activeIndex = i;
-                    // 计算当前句子内的进度 (0-1)，添加0.5秒补偿让字幕提前
-                    const compensatedTime = currentTime + 0.5;
-                    const adjustedProgress = (compensatedTime - segStart) / segDuration;
-                    charProgress = segDuration > 0 ? Math.min(1, Math.max(0, adjustedProgress)) : 0;
-                    break;
-                }
-            }
-
-            // 更新字幕
-            updateSubtitle(activeIndex, charProgress);
-        });
-
-        // 播放音频
-        audio.play().catch(err => {
-            console.error('[Mobile] 历史播放失败:', err);
-            alert('音频播放失败: ' + err.message);
-            clearInterval(durationInterval);
-            endPlayback();
-        });
-
-        // 音频播放结束
-        audio.onended = function () {
+    // 使用共享音频播放器
+    const player = new AudioPlayer({
+        $container: $playbackContent,
+        segments: call.segments || [],
+        showSpeaker: false,
+        onEnd: () => {
             console.log('[Mobile] 历史播放完成');
-            clearInterval(durationInterval);
             endPlayback();
-        };
-
-        // 停止按钮
-        $playbackContent.find('#history-stop-btn').click(function () {
-            console.log('[Mobile] 用户停止播放');
-            audio.pause();
-            clearInterval(durationInterval);
+        },
+        onError: (err) => {
+            console.error('[Mobile] 历史播放错误:', err);
+            alert('音频播放失败');
             endPlayback();
-        });
-
-        // 📥 下载按钮
-        $playbackContent.find('#history-download-btn').click(async function () {
-            console.log('[Mobile] 用户点击下载历史通话');
-
-            const speaker = call.char_name || 'Unknown';
-            const text = call.segments && call.segments.length > 0
-                ? call.segments.map(seg => seg.translation || seg.text || '').join(' ')
-                : '历史通话';
-
-            console.log('📥 下载历史通话音频');
-            console.log('  - audioUrl:', fullUrl);
-            console.log('  - speaker:', speaker);
-            console.log('  - text:', text);
-
-            // 生成自定义文件名
-            const cleanText = text.substring(0, 50).replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
-            const timestamp = new Date(call.created_at || Date.now()).toISOString().split('T')[0];
-            const customFilename = `${speaker}_${timestamp}_${cleanText}.wav`;
-
-            console.log('  - customFilename:', customFilename);
-
-            // 使用 TTS_Events.downloadAudio 下载
-            if (window.TTS_Events && window.TTS_Events.downloadAudio) {
-                try {
-                    await window.TTS_Events.downloadAudio(fullUrl, speaker, text);
-                    console.log('✅ 下载请求已发送');
-                } catch (err) {
-                    console.error('❌ 下载失败:', err);
-                    alert('下载失败: ' + err.message);
-                }
-            } else {
-                alert('下载功能未就绪,请刷新页面');
-            }
-        });
-
-        console.log('[Mobile] ✅ 下载按钮事件已绑定,按钮数量:', $playbackContent.find('#history-download-btn').length);
-
-        function endPlayback() {
-            // 🎯 清理全局引用
-            if (currentDurationInterval) {
-                clearInterval(currentDurationInterval);
-                currentDurationInterval = null;
-            }
-            currentPlayingAudio = null;
-
-            // 返回历史列表
-            render(container, createNavbar);
         }
+    });
+
+    // 设置为全局播放器
+    setGlobalPlayer(player);
+
+    // 停止按钮
+    $playbackContent.find('#history-stop-btn').click(function () {
+        console.log('[Mobile] 用户停止播放');
+        player.stop();
+        endPlayback();
+    });
+
+    // 下载按钮
+    $playbackContent.find('#history-download-btn').click(async function () {
+        await downloadAudio(call);
+    });
+
+    // 开始播放
+    if (call.audio_url) {
+        player.play(call.audio_url);
     } else {
         console.warn('[Mobile] 历史记录没有音频 URL');
         alert('该记录没有音频文件');
+        endPlayback();
+    }
+
+    function endPlayback() {
+        cleanupGlobalPlayer();
         render(container, createNavbar);
     }
+}
+
+/**
+ * 下载音频
+ */
+async function downloadAudio(call) {
+    console.log('[Mobile] 用户点击下载历史通话');
+
+    let fullUrl = call.audio_url;
+    if (fullUrl && fullUrl.startsWith('/') && window.TTS_API && window.TTS_API.baseUrl) {
+        fullUrl = window.TTS_API.baseUrl + fullUrl;
+    }
+
+    const speaker = call.char_name || 'Unknown';
+    const text = call.segments && call.segments.length > 0
+        ? call.segments.map(seg => seg.translation || seg.text || '').join(' ')
+        : '历史通话';
+
+    console.log('📥 下载历史通话音频');
+    console.log('  - audioUrl:', fullUrl);
+    console.log('  - speaker:', speaker);
+    console.log('  - text:', text);
+
+    // 使用 TTS_Events.downloadAudio 下载
+    if (window.TTS_Events && window.TTS_Events.downloadAudio) {
+        try {
+            await window.TTS_Events.downloadAudio(fullUrl, speaker, text);
+            console.log('✅ 下载请求已发送');
+        } catch (err) {
+            console.error('❌ 下载失败:', err);
+            alert('下载失败: ' + err.message);
+        }
+    } else {
+        alert('下载功能未就绪,请刷新页面');
+    }
+}
+
+/**
+ * 清除来电状态
+ */
+function clearCallState() {
+    delete window.TTS_IncomingCall;
+    $('#tts-manager-btn').removeClass('incoming-call').attr('title', '🔊 TTS配置');
+    $('#tts-mobile-trigger').removeClass('incoming-call');
 }
 
 /**
@@ -803,25 +486,7 @@ function showHistoryPlaybackUI(container, call, createNavbar) {
  */
 export function cleanup() {
     console.log('[Mobile] 清理来电记录 App 资源');
-    stopCurrentAudio();
-}
-
-/**
- * 内部辅助函数 - 停止当前音频播放
- */
-function stopCurrentAudio() {
-    if (currentPlayingAudio) {
-        console.log('[Mobile] 停止音频播放');
-        currentPlayingAudio.pause();
-        currentPlayingAudio.currentTime = 0;
-        currentPlayingAudio = null;
-    }
-
-    if (currentDurationInterval) {
-        clearInterval(currentDurationInterval);
-        currentDurationInterval = null;
-    }
+    cleanupGlobalPlayer();
 }
 
 export default { render, cleanup };
-
