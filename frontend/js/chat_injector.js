@@ -1,9 +1,47 @@
 /**
  * 聊天注入工具模块
  * 将通话内容注入到 SillyTavern 聊天中
+ * 支持 swipe 后自动恢复追加的电话内容
  */
 
+// 模块级状态
+let _initialized = false;
+
 export const ChatInjector = {
+    /**
+     * 初始化 ChatInjector，注册事件监听器
+     * 应在扩展加载时调用一次
+     */
+    init() {
+        if (_initialized) {
+            console.log('[ChatInjector] 已初始化，跳过');
+            return;
+        }
+
+        const context = window.SillyTavern?.getContext?.();
+        if (!context) {
+            console.warn('[ChatInjector] ⚠️ SillyTavern 上下文未就绪，延迟初始化');
+            // 延迟重试
+            setTimeout(() => this.init(), 1000);
+            return;
+        }
+
+        const { eventSource, eventTypes } = context;
+
+        // 监听 swipe 事件 - 当用户 swipe 消息时触发
+        eventSource.on(eventTypes.MESSAGE_SWIPED, (messageIndex) => {
+            this._handleSwipe(messageIndex);
+        });
+
+        // 监听消息接收事件 - swipe 后新消息生成完成时触发
+        eventSource.on(eventTypes.MESSAGE_RECEIVED, (messageIndex) => {
+            this._checkAndRestoreAppendedContent(messageIndex);
+        });
+
+        _initialized = true;
+        console.log('[ChatInjector] ✅ 初始化完成，已注册 swipe 监听器');
+    },
+
     /**
      * 将通话片段作为一条 assistant 消息注入聊天
      * 格式: 「某某给 user 打了电话，内容是：...」
@@ -223,7 +261,7 @@ ${dialogueContent}
                 return false;
             }
 
-            const { chat, updateMessageBlock, name1 } = context;
+            const { chat, chatMetadata, updateMessageBlock, name1, saveMetadata } = context;
             const saveChat = context.saveChat;
             const userName = name1 || '用户';
 
@@ -259,6 +297,20 @@ ${dialogueContent}
                 speakers: type === 'eavesdrop' ? speakers : [callerName]
             });
 
+            // 🔑 关键：将追加信息保存到 chatMetadata，用于 swipe 后恢复
+            if (!chatMetadata.pendingPhoneContents) {
+                chatMetadata.pendingPhoneContents = {};
+            }
+            // 以消息索引为键保存追加信息
+            if (!chatMetadata.pendingPhoneContents[lastAIIndex]) {
+                chatMetadata.pendingPhoneContents[lastAIIndex] = [];
+            }
+            chatMetadata.pendingPhoneContents[lastAIIndex].push({
+                options: options,
+                formattedContent: appendContent,
+                timestamp: Date.now()
+            });
+
             console.log(`[ChatInjector] 📝 追加内容到消息 #${lastAIIndex}:`, appendContent.substring(0, 100) + '...');
 
             // 刷新 DOM 显示
@@ -266,9 +318,12 @@ ${dialogueContent}
                 updateMessageBlock(lastAIIndex, targetMessage);
             }
 
-            // 保存聊天记录
+            // 保存聊天记录和元数据
             if (saveChat) {
                 await saveChat();
+            }
+            if (saveMetadata) {
+                await saveMetadata();
             }
 
             console.log('[ChatInjector] ✅ 内容已成功追加到最后一条 AI 消息');
@@ -277,6 +332,99 @@ ${dialogueContent}
         } catch (error) {
             console.error('[ChatInjector] ❌ 追加失败:', error);
             return false;
+        }
+    },
+
+    /**
+     * 处理 swipe 事件
+     * 当用户 swipe 一条消息时，记录该消息索引，等待新消息生成后恢复
+     * @private
+     */
+    _handleSwipe(messageIndex) {
+        const context = window.SillyTavern?.getContext?.();
+        if (!context) return;
+
+        const { chatMetadata } = context;
+        const pendingContents = chatMetadata.pendingPhoneContents?.[messageIndex];
+
+        if (pendingContents && pendingContents.length > 0) {
+            console.log(`[ChatInjector] 🔄 检测到消息 #${messageIndex} 被 swipe，该消息有 ${pendingContents.length} 条待恢复的电话内容`);
+
+            // 标记需要恢复
+            if (!chatMetadata._swipePendingRestore) {
+                chatMetadata._swipePendingRestore = {};
+            }
+            chatMetadata._swipePendingRestore[messageIndex] = pendingContents;
+        }
+    },
+
+    /**
+     * 检查并恢复追加的内容
+     * 在新消息接收后调用，检查是否有需要恢复的电话内容
+     * @private
+     */
+    async _checkAndRestoreAppendedContent(messageIndex) {
+        const context = window.SillyTavern?.getContext?.();
+        if (!context) return;
+
+        const { chatMetadata, chat, updateMessageBlock, saveMetadata } = context;
+        const saveChat = context.saveChat;
+
+        // 检查是否有待恢复的内容
+        const pendingRestore = chatMetadata._swipePendingRestore;
+        if (!pendingRestore) return;
+
+        // 遍历所有待恢复的消息
+        for (const [originalIndex, contents] of Object.entries(pendingRestore)) {
+            const idx = parseInt(originalIndex);
+
+            // 如果新消息的索引与原消息索引匹配（swipe 不改变索引）
+            if (idx === messageIndex && contents && contents.length > 0) {
+                console.log(`[ChatInjector] 🔄 恢复消息 #${idx} 的 ${contents.length} 条电话内容`);
+
+                const targetMessage = chat[idx];
+                if (!targetMessage) continue;
+
+                // 重新追加所有电话内容
+                for (const content of contents) {
+                    targetMessage.mes += '\n\n' + content.formattedContent;
+
+                    // 更新 extra 记录
+                    if (!targetMessage.extra) {
+                        targetMessage.extra = {};
+                    }
+                    if (!targetMessage.extra.appended_content) {
+                        targetMessage.extra.appended_content = [];
+                    }
+                    targetMessage.extra.appended_content.push({
+                        type: content.options.type,
+                        timestamp: Date.now(),
+                        restored: true,
+                        originalTimestamp: content.timestamp
+                    });
+                }
+
+                // 刷新 DOM
+                if (updateMessageBlock) {
+                    updateMessageBlock(idx, targetMessage);
+                }
+
+                // 更新 pendingPhoneContents（保持最新）
+                chatMetadata.pendingPhoneContents[idx] = contents;
+
+                console.log(`[ChatInjector] ✅ 已恢复消息 #${idx} 的电话内容`);
+            }
+        }
+
+        // 清除待恢复标记
+        delete chatMetadata._swipePendingRestore;
+
+        // 保存
+        if (saveChat) {
+            await saveChat();
+        }
+        if (saveMetadata) {
+            await saveMetadata();
         }
     },
 
@@ -301,3 +449,4 @@ ${dialogueContent}
 };
 
 export default ChatInjector;
+
