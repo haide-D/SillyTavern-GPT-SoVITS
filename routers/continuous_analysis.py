@@ -28,6 +28,8 @@ class ContinuousAnalysisCompleteRequest(BaseModel):
     context_fingerprint: str
     llm_response: str
     speakers: List[str]
+    user_name: Optional[str] = None  # 用户名，用于 Prompt 构建
+    char_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
 
 
 class SmartTriggerEvaluateRequest(BaseModel):
@@ -112,7 +114,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                 trigger_floor=req.floor,
                 context=[],  # 上下文由前端提供，此处简化
                 context_fingerprint=req.context_fingerprint,
-                user_name=None,
+                user_name=req.user_name,
                 char_name=character_left
             )
             trigger_result = {
@@ -124,25 +126,41 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         elif suggested_action == "eavesdrop":
             # 触发对话追踪
             print(f"[ContinuousAnalysis] 🎧 触发对话追踪")
+            
+            # 从分析结果中提取在场角色（而不是使用原始 speakers 列表）
+            present_characters = result.get("present_characters", [])
+            if not present_characters:
+                # 后备：如果没有在场角色信息，使用原始 speakers 但排除离场角色
+                present_characters = [s for s in req.speakers if s != character_left]
+            
+            # 提取 eavesdrop 配置（分析 LLM 提供的对话主题和框架）
+            eavesdrop_config = result.get("eavesdrop_config", {})
+            
+            print(f"[ContinuousAnalysis] 📍 在场角色: {present_characters}, 离场角色: {character_left}")
+            if eavesdrop_config:
+                print(f"[ContinuousAnalysis] 🎭 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
+            
             eavesdrop_scheduler = EavesdropScheduler()
             record_id = await eavesdrop_scheduler.schedule_eavesdrop(
                 chat_branch=req.chat_branch,
-                speakers=req.speakers,
+                speakers=present_characters,  # ✅ 使用在场角色列表
                 trigger_floor=req.floor,
                 context=[],
                 context_fingerprint=req.context_fingerprint,
-                user_name=None,
-                char_name=req.speakers[0] if req.speakers else None,
-                scene_description=trigger_reason
+                user_name=req.user_name,
+                char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由
+                scene_description=trigger_reason,
+                eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
             )
             trigger_result = {
                 "action": "eavesdrop",
                 "record_id": record_id
             }
         
-        # 通知前端分析完成
+        # 通知前端分析完成 (使用主角色卡名称作为 WebSocket 路由目标)
+        ws_target = req.char_name if req.char_name else (req.speakers[0] if req.speakers else "unknown")
         await NotificationService.broadcast_to_char(
-            char_name=req.speakers[0] if req.speakers else "unknown",
+            char_name=ws_target,
             message={
                 "type": "continuous_analysis_complete",
                 "floor": req.floor,

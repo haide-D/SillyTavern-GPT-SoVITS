@@ -120,6 +120,8 @@ class AudioMerger:
         """
         合并多说话人音频，说话人切换时使用更长停顿
         
+        会同步更新 segments 中每个元素的 start_time 和 audio_duration 字段（原地修改）
+        
         Args:
             segments: 多说话人片段列表（包含 speaker 信息）
             audio_bytes_list: 对应的音频字节列表
@@ -145,11 +147,35 @@ class AudioMerger:
         normalize_vol = config.get("normalize_volume", True)
         output_fmt = config.get("output_format", "wav")
         
-        # 加载所有音频片段
+        # 加载所有音频片段并计算时长
         audio_segments = []
         for audio_bytes in audio_bytes_list:
             audio_seg = AudioSegment.from_file(BytesIO(audio_bytes), format="wav")
             audio_segments.append(audio_seg)
+        
+        # 计算每个 segment 的时间信息
+        current_time_ms = 0
+        
+        for i, (seg, audio_seg) in enumerate(zip(segments, audio_segments)):
+            # 更新这个 segment 的开始时间和时长
+            seg.start_time = current_time_ms / 1000.0  # 转为秒
+            seg.audio_duration = len(audio_seg) / 1000.0  # pydub len 返回毫秒
+            
+            # 累加时间：当前片段时长
+            current_time_ms += len(audio_seg)
+            
+            # 添加后续停顿时间（用于下一个 segment 的计算）
+            if i < len(segments) - 1:
+                next_speaker = segments[i + 1].speaker
+                current_speaker = seg.speaker
+                
+                if next_speaker != current_speaker:
+                    current_time_ms += speaker_change_pause_ms
+                else:
+                    if seg.pause_after is not None:
+                        current_time_ms += int(seg.pause_after * 1000)
+                    else:
+                        current_time_ms += same_speaker_pause_ms
         
         # 合并音频
         merged = audio_segments[0]
@@ -189,4 +215,6 @@ class AudioMerger:
         merged.export(output, format=output_fmt)
         
         print(f"[AudioMerger] ✅ 多说话人音频合并完成: {len(audio_segments)} 段, {len(merged)}ms")
+        print(f"[AudioMerger] 📊 时间信息已更新到 segments")
         return output.getvalue()
+

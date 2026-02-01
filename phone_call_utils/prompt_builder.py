@@ -52,7 +52,7 @@ class PromptBuilder:
 - 其他情况 → suggested_action: "none"
 - character_left: 离场角色名，如果没有则为 null"""
 
-    # 对话追踪模板 - 用于生成多人私下对话
+    # 对话追踪模板 - 用于生成多人私下对话（基础版）
     EAVESDROP_TEMPLATE = """你是一个创意编剧，正在编写一段角色之间的私下对话。
 
 **场景背景**:
@@ -72,7 +72,19 @@ class PromptBuilder:
    - 透露一些 {{user_name}} 不知道的信息
 3. 每个角色的说话风格要符合其性格
 4. 情绪要自然过渡
-5. 使用 {{lang_display}} 进行对话
+5. text 字段使用 {{lang_display}} 进行对话
+6. **translation 字段必须填写中文翻译（即使 text 已经是中文也要复制过来）**
+
+**⚠️ 重要：纯语音内容规范**:
+这是一个 TTS 语音合成系统，text 字段只能包含**可朗读的纯对话文本**。
+**严禁**在 text 字段中包含：
+- ❌ 括号内的动作描述，如 `（轻微吸气）`、`（看向窗外）`
+- ❌ 括号内的心理活动，如 `（心想这个人真讨厌）`
+- ❌ 括号内的场景描述，如 `（伤口隐痛）`、`（身体僵硬）`
+- ❌ 任何非语音的标注，如 `*叹气*`、`[停顿]`
+
+**正确示例**: `"你懂什么？这叫禁忌的诱惑，是男人骨子里的本能。"`
+**错误示例**: `"（轻微吸气）你...你懂什么？（由于伤口隐痛身体有些僵硬）"`
 
 **输出格式 (严格 JSON)**:
 ```json
@@ -82,8 +94,8 @@ class PromptBuilder:
     {
       "speaker": "角色名",
       "emotion": "情绪标签",
-      "text": "说话内容 ({{lang_display}})",
-      "translation": "中文翻译 (必须)",
+      "text": "纯对话内容，无任何括号或动作描述 (使用 {{lang_display}})",
+      "translation": "中文翻译 (必填！不能省略！如果text是中文就复制text内容)",
       "pause_after": 0.5
     }
   ]
@@ -93,8 +105,68 @@ class PromptBuilder:
 **规则**:
 - speaker 必须是上述角色之一
 - emotion 必须是该角色的可用情绪
+- **text 字段只能是纯对话，禁止任何括号或动作描述**
+- **translation 字段必填，必须是中文，不能为空或省略**
 - 生成 15-25 个对话片段
 - 让对话自然流畅，角色交替说话"""
+
+    # 增强版对话追踪模板 - 使用分析 LLM 提供的主题和框架
+    EAVESDROP_TEMPLATE_ENHANCED = """你是一个创意编剧，正在按照编剧大纲编写一段角色之间的私下对话。
+
+**场景背景**:
+{{user_name}} 不在场，但可以"偷听"到以下角色的对话。
+
+**参与角色及其可用情绪**:
+{{speakers_emotions}}
+
+**对话历史参考**:
+{{context}}
+
+{{eavesdrop_guidance}}
+
+**创作要求**:
+1. **严格按照上述对话大纲和主题进行创作**
+2. 每个角色的说话风格要符合其性格
+3. 情绪要自然过渡，符合情绪弧线
+4. text 字段使用 {{lang_display}} 进行对话
+5. **translation 字段必须填写中文翻译（即使 text 已经是中文也要复制过来）**
+
+**⚠️ 重要：纯语音内容规范**:
+这是一个 TTS 语音合成系统，text 字段只能包含**可朗读的纯对话文本**。
+**严禁**在 text 字段中包含：
+- ❌ 括号内的动作描述，如 `（轻微吸气）`、`（看向窗外）`
+- ❌ 括号内的心理活动，如 `（心想这个人真讨厌）`
+- ❌ 括号内的场景描述，如 `（伤口隐痛）`、`（身体僵硬）`
+- ❌ 任何非语音的标注，如 `*叹气*`、`[停顿]`
+
+**正确示例**: `"你懂什么？这叫禁忌的诱惑，是男人骨子里的本能。"`
+**错误示例**: `"（轻微吸气）你...你懂什么？（由于伤口隐痛身体有些僵硬）"`
+
+**输出格式 (严格 JSON)**:
+```json
+{
+  "scene_description": "场景描述",
+  "segments": [
+    {
+      "speaker": "角色名",
+      "emotion": "情绪标签",
+      "text": "纯对话内容，无任何括号或动作描述 (使用 {{lang_display}})",
+      "translation": "中文翻译 (必填！不能省略！如果text是中文就复制text内容)",
+      "pause_after": 0.5
+    }
+  ]
+}
+```
+
+**规则**:
+- speaker 必须是上述角色之一
+- emotion 必须是该角色的可用情绪
+- **text 字段只能是纯对话，禁止任何括号或动作描述**
+- **translation 字段必填，必须是中文，不能为空或省略**
+- 生成 15-25 个对话片段
+- 让对话自然流畅，角色交替说话
+- **对话内容必须紧扣主题，不能偏离大纲"""
+
 
     
     # 默认 JSON 格式 Prompt 模板
@@ -149,6 +221,17 @@ class PromptBuilder:
     insert a transition segment with speed=1.0 between them to make the change smooth.
     Example: If going from speed 0.8 → 1.2, insert a 1.0 speed segment in between.
 - **filler_word**: optional filler word
+
+**⚠️ 重要：纯语音内容规范**:
+这是一个 TTS 语音合成系统，text 字段只能包含**可朗读的纯对话文本**。
+**严禁**在 text 字段中包含：
+- ❌ 括号内的动作描述，如 `（轻微吸气）`、`（看向窗外）`
+- ❌ 括号内的心理活动，如 `（心想这个人真讨厌）`
+- ❌ 括号内的场景描述，如 `（伤口隐痛）`、`（身体僵硬）`
+- ❌ 任何非语音的标注，如 `*叹气*`、`[停顿]`
+
+**正确示例**: `"喂？是我，我有点想你了..."`
+**错误示例**: `"（深呼吸）喂？是我...（声音有些颤抖）"`
 
 **Generate 10-15 segments** that sound natural and emotionally expressive.
 **Remember**: Use NATURAL phrases. When changing speed dramatically, add a neutral-speed transition segment."""
@@ -520,7 +603,8 @@ class PromptBuilder:
         speakers_emotions: Dict[str, List[str]],
         user_name: str = "用户",
         text_lang: str = "zh",
-        max_context_messages: int = 20
+        max_context_messages: int = 20,
+        eavesdrop_config: Dict = None  # 分析 LLM 提供的对话主题和框架
     ) -> str:
         """
         构建对话追踪 Prompt
@@ -531,6 +615,7 @@ class PromptBuilder:
             user_name: 用户名
             text_lang: 文本语言
             max_context_messages: 最大上下文消息数
+            eavesdrop_config: 分析 LLM 提供的对话主题、框架等配置
             
         Returns:
             格式化的对话追踪 Prompt
@@ -551,11 +636,53 @@ class PromptBuilder:
         lang_info = PromptBuilder.LANG_MAP.get(text_lang, PromptBuilder.LANG_MAP["zh"])
         lang_display = lang_info["display"]
         
-        # 构建 prompt
-        prompt = PromptBuilder.EAVESDROP_TEMPLATE
+        # 根据是否有 eavesdrop_config 选择模板
+        if eavesdrop_config:
+            # 使用增强版模板（由分析 LLM 提供主题和框架）
+            prompt = PromptBuilder.EAVESDROP_TEMPLATE_ENHANCED
+            
+            # 构建对话指导信息
+            guidance_parts = []
+            
+            # 对话主题
+            theme = eavesdrop_config.get("conversation_theme")
+            if theme:
+                guidance_parts.append(f"**对话主题**: {theme}")
+            
+            # 对话大纲
+            outline = eavesdrop_config.get("conversation_outline", [])
+            if outline:
+                outline_text = "\n".join([f"  {i+1}. {step}" for i, step in enumerate(outline)])
+                guidance_parts.append(f"**对话大纲**:\n{outline_text}")
+            
+            # 戏剧张力
+            tension = eavesdrop_config.get("dramatic_tension")
+            if tension:
+                guidance_parts.append(f"**戏剧张力**: {tension}")
+            
+            # 隐藏信息（用户不知道的）
+            hidden_info = eavesdrop_config.get("hidden_information")
+            if hidden_info:
+                guidance_parts.append(f"**可揭示的隐藏信息**: {hidden_info}")
+            
+            # 情绪弧线
+            emotional_arc = eavesdrop_config.get("emotional_arc")
+            if emotional_arc:
+                guidance_parts.append(f"**情绪弧线**: {emotional_arc}")
+            
+            eavesdrop_guidance = "\n\n".join(guidance_parts) if guidance_parts else ""
+            prompt = prompt.replace("{{eavesdrop_guidance}}", eavesdrop_guidance)
+            
+            print(f"[PromptBuilder] 使用增强版 eavesdrop 模板，主题: {theme}")
+        else:
+            # 使用基础版模板
+            prompt = PromptBuilder.EAVESDROP_TEMPLATE
+            print(f"[PromptBuilder] 使用基础版 eavesdrop 模板")
+        
+        # 替换通用变量
         prompt = prompt.replace("{{context}}", context_text)
         prompt = prompt.replace("{{speakers_emotions}}", speakers_emotions_text.strip())
-        prompt = prompt.replace("{{user_name}}", user_name)
+        prompt = prompt.replace("{{user_name}}", user_name or "用户")  # 防止 None 导致 replace() 错误
         prompt = prompt.replace("{{lang_display}}", lang_display)
         
         return prompt

@@ -812,7 +812,8 @@ async def message_webhook(req: MessageWebhookRequest):
             context=context_serializable,
             speakers=req.speakers,
             context_fingerprint=req.context_fingerprint,
-            user_name=req.user_name
+            user_name=req.user_name,
+            char_name=req.char_name  # 主角色卡名称用于 WebSocket 路由
         )
         
         if not analysis_data:
@@ -838,6 +839,8 @@ async def message_webhook(req: MessageWebhookRequest):
                 "floor": req.current_floor,
                 "context_fingerprint": req.context_fingerprint,
                 "speakers": req.speakers,
+                "user_name": req.user_name,
+                "char_name": req.char_name,  # 主角色卡名称用于回传时路由
                 "prompt": analysis_data["prompt"],
                 "llm_config": analysis_data["llm_config"]
             }

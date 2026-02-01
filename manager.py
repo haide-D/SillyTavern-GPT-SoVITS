@@ -108,6 +108,36 @@ async def serve_auto_call_audio(speaker_name: str, filename: str):
         }
     )
 
+# 挂载对话追踪音频目录
+eavesdrop_audio_dir = os.path.join(cache_dir, "eavesdrop")
+os.makedirs(eavesdrop_audio_dir, exist_ok=True)
+
+@app.get("/api/audio/eavesdrop/{filename}")
+async def serve_eavesdrop_audio(filename: str):
+    """
+    提供对话追踪音频文件
+    """
+    # URL 解码
+    filename = unquote(filename)
+    
+    # 构建文件路径
+    file_path = os.path.join(eavesdrop_audio_dir, filename)
+    
+    # 检查文件是否存在
+    if not os.path.exists(file_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"音频文件不存在: {filename}")
+    
+    # 返回文件
+    return FileResponse(
+        file_path,
+        media_type="audio/wav",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
 # 3. 注册路由
 app.include_router(data.router, tags=["Data Management"])
 app.include_router(tts.router, tags=["TTS Core"])

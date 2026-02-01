@@ -64,7 +64,8 @@ class ContinuousAnalyzer:
         context: List[Dict],
         speakers: List[str],
         context_fingerprint: str,
-        user_name: str = None
+        user_name: str = None,
+        char_name: str = None  # 主角色卡名称，用于 WebSocket 路由
     ) -> Optional[Dict]:
         """
         执行分析并记录到数据库 (新版 - 使用LiveCharacterEngine)
@@ -100,6 +101,8 @@ class ContinuousAnalyzer:
                 "floor": floor,
                 "context_fingerprint": context_fingerprint,
                 "speakers": speakers,
+                "user_name": user_name,  # 添加用户名用于 Prompt 构建
+                "char_name": char_name,  # 主角色卡名称用于 WebSocket 路由
                 "prompt": prompt,
                 "llm_config": {
                     "api_url": analysis_llm.get("api_url", ""),
@@ -200,6 +203,22 @@ class ContinuousAnalyzer:
             if record_id:
                 print(f"[ContinuousAnalyzer] ✅ 分析记录已保存: ID={record_id}, 楼层={floor}")
                 
+                # 优先使用分析 LLM 返回的 characters_present（而非二次提取）
+                characters_present = scene_trigger.get("characters_present", [])
+                if not characters_present:
+                    # 后备：从 characters_data 中提取
+                    characters_present = [
+                        char_name for char_name, char_data in characters_data.items()
+                        if char_data.get("present", False)
+                    ]
+                
+                # 提取 eavesdrop 配置（由分析 LLM 提供的对话主题和框架）
+                eavesdrop_config = scene_trigger.get("eavesdrop_config", {})
+                
+                print(f"[ContinuousAnalyzer] 📍 在场角色: {characters_present}")
+                if eavesdrop_config:
+                    print(f"[ContinuousAnalyzer] 🎭 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
+                
                 # 状态已保存，触发逻辑由上层 (routers/continuous_analysis.py) 根据 scene_trigger 处理
                 # 不在这里遍历触发每个角色的 potential_actions
                 
@@ -209,7 +228,9 @@ class ContinuousAnalyzer:
                     "scene_trigger": scene_trigger,
                     "suggested_action": suggested_action,
                     "character_left": character_left,
-                    "trigger_reason": trigger_reason
+                    "trigger_reason": trigger_reason,
+                    "present_characters": characters_present,  # ✅ 来自分析 LLM
+                    "eavesdrop_config": eavesdrop_config  # ✅ 对话主题和框架
                 }
             else:
                 print(f"[ContinuousAnalyzer] ⚠️ 记录已存在或保存失败: 楼层={floor}")

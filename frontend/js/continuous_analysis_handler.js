@@ -32,6 +32,8 @@ export class ContinuousAnalysisHandler {
             floor,
             context_fingerprint,
             speakers,
+            user_name,
+            char_name,
             prompt,
             llm_config
         } = message;
@@ -65,6 +67,8 @@ export class ContinuousAnalysisHandler {
                 floor,
                 context_fingerprint,
                 speakers,
+                user_name,
+                char_name,
                 llm_response: llmResponse
             });
 
@@ -77,6 +81,8 @@ export class ContinuousAnalysisHandler {
                 floor,
                 context_fingerprint,
                 speakers,
+                user_name,
+                char_name,
                 llm_response: null,
                 error: error.message
             });

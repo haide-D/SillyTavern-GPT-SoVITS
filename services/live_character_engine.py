@@ -97,7 +97,7 @@ class LiveCharacterEngine:
 # 场景触发建议
 根据当前场景状态,判断是否应该触发以下事件:
 - phone_call: 有角色离场且适合打电话给用户
-- eavesdrop: 多个角色在场,可能有私下对话
+- eavesdrop: 多个角色在场,可能有私下对话（用户可以偷听）
 - none: 当前场景不适合触发任何事件
 
 # 输出格式
@@ -117,7 +117,20 @@ class LiveCharacterEngine:
         "character_left": "离场角色名或null",
         "characters_present": ["在场角色列表"],
         "private_conversation_likely": true/false,
-        "reason": "简短解释判断原因"
+        "reason": "简短解释判断原因",
+        
+        // 以下字段仅在 suggested_action 为 "eavesdrop" 时需要填写:
+        "eavesdrop_config": {{
+            "conversation_theme": "对话的核心主题，如：讨论用户的行为、角色之间的秘密等",
+            "conversation_outline": [
+                "对话第一阶段：开场，引出话题",
+                "对话第二阶段：深入讨论，揭示矛盾",
+                "对话第三阶段：情感高潮或结论"
+            ],
+            "dramatic_tension": "戏剧张力描述，如：暗流涌动的嫉妒、表面平静的竞争",
+            "hidden_information": "对话中可能透露的用户不知道的信息",
+            "emotional_arc": "情绪弧线，如：平静→紧张→爆发→缓和"
+        }}
     }}
 }}
 
@@ -126,6 +139,119 @@ class LiveCharacterEngine:
         return prompt
 
 
+    
+    def _sanitize_json_string(self, json_str: str) -> str:
+        """
+        预处理 JSON 字符串，修复常见的 LLM 输出格式问题
+        
+        Args:
+            json_str: 原始 JSON 字符串
+            
+        Returns:
+            清理后的 JSON 字符串
+        """
+        import re
+        
+        # 1. 移除可能的 BOM 和特殊不可见字符
+        json_str = json_str.strip()
+        if json_str.startswith('\ufeff'):
+            json_str = json_str[1:]
+        
+        # 2. 移除 JSON 对象/数组末尾的多余逗号
+        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+        
+        # 3. 修复常见的布尔值问题 (True -> true, False -> false, None -> null)
+        json_str = re.sub(r':\s*True\b', ': true', json_str)
+        json_str = re.sub(r':\s*False\b', ': false', json_str)
+        json_str = re.sub(r':\s*None\b', ': null', json_str)
+        
+        # 4. 修复未加引号的字符串值 - 这是 LLM 最常见的错误
+        # 处理模式: "key": 中文或其他非JSON值的内容
+        # 例如: "对杜先生": 绝对服从、崇拜 -> "对杜先生": "绝对服从、崇拜"
+        lines = json_str.split('\n')
+        fixed_lines = []
+        
+        for line in lines:
+            fixed_line = self._fix_unquoted_string_values(line)
+            fixed_lines.append(fixed_line)
+        
+        json_str = '\n'.join(fixed_lines)
+        
+        return json_str
+    
+    def _fix_unquoted_string_values(self, line: str) -> str:
+        """
+        修复单行中未加引号的字符串值
+        
+        例如:
+        "key": 中文内容  ->  "key": "中文内容"
+        "key": some text,  ->  "key": "some text",
+        """
+        import re
+        
+        # 匹配模式: "key": 后面跟着非 JSON 标准值的内容
+        # JSON 标准值: "string", number, true, false, null, {, [
+        # 我们要找的是冒号后面不是这些标准值开头的情况
+        
+        # 这个正则匹配: "key": 后面跟着不是 ", {, [, 数字, true, false, null 的内容
+        pattern = r'("[\w\u4e00-\u9fff]+")\s*:\s*(?![\[\{"\d]|true|false|null)([^\n\r,}\]]+)'
+        
+        def fix_value(match):
+            key = match.group(1)
+            value = match.group(2).strip()
+            
+            # 如果值已经被引号包围或是空的，不处理
+            if not value or value.startswith('"') or value.startswith("'"):
+                return match.group(0)
+            
+            # 移除尾部的逗号（如果有的话）
+            trailing = ''
+            if value.endswith(','):
+                value = value[:-1].strip()
+                trailing = ','
+            
+            # 转义值中的引号
+            value = value.replace('"', '\\"')
+            
+            return f'{key}: "{value}"{trailing}'
+        
+        return re.sub(pattern, fix_value, line)
+    
+    def _try_parse_json(self, json_str: str) -> Optional[Dict]:
+        """
+        尝试多种方式解析 JSON
+        
+        Args:
+            json_str: JSON 字符串
+            
+        Returns:
+            解析结果或 None
+        """
+        import json
+        
+        # 尝试 1: 直接解析
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"[LiveCharacterEngine] 直接解析失败: {e}")
+        
+        # 尝试 2: 预处理后解析
+        try:
+            sanitized = self._sanitize_json_string(json_str)
+            return json.loads(sanitized)
+        except json.JSONDecodeError as e:
+            print(f"[LiveCharacterEngine] 预处理后解析失败: {e}")
+        
+        # 尝试 3: 使用更宽松的解析（如果安装了demjson3）
+        try:
+            import demjson3
+            return demjson3.decode(json_str)
+        except ImportError:
+            pass  # demjson3 未安装，跳过
+        except Exception as e:
+            print(f"[LiveCharacterEngine] demjson3 解析失败: {e}")
+        
+        return None
     
     def parse_llm_response(self, llm_response: str) -> Dict[str, Any]:
         """
@@ -140,32 +266,50 @@ class LiveCharacterEngine:
         import json
         import re
         
+        if not llm_response or not llm_response.strip():
+            print(f"[LiveCharacterEngine] ❌ LLM 响应为空")
+            return {}
+        
         print(f"[LiveCharacterEngine] 开始解析 LLM 响应 (长度: {len(llm_response)})")
         
-        try:
-            # 尝试直接解析JSON
-            result = json.loads(llm_response)
+        # 尝试直接解析
+        result = self._try_parse_json(llm_response)
+        if result:
             print(f"[LiveCharacterEngine] ✅ 直接解析 JSON 成功")
-        except Exception as e:
-            print(f"[LiveCharacterEngine] 直接解析失败: {e}")
-            # 如果失败,尝试提取JSON块
-            json_match = re.search(r'```json\s*(.*?)\s*```', llm_response, re.DOTALL)
+        else:
+            # 如果失败，尝试提取 JSON 块
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', llm_response, re.DOTALL)
             if json_match:
-                try:
-                    json_str = json_match.group(1)
-                    print(f"[LiveCharacterEngine] 提取到 JSON 块 (长度: {len(json_str)})")
-                    result = json.loads(json_str)
+                json_str = json_match.group(1).strip()
+                print(f"[LiveCharacterEngine] 提取到 JSON 块 (长度: {len(json_str)})")
+                
+                result = self._try_parse_json(json_str)
+                if result:
                     print(f"[LiveCharacterEngine] ✅ JSON 块解析成功")
-                except Exception as e2:
-                    print(f"[LiveCharacterEngine] ❌ JSON 块解析失败: {e2}")
-                    print(f"[LiveCharacterEngine] JSON 块内容前 500 字符:")
-                    print(json_str[:500] if len(json_str) > 500 else json_str)
+                else:
+                    # 详细诊断输出
+                    print(f"[LiveCharacterEngine] ❌ JSON 块解析失败")
+                    self._diagnose_json_error(json_str)
                     return {}
             else:
-                print(f"[LiveCharacterEngine] ❌ 未找到 JSON 块")
-                print(f"[LiveCharacterEngine] 响应内容前 500 字符:")
-                print(llm_response[:500] if len(llm_response) > 500 else llm_response)
-                return {}
+                # 尝试找到任何看起来像 JSON 对象的内容
+                brace_match = re.search(r'\{[\s\S]*\}', llm_response)
+                if brace_match:
+                    json_str = brace_match.group(0)
+                    print(f"[LiveCharacterEngine] 提取到疑似 JSON 对象 (长度: {len(json_str)})")
+                    
+                    result = self._try_parse_json(json_str)
+                    if result:
+                        print(f"[LiveCharacterEngine] ✅ 疑似 JSON 解析成功")
+                    else:
+                        print(f"[LiveCharacterEngine] ❌ 疑似 JSON 解析失败")
+                        self._diagnose_json_error(json_str)
+                        return {}
+                else:
+                    print(f"[LiveCharacterEngine] ❌ 未找到 JSON 块或对象")
+                    print(f"[LiveCharacterEngine] 响应内容前 500 字符:")
+                    print(llm_response[:500] if len(llm_response) > 500 else llm_response)
+                    return {}
         
         # 兼容新旧格式
         if "character_states" in result:
@@ -179,12 +323,35 @@ class LiveCharacterEngine:
                 "scene_trigger": {
                     "suggested_action": "none",
                     "character_left": None,
-
                     "characters_present": list(result.keys()),
                     "private_conversation_likely": False,
                     "reason": "旧格式响应,无触发建议"
                 }
             }
+    
+    def _diagnose_json_error(self, json_str: str):
+        """详细诊断 JSON 解析错误"""
+        import json
+        
+        try:
+            json.loads(json_str)
+        except json.JSONDecodeError as e:
+            error_line = e.lineno
+            error_col = e.colno
+            error_pos = e.pos
+            
+            print(f"[LiveCharacterEngine] 📍 错误位置: 行 {error_line}, 列 {error_col}, 字符位置 {error_pos}")
+            
+            # 显示错误附近的内容
+            lines = json_str.split('\n')
+            if 0 < error_line <= len(lines):
+                # 显示错误行及前后各1行
+                start = max(0, error_line - 2)
+                end = min(len(lines), error_line + 1)
+                print(f"[LiveCharacterEngine] 📝 错误附近内容:")
+                for i in range(start, end):
+                    marker = ">>> " if i == error_line - 1 else "    "
+                    print(f"{marker}L{i+1}: {lines[i][:100]}{'...' if len(lines[i]) > 100 else ''}")
 
     
     def evaluate_character_actions(

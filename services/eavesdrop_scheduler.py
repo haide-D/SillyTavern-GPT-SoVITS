@@ -30,7 +30,8 @@ class EavesdropScheduler:
         context_fingerprint: str,
         user_name: str = None,
         char_name: str = None,
-        scene_description: str = None
+        scene_description: str = None,
+        eavesdrop_config: Dict = None  # 分析 LLM 提供的对话主题和框架
     ) -> Optional[int]:
         """
         调度对话追踪任务
@@ -44,6 +45,7 @@ class EavesdropScheduler:
             user_name: 用户名
             char_name: 主角色卡名称，用于 WebSocket 推送路由
             scene_description: 场景描述
+            eavesdrop_config: 分析 LLM 提供的对话主题、框架等配置
             
         Returns:
             记录ID,如果已存在或正在执行则返回 None
@@ -104,7 +106,8 @@ class EavesdropScheduler:
         # 异步执行生成任务
         asyncio.create_task(self._execute_generation(
             record_id, chat_branch, speakers, trigger_floor, context, 
-            context_fingerprint, user_name, char_name, scene_description
+            context_fingerprint, user_name, char_name, scene_description,
+            eavesdrop_config
         ))
         
         return record_id
@@ -119,7 +122,8 @@ class EavesdropScheduler:
         context_fingerprint: str,
         user_name: str = None, 
         char_name: str = None,
-        scene_description: str = None
+        scene_description: str = None,
+        eavesdrop_config: Dict = None
     ):
         """
         执行生成任务(异步)
@@ -139,12 +143,13 @@ class EavesdropScheduler:
             # 更新状态为 generating
             self.db.update_eavesdrop_status(record_id, "generating")
             
-            # 第一阶段: 构建prompt
+            # 第一阶段: 构建prompt（使用分析 LLM 提供的对话主题和框架）
             result = await self.eavesdrop_service.build_prompt(
                 context=context,
                 speakers=speakers,
                 user_name=user_name,
-                scene_description=scene_description
+                scene_description=scene_description,
+                eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
             )
             
             prompt = result.get("prompt")

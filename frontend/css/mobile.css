@@ -348,7 +348,7 @@
    ========================================= */
 
 #tts-mobile-trigger.eavesdrop-available {
-    animation: eavesdrop-pulse-mobile 1.5s ease-in-out infinite !important;
+    animation: phone-vibrate-mobile 0.5s ease-in-out infinite, eavesdrop-pulse-mobile 1.5s ease-in-out infinite !important;
 }
 
 @keyframes eavesdrop-pulse-mobile {
