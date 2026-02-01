@@ -211,6 +211,10 @@ export function extractTextFromNode($node) {
 function cleanContent(text) {
     if (!text) return "";
     let str = String(text);
+    // 排除追加的电话/窃听内容（使用独特标签，不影响指纹计算）
+    str = str.replace(/<st-tts-call>[\s\S]*?<\/st-tts-call>/gi, "");
+    str = str.replace(/<st-tts-eavesdrop>[\s\S]*?<\/st-tts-eavesdrop>/gi, "");
+    // 排除 think 标签
     str = str.replace(/<think>[\s\S]*?<\/think>/gi, "");
     str = str.replace(/\s+/g, "");
     return str;

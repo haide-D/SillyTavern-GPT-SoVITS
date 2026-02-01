@@ -149,7 +149,8 @@ export const ChatInjector = {
         // 组装可折叠的消息，防止剧透
         let sceneDesc = sceneDescription ? `\n*${sceneDescription}*` : '';
 
-        const message = `<details>
+        const message = `<st-tts-call>
+<details>
 <summary>📞 <strong>${callerName}</strong> 给 <strong>${userName}</strong> 打了一个电话 <em>(点击展开)</em></summary>
 ${sceneDesc}
 
@@ -160,7 +161,8 @@ ${dialogueContent}
 ---
 
 *通话结束*
-</details>`;
+</details>
+</st-tts-call>`;
 
         return message;
     },
@@ -183,7 +185,8 @@ ${dialogueContent}
         // 组装可折叠的消息，防止剧透
         let sceneDesc = sceneDescription ? `\n*${sceneDescription}*` : '';
 
-        const message = `<details>
+        const message = `<st-tts-eavesdrop>
+<details>
 <summary>🎧 <strong>${speakersText}</strong> 正在私下交谈 <em>(点击展开)</em></summary>
 ${sceneDesc}
 
@@ -194,7 +197,8 @@ ${dialogueContent}
 ---
 
 *对话结束*
-</details>`;
+</details>
+</st-tts-eavesdrop>`;
 
         return message;
     },
