@@ -208,3 +208,40 @@ def get_sovits_host():
     """获取配置的 GPT-SoVITS 服务地址"""
     s = init_settings()
     return s.get("sovits_host", SOVITS_HOST)
+
+
+def get_character_mappings():
+    """获取角色-模型映射表"""
+    return load_json(MAPPINGS_FILE)
+
+
+def get_bound_characters():
+    """获取所有已绑定模型的角色名列表"""
+    mappings = get_character_mappings()
+    return list(mappings.keys())
+
+
+def is_character_bound(char_name: str) -> bool:
+    """检查角色是否已绑定模型"""
+    mappings = get_character_mappings()
+    return char_name in mappings
+
+
+def filter_bound_speakers(speakers: list) -> list:
+    """
+    过滤说话人列表，只保留已绑定模型的角色
+    
+    Args:
+        speakers: 说话人列表
+        
+    Returns:
+        已绑定模型的说话人列表
+    """
+    mappings = get_character_mappings()
+    bound_speakers = [s for s in speakers if s in mappings]
+    
+    if len(bound_speakers) < len(speakers):
+        unbound = [s for s in speakers if s not in mappings]
+        print(f"[Config] ⚠️ 以下角色未绑定模型，已过滤: {unbound}")
+    
+    return bound_speakers

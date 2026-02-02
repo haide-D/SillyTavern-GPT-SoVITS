@@ -72,6 +72,23 @@ class LiveCharacterEngine:
         
         speakers_list = "、".join(speakers)
         
+        # ✅ 获取已绑定 TTS 模型的角色列表
+        from config import get_bound_characters
+        bound_characters = get_bound_characters()
+        
+        # 计算 speakers 中哪些角色有绑定模型
+        bound_speakers = [s for s in speakers if s in bound_characters]
+        unbound_speakers = [s for s in speakers if s not in bound_characters]
+        
+        # 构建可用语音角色说明
+        if bound_speakers:
+            voice_available_text = f"以下角色有语音功能，可以打电话: {', '.join(bound_speakers)}"
+        else:
+            voice_available_text = "当前没有角色配置了语音功能，不建议触发电话"
+        
+        if unbound_speakers:
+            voice_available_text += f"\n以下角色没有语音功能，不能作为打电话者: {', '.join(unbound_speakers)}"
+        
         # 格式化通话历史
         call_history_text = "无近期通话记录"
         if call_history:
@@ -145,11 +162,15 @@ class LiveCharacterEngine:
 - 角色想分享心情或轻松聊天
 - 角色处于强烈情绪中想要倾诉
 
+⚠️ **语音角色限制（必须遵守）**：
+{voice_available_text}
+只能从有语音功能的角色中选择电话 caller！如果没有角色有语音功能，不要触发电话。
+
 综合考虑：
 1. 当前场景是否适合来电
 2. 角色是否有话想说（不限类型）
 3. 参考上面的通话历史，避免相同角色短时间内重复打电话
-4. 如果多个角色都想打，选择当前场景下最合适的那个
+4. 如果多个角色都想打，从**有语音功能的角色**中选择最合适的
 
 ## 偷听触发判断
 当2+角色在场且可能有私下对话时触发

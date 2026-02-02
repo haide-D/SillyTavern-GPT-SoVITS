@@ -109,27 +109,27 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         trigger_result = None
         
         if suggested_action == "phone_call" and caller:
-            # 触发主动电话
-            print(f"[ContinuousAnalysis] 📞 触发主动电话: caller={caller}, ws_target={req.char_name}")
-            scheduler = AutoCallScheduler()
-            call_id = await scheduler.schedule_auto_call(
-                chat_branch=req.chat_branch,
-                speakers=[caller],  # 打电话的角色
-                trigger_floor=req.floor,
-                context=[],  # 上下文由 PhoneCallService 根据 chat_branch 提取
-                context_fingerprint=req.context_fingerprint,
-                user_name=req.user_name,
-                char_name=req.char_name,  # ✅ 修复: 使用主角色卡名称进行 WebSocket 路由
-                call_reason=call_reason,  # 传递电话原因
-                call_tone=call_tone  # 传递通话氛围
-            )
-            trigger_result = {
-                "action": "phone_call",
-                "call_id": call_id,
-                "character": caller,
-                "call_reason": call_reason,
-                "call_tone": call_tone
-            }
+                # 触发主动电话
+                print(f"[ContinuousAnalysis] 📞 触发主动电话: caller={caller}, ws_target={req.char_name}")
+                scheduler = AutoCallScheduler()
+                call_id = await scheduler.schedule_auto_call(
+                    chat_branch=req.chat_branch,
+                    speakers=[caller],  # 打电话的角色
+                    trigger_floor=req.floor,
+                    context=[],  # 上下文由 PhoneCallService 根据 chat_branch 提取
+                    context_fingerprint=req.context_fingerprint,
+                    user_name=req.user_name,
+                    char_name=req.char_name,  # ✅ 修复: 使用主角色卡名称进行 WebSocket 路由
+                    call_reason=call_reason,  # 传递电话原因
+                    call_tone=call_tone  # 传递通话氛围
+                )
+                trigger_result = {
+                    "action": "phone_call",
+                    "call_id": call_id,
+                    "character": caller,
+                    "call_reason": call_reason,
+                    "call_tone": call_tone
+                }
             
         elif suggested_action == "eavesdrop":
             # 触发对话追踪
@@ -144,29 +144,41 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                 # 后备：如果没有在场角色信息，使用原始 speakers 但排除离场角色
                 present_characters = [s for s in req.speakers if s != character_left] if character_left else req.speakers
             
-            # 提取 eavesdrop 配置（分析 LLM 提供的对话主题和框架）
-            eavesdrop_config = result.get("eavesdrop_config", {})
+            # ✅ 过滤出有语音功能的角色
+            from config import filter_bound_speakers
+            valid_speakers = filter_bound_speakers(present_characters)
             
-            print(f"[ContinuousAnalysis] 📍 在场角色: {present_characters}, 离场角色: {character_left}")
-            if eavesdrop_config:
-                print(f"[ContinuousAnalysis] 🎭 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
-            
-            eavesdrop_scheduler = EavesdropScheduler()
-            record_id = await eavesdrop_scheduler.schedule_eavesdrop(
-                chat_branch=req.chat_branch,
-                speakers=present_characters,  # ✅ 使用在场角色列表
-                trigger_floor=req.floor,
-                context=[],
-                context_fingerprint=req.context_fingerprint,
-                user_name=req.user_name,
-                char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由
-                scene_description=trigger_reason,
-                eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
-            )
-            trigger_result = {
-                "action": "eavesdrop",
-                "record_id": record_id
-            }
+            if len(valid_speakers) < 2:
+                # 对话追踪至少需要2个角色有语音
+                print(f"[ContinuousAnalysis] ⚠️ 跳过对话追踪: 有语音功能的角色少于2个 (valid_speakers={valid_speakers})")
+                trigger_result = {
+                    "action": "skipped",
+                    "reason": f"有语音功能的角色少于2个"
+                }
+            else:
+                # 提取 eavesdrop 配置（分析 LLM 提供的对话主题和框架）
+                eavesdrop_config = result.get("eavesdrop_config", {})
+                
+                print(f"[ContinuousAnalysis] 📍 在场角色: {present_characters} -> 有效角色: {valid_speakers}")
+                if eavesdrop_config:
+                    print(f"[ContinuousAnalysis] 🎭 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
+                
+                eavesdrop_scheduler = EavesdropScheduler()
+                record_id = await eavesdrop_scheduler.schedule_eavesdrop(
+                    chat_branch=req.chat_branch,
+                    speakers=valid_speakers,  # ✅ 使用过滤后的角色列表
+                    trigger_floor=req.floor,
+                    context=[],
+                    context_fingerprint=req.context_fingerprint,
+                    user_name=req.user_name,
+                    char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由
+                    scene_description=trigger_reason,
+                    eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
+                )
+                trigger_result = {
+                    "action": "eavesdrop",
+                    "record_id": record_id
+                }
         
         # 通知前端分析完成 (使用主角色卡名称作为 WebSocket 路由目标)
         ws_target = req.char_name if req.char_name else (req.speakers[0] if req.speakers else "unknown")
