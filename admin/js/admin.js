@@ -25,6 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
     bindFetchModelsButton();
     // 绑定测试 LLM 连接按钮
     bindTestConnectionButton();
+    // 绑定分析引擎 LLM 按钮
+    bindAnalysisLLMButtons();
+    // 绑定设置页 Tab 切换
+    bindSettingsTabs();
 
     // 显示通告弹窗
     document.getElementById('notice-dialog').style.display = 'flex';
@@ -530,6 +534,22 @@ async function confirmBatchEmotion() {
     }
 }
 
+// ==================== 设置页 Tab 切换 ====================
+function bindSettingsTabs() {
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            // 移除所有 active
+            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+
+            // 激活当前
+            tab.classList.add('active');
+            const tabId = 'settings-tab-' + tab.dataset.tab;
+            document.getElementById(tabId).classList.add('active');
+        });
+    });
+}
+
 // ==================== 配置管理 ====================
 async function loadSettings() {
     try {
@@ -542,11 +562,44 @@ async function loadSettings() {
         document.getElementById('setting-sovits-host').value = settings.sovits_host || 'http://127.0.0.1:9880';
         document.getElementById('setting-default-lang').value = settings.default_lang || 'Chinese';
 
-        // 电话呼叫启用开关
+        // ========== 分析引擎配置 ==========
+        const analysis = settings.analysis_engine || {};
+        document.getElementById('setting-analysis-enabled').value = String(analysis.enabled !== false);
+        document.getElementById('setting-analysis-interval').value = analysis.analysis_interval || 3;
+        document.getElementById('setting-analysis-threshold').value = analysis.trigger_threshold || 60;
+
+        // 分析 LLM 配置
+        const analysisLlm = analysis.llm || {};
+        document.getElementById('setting-analysis-llm-api-url').value = analysisLlm.api_url || '';
+        document.getElementById('setting-analysis-llm-api-key').value = analysisLlm.api_key || '';
+
+        // 处理分析引擎模型下拉框
+        const analysisModelSelect = document.getElementById('setting-analysis-llm-model');
+        const savedAnalysisModel = analysisLlm.model || '';
+        if (savedAnalysisModel) {
+            let hasOpt = false;
+            for (let i = 0; i < analysisModelSelect.options.length; i++) {
+                if (analysisModelSelect.options[i].value === savedAnalysisModel) {
+                    hasOpt = true;
+                    break;
+                }
+            }
+            if (!hasOpt) {
+                const opt = document.createElement('option');
+                opt.value = savedAnalysisModel;
+                opt.textContent = savedAnalysisModel;
+                analysisModelSelect.appendChild(opt);
+            }
+            analysisModelSelect.value = savedAnalysisModel;
+        }
+        document.getElementById('setting-analysis-llm-temperature').value = analysisLlm.temperature || 0.8;
+        document.getElementById('setting-analysis-llm-max-tokens').value = analysisLlm.max_tokens || 5000;
+
+        // ========== 电话功能配置 ==========
         const phoneCallEnabled = settings.phone_call?.enabled !== false;
         document.getElementById('setting-phone-call-enabled').value = String(phoneCallEnabled);
 
-        // LLM 配置
+        // 电话 LLM 配置
         const llm = settings.phone_call?.llm || {};
         document.getElementById('setting-llm-api-url').value = llm.api_url || 'http://127.0.0.1:7861/v1';
         document.getElementById('setting-llm-api-key').value = llm.api_key || '';
@@ -582,17 +635,16 @@ async function loadSettings() {
         document.getElementById('setting-tts-text-split-method').value = tts.text_split_method || 'cut0';
         document.getElementById('setting-tts-use-aux-ref-audio').value = String(tts.use_aux_ref_audio || false);
 
-        // 消息提取和过滤配置
-        const extractTag = settings.phone_call?.extract_tag || '';
-        const filterTags = settings.phone_call?.filter_tags || '';
-        document.getElementById('setting-extract-tag').value = extractTag;
-        document.getElementById('setting-filter-tags').value = filterTags;
+        // 消息处理配置（共享）
+        const msgProcessing = settings.message_processing || {};
+        document.getElementById('setting-extract-tag').value = msgProcessing.extract_tag || '';
+        document.getElementById('setting-filter-tags').value = msgProcessing.filter_tags || '';
 
-        // 自动生成配置
-        const autoGen = settings.phone_call?.auto_generation || {};
-        document.getElementById('setting-auto-floor-interval').value = autoGen.floor_interval || 3;
-        document.getElementById('setting-auto-start-floor').value = autoGen.start_floor || 3;
-        document.getElementById('setting-auto-max-context-messages').value = autoGen.max_context_messages || 10;
+        // 自动生成配置 - 已废弃，现由分析引擎控制
+        // const autoGen = settings.phone_call?.auto_generation || {};
+        // document.getElementById('setting-auto-floor-interval').value = autoGen.floor_interval || 3;
+        // document.getElementById('setting-auto-start-floor').value = autoGen.start_floor || 3;
+        // document.getElementById('setting-auto-max-context-messages').value = autoGen.max_context_messages || 10;
     } catch (error) {
         console.error('加载配置失败:', error);
     }
@@ -604,10 +656,30 @@ async function saveSettings() {
         cache_dir: document.getElementById('setting-cache-dir').value.trim(),
         sovits_host: document.getElementById('setting-sovits-host').value.trim(),
         default_lang: document.getElementById('setting-default-lang').value,
+
+        // 分析引擎配置
+        analysis_engine: {
+            enabled: document.getElementById('setting-analysis-enabled').value === 'true',
+            analysis_interval: parseInt(document.getElementById('setting-analysis-interval').value) || 3,
+            trigger_threshold: parseInt(document.getElementById('setting-analysis-threshold').value) || 60,
+            llm: {
+                api_url: document.getElementById('setting-analysis-llm-api-url').value.trim(),
+                api_key: document.getElementById('setting-analysis-llm-api-key').value.trim(),
+                model: document.getElementById('setting-analysis-llm-model').value.trim(),
+                temperature: parseFloat(document.getElementById('setting-analysis-llm-temperature').value) || 0.8,
+                max_tokens: parseInt(document.getElementById('setting-analysis-llm-max-tokens').value) || 5000
+            }
+        },
+
+        // 消息处理配置（共享）
+        message_processing: {
+            extract_tag: document.getElementById('setting-extract-tag').value.trim(),
+            filter_tags: document.getElementById('setting-filter-tags').value.trim()
+        },
+
+        // 电话功能配置
         phone_call: {
             enabled: document.getElementById('setting-phone-call-enabled').value === 'true',
-            extract_tag: document.getElementById('setting-extract-tag').value.trim(),
-            filter_tags: document.getElementById('setting-filter-tags').value.trim(),
             llm: {
                 api_url: document.getElementById('setting-llm-api-url').value.trim(),
                 api_key: document.getElementById('setting-llm-api-key').value.trim(),
@@ -620,12 +692,13 @@ async function saveSettings() {
                 prompt_lang: document.getElementById('setting-tts-prompt-lang').value,
                 text_split_method: document.getElementById('setting-tts-text-split-method').value,
                 use_aux_ref_audio: document.getElementById('setting-tts-use-aux-ref-audio').value === 'true'
-            },
-            auto_generation: {
-                floor_interval: parseInt(document.getElementById('setting-auto-floor-interval').value) || 3,
-                start_floor: parseInt(document.getElementById('setting-auto-start-floor').value) || 3,
-                max_context_messages: parseInt(document.getElementById('setting-auto-max-context-messages').value) || 10
             }
+            // auto_generation - 已废弃，现由分析引擎控制
+            // auto_generation: {
+            //     floor_interval: parseInt(document.getElementById('setting-auto-floor-interval').value) || 3,
+            //     start_floor: parseInt(document.getElementById('setting-auto-start-floor').value) || 3,
+            //     max_context_messages: parseInt(document.getElementById('setting-auto-max-context-messages').value) || 10
+            // }
         }
     };
 
@@ -784,6 +857,88 @@ function bindTestConnectionButton() {
             btn.textContent = '🧪 测试连接';
         }
     });
+}
+
+// 绑定分析引擎 LLM 按钮
+function bindAnalysisLLMButtons() {
+    // 获取模型列表按钮
+    const fetchBtn = document.getElementById('fetch-analysis-models-btn');
+    if (fetchBtn) {
+        fetchBtn.addEventListener('click', async () => {
+            const apiUrl = document.getElementById('setting-analysis-llm-api-url').value.trim();
+            const apiKey = document.getElementById('setting-analysis-llm-api-key').value.trim();
+            const modelSelect = document.getElementById('setting-analysis-llm-model');
+
+            if (!apiUrl || !apiKey) {
+                showNotification('请先填写分析引擎 LLM API 地址和密钥', 'warning');
+                return;
+            }
+
+            const currentValue = modelSelect.value;
+            fetchBtn.disabled = true;
+            fetchBtn.textContent = '获取中...';
+
+            try {
+                const models = await fetchLLMModels(apiUrl, apiKey);
+                models.sort((a, b) => a.localeCompare(b));
+
+                modelSelect.innerHTML = '<option value="">请选择模型...</option>';
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+
+                if (currentValue && models.includes(currentValue)) {
+                    modelSelect.value = currentValue;
+                } else if (models.length > 0) {
+                    modelSelect.value = models[0];
+                }
+
+                showNotification(`成功获取 ${models.length} 个模型`, 'success');
+            } catch (error) {
+                showNotification(`获取模型失败: ${error.message}`, 'error');
+            } finally {
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = '🔄 获取模型列表';
+            }
+        });
+    }
+
+    // 测试连接按钮
+    const testBtn = document.getElementById('test-analysis-llm-btn');
+    if (testBtn) {
+        testBtn.addEventListener('click', async () => {
+            const apiUrl = document.getElementById('setting-analysis-llm-api-url').value.trim();
+            const apiKey = document.getElementById('setting-analysis-llm-api-key').value.trim();
+            const model = document.getElementById('setting-analysis-llm-model').value.trim();
+            const temperature = parseFloat(document.getElementById('setting-analysis-llm-temperature').value) || 0.8;
+
+            if (!apiUrl || !apiKey) {
+                showNotification('请先填写分析引擎 LLM API 地址和密钥', 'warning');
+                return;
+            }
+
+            if (!model) {
+                showNotification('请先选择分析引擎模型', 'warning');
+                return;
+            }
+
+            testBtn.disabled = true;
+            testBtn.textContent = '测试中...';
+
+            try {
+                const content = await testLLMConnection(apiUrl, apiKey, model, temperature);
+                showNotification(`✅ 连接成功! LLM 响应: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`, 'success');
+            } catch (error) {
+                showNotification(`❌ 连接失败: ${error.message}`, 'error');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '🧪 测试连接';
+            }
+        });
+    }
 }
 
 // 测试 LLM 连接

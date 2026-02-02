@@ -56,11 +56,34 @@ def init_settings():
             settings[key] = val
             dirty = True
 
+    # 深度合并函数
+    def deep_merge(defaults: dict, user_config: dict) -> bool:
+        """深度合并配置,只补充缺失字段,返回是否有修改"""
+        modified = False
+        for key, default_val in defaults.items():
+            if key not in user_config:
+                user_config[key] = default_val
+                modified = True
+            elif isinstance(default_val, dict) and isinstance(user_config.get(key), dict):
+                # 递归合并嵌套字典
+                if deep_merge(default_val, user_config[key]):
+                    modified = True
+        return modified
+
+    # message_processing 配置 - 共享的消息过滤配置
+    message_processing_defaults = {
+        "extract_tag": "",
+        "filter_tags": "<small>, [statbar]"
+    }
+    if "message_processing" not in settings:
+        settings["message_processing"] = message_processing_defaults
+        dirty = True
+    else:
+        settings["message_processing"] = deep_merge(message_processing_defaults, settings["message_processing"])
+
     # phone_call 配置 - 使用深度合并,只补充缺失字段,不覆盖用户设置
     phone_call_defaults = {
         "enabled": True,
-        "extract_tag": "",
-        "filter_tags": "<small>, [statbar]",
         "trigger": {
             "type": "message_count",
             "threshold": 5
@@ -107,20 +130,6 @@ def init_settings():
         }
     }
 
-    # 深度合并函数
-    def deep_merge(defaults: dict, user_config: dict) -> bool:
-        """深度合并配置,只补充缺失字段,返回是否有修改"""
-        modified = False
-        for key, default_val in defaults.items():
-            if key not in user_config:
-                user_config[key] = default_val
-                modified = True
-            elif isinstance(default_val, dict) and isinstance(user_config.get(key), dict):
-                # 递归合并嵌套字典
-                if deep_merge(default_val, user_config[key]):
-                    modified = True
-        return modified
-
     # 初始化或深度合并 phone_call 配置
     if "phone_call" not in settings:
         settings["phone_call"] = phone_call_defaults
@@ -133,7 +142,7 @@ def init_settings():
     # analysis_engine 默认配置 - 分析引擎独立配置
     analysis_engine_defaults = {
         "enabled": True,
-        "analysis_interval": 3,          # 每几楼层分析一次
+        "analysis_interval": 2,          # 每几楼层分析一次
         "max_history_records": 100,       # 最大历史记录数
         "llm_context_limit": 10,          # 发给 LLM 的历史记录数量
         "trigger_threshold": 60,          # 行动触发阈值 (0-100)

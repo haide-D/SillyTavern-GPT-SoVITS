@@ -49,10 +49,26 @@ class LiveCharacterEngine:
         Returns:
             LLM Prompt
         """
-        context_text = "\n".join([
-            f"{msg.get('name', '未知')}: {msg.get('mes', '')}"
-            for msg in context[-10:]  # 只取最近10条
-        ])
+        # 导入消息过滤工具和配置
+        from config import load_json, SETTINGS_FILE
+        from phone_call_utils.message_filter import MessageFilter
+        
+        settings = load_json(SETTINGS_FILE)
+        msg_processing = settings.get("message_processing", {})
+        extract_tag = msg_processing.get("extract_tag", "")
+        filter_tags = msg_processing.get("filter_tags", "")
+        
+        # 构建上下文文本（应用过滤）
+        context_lines = []
+        for msg in context[-10:]:  # 只取最近10条
+            name = msg.get('name', '未知')
+            content = msg.get('mes', '')
+            # 应用消息过滤
+            if extract_tag or filter_tags:
+                content = MessageFilter.extract_and_filter(content, extract_tag, filter_tags)
+            context_lines.append(f"{name}: {content}")
+        
+        context_text = "\n".join(context_lines)
         
         speakers_list = "、".join(speakers)
         

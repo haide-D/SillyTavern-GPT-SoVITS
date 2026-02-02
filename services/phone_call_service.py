@@ -62,9 +62,10 @@ class PhoneCallService:
         tts_config = phone_call_config.get("tts_config", {})
         text_lang = tts_config.get("text_lang", "zh")  # 读取语言配置,默认中文
         
-        # 读取消息提取和过滤配置
-        extract_tag = phone_call_config.get("extract_tag", "")  # 提取标签
-        filter_tags = phone_call_config.get("filter_tags", "")  # 过滤标签
+        # 读取消息提取和过滤配置（从共享的 message_processing 读取）
+        msg_processing = settings.get("message_processing", {})
+        extract_tag = msg_processing.get("extract_tag", "")  # 提取标签
+        filter_tags = msg_processing.get("filter_tags", "")  # 过滤标签
         
         # 2. 提取上下文数据
         extracted_data = self.data_extractor.extract(context, extractors)
