@@ -16,12 +16,10 @@ set "PYTHONPATH=%~dp0"
 :: 优先使用内置 runtime（嵌入式 Python）
 :: ============================================================
 set "RUNTIME_PYTHON=%~dp0runtime\python\python.exe"
-set "RUNTIME_PIP=%~dp0runtime\python\Scripts\pip.exe"
 
 if exist "%RUNTIME_PYTHON%" (
     echo [INFO] Using embedded Python runtime...
     set "PYTHON_CMD=%RUNTIME_PYTHON%"
-    set "PIP_CMD=%RUNTIME_PIP%"
 ) else (
     :: 回退到系统 Python
     echo [INFO] Embedded runtime not found, checking system Python...
@@ -35,7 +33,6 @@ if exist "%RUNTIME_PYTHON%" (
         exit /b 1
     )
     set "PYTHON_CMD=python"
-    set "PIP_CMD=pip"
 )
 
 :: 显示 Python 版本
@@ -46,7 +43,7 @@ echo [INFO] Python:
 :: 安装/更新依赖
 :: ============================================================
 echo [INFO] Checking dependencies...
-"!PIP_CMD!" install -r requirements.txt -q
+"!PYTHON_CMD!" -m pip install -r requirements.txt -q
 
 :: ============================================================
 :: 启动服务
