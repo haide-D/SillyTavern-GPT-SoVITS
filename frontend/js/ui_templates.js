@@ -47,7 +47,7 @@ export function getDashboardHTML(data) {
                     <div class="tts-card">
                         <div class="tts-card-title">🎨 视觉体验</div>
                         <label class="tts-switch-row">
-                            <span class="tts-switch-label">美化卡专用模式</span>
+                            <span class="tts-switch-label">美化卡专用模式，非前端美化卡请勿勾选</span>
                             <input type="checkbox" id="tts-iframe-switch" class="tts-toggle" ${settings.iframe_mode ? 'checked' : ''}>
                         </label>
 

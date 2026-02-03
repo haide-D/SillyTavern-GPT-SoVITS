@@ -168,9 +168,37 @@ class ContinuousAnalyzer:
             # 使用LiveCharacterEngine解析LLM响应 (新格式含 character_states 和 scene_trigger)
             parsed_result = self.live_engine.parse_llm_response(llm_response)
             
+            # ✅ 解析失败时的错误处理和重试机制
             if not parsed_result:
-                print(f"[ContinuousAnalyzer] ⚠️ LLM响应解析失败")
-                return {"success": False, "error": "LLM响应解析失败"}
+                print(f"[ContinuousAnalyzer] ⚠️ LLM响应首次解析失败，打印完整响应：")
+                print("=" * 60)
+                print(llm_response)
+                print("=" * 60)
+                
+                # 尝试预处理后重试
+                print(f"[ContinuousAnalyzer] 🔄 尝试重试解析...")
+                
+                # 尝试提取 JSON 部分后重试
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', llm_response)
+                if json_match:
+                    retry_response = json_match.group(0)
+                    parsed_result = self.live_engine.parse_llm_response(retry_response)
+                
+                if not parsed_result:
+                    error_msg = "LLM响应解析失败（已重试）"
+                    print(f"[ContinuousAnalyzer] ❌ {error_msg}")
+                    # 截取响应前500字符用于前端显示
+                    preview = llm_response[:500] if len(llm_response) > 500 else llm_response
+                    return {
+                        "success": False, 
+                        "error": error_msg,
+                        "error_type": "parse_error",
+                        "llm_response_preview": preview,
+                        "llm_response_length": len(llm_response)
+                    }
+                else:
+                    print(f"[ContinuousAnalyzer] ✅ 重试解析成功")
             
             # 提取角色状态和触发建议
             character_states = parsed_result.get("character_states", {})
@@ -191,6 +219,33 @@ class ContinuousAnalyzer:
             print(f"[ContinuousAnalyzer] 📊 分析结果: action={suggested_action}")
             if suggested_action == "phone_call" and caller:
                 print(f"[ContinuousAnalyzer] 📞 电话详情: caller={caller}, reason={call_reason}, tone={call_tone}")
+            
+            # ✅ 新增: 评分系统二次验证
+            score_result = None
+            original_action = suggested_action
+            
+            if suggested_action != "none":
+                # 查询触发历史用于评分
+                trigger_history = self.db.get_recent_trigger_history(
+                    chat_branch=chat_branch, 
+                    limit=5
+                )
+                
+                # 调用评分系统
+                score_result = self.live_engine.calculate_scene_trigger_score(
+                    suggested_action=suggested_action,
+                    character_states=character_states,
+                    trigger_history=trigger_history,
+                    scene_trigger=scene_trigger
+                )
+                
+                print(f"[ContinuousAnalyzer] 🎯 评分验证: {score_result.get('reason')}")
+                
+                # 如果评分不足，降级为 none
+                if not score_result.get("should_trigger", False):
+                    suggested_action = "none"
+                    trigger_reason = f"[降级] {score_result.get('reason')}"
+                    print(f"[ContinuousAnalyzer] ⚠️ 评分 {score_result.get('score')} 不足，{original_action} → none")
             
             # 向后兼容:构建旧格式的characters_data
             characters_data = {}
@@ -261,6 +316,8 @@ class ContinuousAnalyzer:
                     "record_id": record_id,
                     "scene_trigger": scene_trigger,
                     "suggested_action": suggested_action,
+                    "original_action": original_action,  # LLM 原始建议
+                    "score_result": score_result,  # 评分详情
                     "caller": caller,  # 打电话的角色（新格式或兼容旧格式）
                     "call_reason": call_reason,  # 打电话原因
                     "call_tone": call_tone,  # 通话氛围

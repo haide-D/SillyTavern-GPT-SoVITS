@@ -132,7 +132,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         call_tone = result.get("call_tone", "")  # 通话氛围
         trigger_reason = result.get("trigger_reason", "")
         
-        print(f"[ContinuousAnalysis] 📊 触发建议: {suggested_action}")
+        print(f"[ContinuousAnalysis] 📊 触发建议: {suggested_action}, reason: {trigger_reason}")
         if suggested_action == "phone_call" and caller:
             print(f"[ContinuousAnalysis] 📞 电话详情: caller={caller}, reason={call_reason}, tone={call_tone}")
         

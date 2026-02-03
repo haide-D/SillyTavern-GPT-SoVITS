@@ -72,7 +72,7 @@ class PromptBuilder:
    - 透露一些 {{user_name}} 不知道的信息
 3. 每个角色的说话风格要符合其性格
 4. 情绪要自然过渡
-5. text 字段使用 {{lang_display}} 进行对话
+5. **text 字段必须使用{{lang_display}}进行对话，这是强制要求，不可使用其他语言**
 6. **translation 字段必须填写中文翻译（即使 text 已经是中文也要复制过来）**
 
 **⚠️ 重要：纯语音内容规范**:
@@ -94,7 +94,7 @@ class PromptBuilder:
     {
       "speaker": "角色名",
       "emotion": "情绪标签",
-      "text": "纯对话内容，无任何括号或动作描述 (使用 {{lang_display}})",
+      "text": "纯对话内容，无任何括号或动作描述，**必须使用{{lang_display}}**",
       "translation": "中文翻译 (必填！不能省略！如果text是中文就复制text内容)",
       "pause_after": 0.5
     }
@@ -107,7 +107,7 @@ class PromptBuilder:
 - emotion 必须是该角色的可用情绪
 - **text 字段只能是纯对话，禁止任何括号或动作描述**
 - **translation 字段必填，必须是中文，不能为空或省略**
-- 生成 15-25 个对话片段
+- 生成 10-25 个对话片段
 - 让对话自然流畅，角色交替说话"""
 
     # 增强版对话追踪模板 - 使用分析 LLM 提供的主题和框架
@@ -128,7 +128,7 @@ class PromptBuilder:
 1. **严格按照上述对话大纲和主题进行创作**
 2. 每个角色的说话风格要符合其性格
 3. 情绪要自然过渡，符合情绪弧线
-4. text 字段使用 {{lang_display}} 进行对话
+4. **text 字段必须使用{{lang_display}}进行对话，这是强制要求，不可使用其他语言**
 5. **translation 字段必须填写中文翻译（即使 text 已经是中文也要复制过来）**
 
 **⚠️ 重要：纯语音内容规范**:
@@ -150,7 +150,7 @@ class PromptBuilder:
     {
       "speaker": "角色名",
       "emotion": "情绪标签",
-      "text": "纯对话内容，无任何括号或动作描述 (使用 {{lang_display}})",
+      "text": "纯对话内容，无任何括号或动作描述，**必须使用{{lang_display}}**",
       "translation": "中文翻译 (必填！不能省略！如果text是中文就复制text内容)",
       "pause_after": 0.5
     }
@@ -195,7 +195,7 @@ class PromptBuilder:
   "segments": [
     {
       "emotion": "emotion_tag",
-      "text": "what to say in {{lang_display}}",
+      "text": "对话内容，**必须使用{{lang_display}}**",
       "translation": "中文翻译 (必须写上，如果已经是中文，就写上中文)",
       "pause_after": 0.8,
       "speed": 1.0,
@@ -208,7 +208,7 @@ class PromptBuilder:
 **Field Requirements**:
 - **speaker**: MUST be one of the available speakers listed above ({{speakers}})可以优先选择跟{{user_name}}关系最接近来作为speaker,或者当前刚离场的人物，注意区分当前说话人知道哪些事情，不知道哪些事情。
 - **emotion**: must be one of the emotions available for the selected speaker，注意情绪要符合这次的电话主题，可以使用一种情绪，或者几种情绪的组合。但是千万不能为了符合情绪而改变说话内容。情绪是为内容服务的，宁愿情绪少，也不能硬凑情绪。
-- **text**: what to say in {{lang_display}},必须{{lang_display}}说话内容, make it natural and emotional，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。电话内容必须是当前场景下的事情，不能让打电话人突然脱离场景。
+- **text**: **必须使用{{lang_display}}**，这是强制要求！对话内容必须自然有情感，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。电话内容必须是当前场景下的事情，不能让打电话人突然脱离场景。
   * Use multiple short segments instead of one long segment
 - **pause_after**: pause duration after this segment (0.2-0.8 seconds, null for default 0.3s)
   * Use longer pauses (0.7-0.8s) for major emotion transitions

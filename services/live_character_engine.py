@@ -148,13 +148,27 @@ class LiveCharacterEngine:
                 
                 trigger_history_text = "最近触发: " + ", ".join(history_items)
                 
-                # 根据历史生成多样性指导
+                # 根据历史生成多样性指导（电话严格，偷听宽松）
                 if phone_call_count >= 2:
-                    diversity_guidance = "⚠️ 最近已有多次电话触发，为保持新鲜感，请优先考虑 eavesdrop（偷听对话）或 none"
-                elif none_count >= 3:
-                    diversity_guidance = "💡 最近较少触发事件，如果场景合适可以适当放宽触发条件"
-                elif eavesdrop_count == 0 and len(trigger_history) >= 3:
-                    diversity_guidance = "💡 还未触发过 eavesdrop，如果有2+角色在场且可能有私下对话，这是个好机会"
+                    diversity_guidance = """⛔ 【强制规则】最近已触发 {phone_call_count} 次电话，必须遵守：
+- 禁止再次触发 phone_call
+- 优先选择 eavesdrop 或 none
+- 只有剧情出现重大转折（如：生命危险、重大误会、极端情绪爆发）才可例外"""
+                elif phone_call_count >= 1:
+                    diversity_guidance = """🔒 【限制规则】刚触发过电话，请谨慎考虑：
+- 除非场景有明显变化，否则优先选择 none
+- 🎭 eavesdrop 是很好的替代选择！如果2+角色在场且可能有私下交流，推荐触发"""
+                elif eavesdrop_count >= 3:
+                    diversity_guidance = """💡 【多样性建议】最近已触发 {eavesdrop_count} 次偷听：
+- 建议考虑 phone_call 或 none 增加多样性
+- 但如果场景特别适合偷听（如：角色间有显著秘密/张力），仍可触发"""
+                elif eavesdrop_count >= 2:
+                    # 2次偷听还可以接受，只是提醒
+                    diversity_guidance = "💡 最近有过偷听体验，可以考虑其他触发类型，但 eavesdrop 仍是可接受的选择"
+                elif none_count >= 4:
+                    diversity_guidance = "🌟 最近较少触发事件，当前是很好的触发时机！优先推荐 eavesdrop（惊喜感强）"
+                elif eavesdrop_count == 0 and phone_call_count == 0 and len(trigger_history) >= 2:
+                    diversity_guidance = "🌟 近期无任何触发，特别推荐触发 eavesdrop（如果场景合适），可给用户带来惊喜体验！"
         
         prompt = f"""
 请以JSON格式分析当前场景中每个角色的状态，并判断是否应该触发特殊事件。
@@ -637,6 +651,131 @@ class LiveCharacterEngine:
             "raw_action": action
         }
     
+    def calculate_scene_trigger_score(
+        self,
+        suggested_action: str,
+        character_states: Dict,
+        trigger_history: List[Dict] = None,
+        scene_trigger: Dict = None
+    ) -> Dict:
+        """
+        计算场景触发评分，用于验证 LLM 建议是否应该执行
+        
+        Args:
+            suggested_action: LLM 建议的行动 (phone_call/eavesdrop/none)
+            character_states: 角色状态
+            trigger_history: 最近触发历史
+            scene_trigger: LLM 返回的完整触发信息
+            
+        Returns:
+            {
+                "score": 0-100,
+                "should_trigger": True/False,
+                "adjusted_action": 最终行动,
+                "reason": 判断原因
+            }
+        """
+        if suggested_action == "none":
+            return {
+                "score": 0,
+                "should_trigger": False,
+                "adjusted_action": "none",
+                "reason": "LLM 建议不触发"
+            }
+        
+        score = 50  # 基础分（LLM 认为应该触发）
+        reasons = []
+        
+        # 1. 触发历史惩罚（phone_call 严格，eavesdrop 宽松）
+        if trigger_history:
+            recent_same_action = sum(
+                1 for t in trigger_history 
+                if t.get("action") == suggested_action
+            )
+            
+            if suggested_action == "phone_call":
+                # 电话严格惩罚
+                if recent_same_action >= 2:
+                    score -= 30
+                    reasons.append(f"近期已触发 {recent_same_action} 次电话 (-30)")
+                elif recent_same_action == 1:
+                    score -= 15
+                    reasons.append(f"刚触发过电话 (-15)")
+            elif suggested_action == "eavesdrop":
+                # 偷听宽松惩罚（减半）
+                if recent_same_action >= 3:
+                    score -= 15
+                    reasons.append(f"近期已触发 {recent_same_action} 次偷听 (-15)")
+                elif recent_same_action >= 2:
+                    score -= 8
+                    reasons.append(f"近期有过偷听体验 (-8)")
+                # 1次偷听不惩罚，鼓励多样性
+        
+        # 2. 情绪强度加成（0 ~ +25）
+        max_intensity = 0
+        for char_name, state in character_states.items():
+            emotional = state.get("emotional", {})
+            intensity = emotional.get("intensity", 0)
+            if intensity > max_intensity:
+                max_intensity = intensity
+        
+        if max_intensity >= 8:
+            score += 25
+            reasons.append(f"高情绪强度 {max_intensity} (+25)")
+        elif max_intensity >= 6:
+            score += 15
+            reasons.append(f"中等情绪强度 {max_intensity} (+15)")
+        elif max_intensity >= 4:
+            score += 5
+            reasons.append(f"情绪强度 {max_intensity} (+5)")
+        
+        # 3. 认知需求加成（0 ~ +15）
+        total_desires = 0
+        for char_name, state in character_states.items():
+            cognitive = state.get("cognitive", {})
+            desires = cognitive.get("desires", [])
+            total_desires += len(desires) if isinstance(desires, list) else 0
+        
+        if total_desires >= 3:
+            score += 15
+            reasons.append(f"多个认知需求 ({total_desires}) (+15)")
+        elif total_desires >= 1:
+            score += 5
+            reasons.append(f"有认知需求 ({total_desires}) (+5)")
+        
+        # 4. 社交动机加成（0 ~ +10）
+        has_hidden_thoughts = False
+        for char_name, state in character_states.items():
+            social = state.get("social", {})
+            if social.get("hidden_thoughts"):
+                has_hidden_thoughts = True
+                break
+        
+        if has_hidden_thoughts:
+            score += 10
+            reasons.append("存在未说出的想法 (+10)")
+        
+        # 限制范围
+        score = max(0, min(100, score))
+        
+        # 判断是否应该触发
+        should_trigger = score >= self.threshold
+        adjusted_action = suggested_action if should_trigger else "none"
+        
+        final_reason = f"评分 {score}/{self.threshold}: " + "; ".join(reasons) if reasons else f"评分 {score}/{self.threshold}"
+        
+        if not should_trigger:
+            final_reason += f" → 评分不足，降级为 none"
+        
+        print(f"[LiveCharacterEngine] 🎯 场景评分: {score}, 阈值: {self.threshold}, 触发: {should_trigger}")
+        
+        return {
+            "score": score,
+            "should_trigger": should_trigger,
+            "adjusted_action": adjusted_action,
+            "reason": final_reason
+        }
+
     def generate_summary(self, character_states: Dict) -> str:
         """
         生成简短摘要(专门给LLM用)
