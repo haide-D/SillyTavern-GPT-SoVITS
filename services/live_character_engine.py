@@ -18,13 +18,13 @@ class LiveCharacterEngine:
     def __init__(self):
         self.db = DatabaseManager()
         
-        # 加载配置
+        # 加载配置 - 从 analysis_engine 读取
         settings = load_json(SETTINGS_FILE)
-        self.config = settings.get("phone_call", {}).get("live_character", {})
+        self.config = settings.get("analysis_engine", {})
         
         # 默认配置
         self.enabled = self.config.get("enabled", True)
-        self.threshold = self.config.get("threshold", 60)
+        self.threshold = self.config.get("trigger_threshold", 60)
         
         # 行动类型处理器注册表
         self.action_handlers = {
@@ -37,23 +37,138 @@ class LiveCharacterEngine:
         
         print(f"[LiveCharacterEngine] 初始化完成 - 阈值: {self.threshold}")
     
-    def build_analysis_prompt(self, context: List[Dict], speakers: List[str]) -> str:
+    def build_analysis_prompt(self, context: List[Dict], speakers: List[str], call_history: List[Dict] = None, chat_branch: str = None) -> str:
         """
         构建开放式角色状态分析的LLM Prompt (含触发建议)
         
         Args:
             context: 对话上下文
             speakers: 说话人列表
+            call_history: 近期通话历史（可选）
+            chat_branch: 对话分支ID（用于查询触发历史）
             
         Returns:
             LLM Prompt
         """
-        context_text = "\n".join([
-            f"{msg.get('name', '未知')}: {msg.get('mes', '')}"
-            for msg in context[-10:]  # 只取最近10条
-        ])
+        # 导入消息过滤工具和配置
+        from config import load_json, SETTINGS_FILE
+        from phone_call_utils.message_filter import MessageFilter
+        
+        settings = load_json(SETTINGS_FILE)
+        msg_processing = settings.get("message_processing", {})
+        extract_tag = msg_processing.get("extract_tag", "")
+        filter_tags = msg_processing.get("filter_tags", "")
+        
+        # 构建上下文文本（应用过滤）
+        context_lines = []
+        for msg in context[-10:]:  # 只取最近10条
+            name = msg.get('name', '未知')
+            content = msg.get('mes', '')
+            # 应用消息过滤
+            if extract_tag or filter_tags:
+                content = MessageFilter.extract_and_filter(content, extract_tag, filter_tags)
+            context_lines.append(f"{name}: {content}")
+        
+        context_text = "\n".join(context_lines)
         
         speakers_list = "、".join(speakers)
+        
+        # ✅ 获取已绑定 TTS 模型的角色列表
+        from config import get_bound_characters
+        bound_characters = get_bound_characters()
+        
+        # 计算 speakers 中哪些角色有绑定模型
+        bound_speakers = [s for s in speakers if s in bound_characters]
+        unbound_speakers = [s for s in speakers if s not in bound_characters]
+        
+        # 构建可用语音角色说明
+        if bound_speakers:
+            voice_available_text = f"以下角色有语音功能，可以打电话: {', '.join(bound_speakers)}"
+        else:
+            voice_available_text = "当前没有角色配置了语音功能，不建议触发电话"
+        
+        if unbound_speakers:
+            voice_available_text += f"\n以下角色没有语音功能，不能作为打电话者: {', '.join(unbound_speakers)}"
+        
+        # 格式化通话历史
+        call_history_text = "无近期通话记录"
+        if call_history:
+            history_lines = []
+            for call in call_history[:5]:  # 最多5条
+                caller = call.get("char_name", "未知")
+                created_at = call.get("created_at", "")
+                # 提取通话内容摘要
+                segments = call.get("segments", [])
+                if isinstance(segments, str):
+                    import json
+                    try:
+                        segments = json.loads(segments)
+                    except:
+                        segments = []
+                content_preview = ""
+                if segments and isinstance(segments, list):
+                    texts = [s.get("translation") or s.get("text", "") for s in segments[:2] if isinstance(s, dict)]
+                    content_preview = "...".join(texts)[:50]
+                history_lines.append(f"- {caller}：{content_preview}...")
+            call_history_text = "\n".join(history_lines)
+        
+        # ✅ 查询触发历史（用于多样性判断）- 使用指纹而非分支
+        trigger_history_text = "无历史触发记录"
+        diversity_guidance = ""
+        
+        # 从 context 中提取指纹列表
+        fingerprints = []
+        for msg in context:
+            fp = msg.get("fingerprint") or msg.get("fp")
+            if fp:
+                fingerprints.append(fp)
+        
+        if fingerprints:
+            trigger_history = self.db.get_recent_trigger_history(fingerprints=fingerprints, limit=5)
+            if trigger_history:
+                # 格式化触发历史
+                history_items = []
+                phone_call_count = 0
+                eavesdrop_count = 0
+                none_count = 0
+                
+                for item in trigger_history:
+                    action = item.get("action", "none")
+                    char = item.get("character", "")
+                    
+                    if action == "phone_call":
+                        phone_call_count += 1
+                        history_items.append(f"phone_call({char or '未知'})")
+                    elif action == "eavesdrop":
+                        eavesdrop_count += 1
+                        history_items.append("eavesdrop")
+                    else:
+                        none_count += 1
+                        history_items.append("none")
+                
+                trigger_history_text = "最近触发: " + ", ".join(history_items)
+                
+                # 根据历史生成多样性指导（电话严格，偷听宽松）
+                if phone_call_count >= 2:
+                    diversity_guidance = """⛔ 【强制规则】最近已触发 {phone_call_count} 次电话，必须遵守：
+- 禁止再次触发 phone_call
+- 优先选择 eavesdrop 或 none
+- 只有剧情出现重大转折（如：生命危险、重大误会、极端情绪爆发）才可例外"""
+                elif phone_call_count >= 1:
+                    diversity_guidance = """🔒 【限制规则】刚触发过电话，请谨慎考虑：
+- 除非场景有明显变化，否则优先选择 none
+- 🎭 eavesdrop 是很好的替代选择！如果2+角色在场且可能有私下交流，推荐触发"""
+                elif eavesdrop_count >= 3:
+                    diversity_guidance = """💡 【多样性建议】最近已触发 {eavesdrop_count} 次偷听：
+- 建议考虑 phone_call 或 none 增加多样性
+- 但如果场景特别适合偷听（如：角色间有显著秘密/张力），仍可触发"""
+                elif eavesdrop_count >= 2:
+                    # 2次偷听还可以接受，只是提醒
+                    diversity_guidance = "💡 最近有过偷听体验，可以考虑其他触发类型，但 eavesdrop 仍是可接受的选择"
+                elif none_count >= 4:
+                    diversity_guidance = "🌟 最近较少触发事件，当前是很好的触发时机！优先推荐 eavesdrop（惊喜感强）"
+                elif eavesdrop_count == 0 and phone_call_count == 0 and len(trigger_history) >= 2:
+                    diversity_guidance = "🌟 近期无任何触发，特别推荐触发 eavesdrop（如果场景合适），可给用户带来惊喜体验！"
         
         prompt = f"""
 请以JSON格式分析当前场景中每个角色的状态，并判断是否应该触发特殊事件。
@@ -63,6 +178,13 @@ class LiveCharacterEngine:
 
 # 需分析的角色
 {speakers_list}
+
+# 近期通话历史（供判断参考，避免重复）
+{call_history_text}
+
+# 触发历史（多样性参考）
+{trigger_history_text}
+{diversity_guidance}
 
 # 分析要求
 对每个角色,请提供以下维度的分析:
@@ -92,13 +214,33 @@ class LiveCharacterEngine:
 - type: 行动类型(如phone_call, side_conversation, leave_scene等)
 - target: 行动对象(如果有)
 - reason: 原因
-- urgency: 紧迫度(1-10)
 
 # 场景触发建议
-根据当前场景状态,判断是否应该触发以下事件:
-- phone_call: 有角色离场且适合打电话给用户
-- eavesdrop: 多个角色在场,可能有私下对话
-- none: 当前场景不适合触发任何事件
+
+## 电话触发判断
+判断是否有角色想给用户打电话，**不限于离场场景**。以下情况都可能触发：
+- 角色离场后想联系用户
+- 角色在场但有特别想说的话（叮嘱、表白、倾诉）
+- 角色突然想起重要的事情
+- 角色想分享心情或轻松聊天
+- 角色处于强烈情绪中想要倾诉
+
+综合考虑：
+1. 当前场景是否适合来电
+2. 角色是否有话想说（不限类型）
+3. 参考上面的通话历史，避免相同角色短时间内重复打电话
+4. 如果多个角色都想打，选择当前场景下最合适的那个
+
+## 偷听触发判断（重要！这是独特体验）
+当2+有语音功能的角色在场时，考虑触发 eavesdrop（用户"偷听"角色私下对话）。
+适合触发的场景：
+- 角色间有未说出口的心思或秘密
+- 角色在讨论与用户相关的事情
+- 角色之间有戏剧张力（争执、八卦、密谋）
+- 用户刚离开，角色开始私下交流
+- 场景有"关上门后的对话"氛围
+
+⚠️ eavesdrop 是让用户获得"上帝视角"的特殊体验，不要轻易放过合适的场景！
 
 # 输出格式
 {{
@@ -114,18 +256,254 @@ class LiveCharacterEngine:
     }},
     "scene_trigger": {{
         "suggested_action": "phone_call|eavesdrop|none",
-        "character_left": "离场角色名或null",
         "characters_present": ["在场角色列表"],
-        "private_conversation_likely": true/false,
-        "reason": "简短解释判断原因"
+        "reason": "简短解释判断原因",
+        
+        // 电话触发详情（仅当 suggested_action 为 "phone_call" 时填写）
+        "phone_call_details": {{
+            "caller": "打电话的角色名",
+            "call_reason": "为什么要打这个电话（自然语言描述）",
+            "call_tone": "通话氛围（如：轻松闲聊、温柔叮嘱、深情倾诉、兴奋分享、担心关切等）"
+        }},
+        
+        // 偷听配置（仅当 suggested_action 为 "eavesdrop" 时填写）
+        "eavesdrop_config": {{
+            "conversation_theme": "对话的核心主题",
+            "conversation_outline": ["对话阶段1", "对话阶段2", "对话阶段3"],
+            "dramatic_tension": "戏剧张力描述",
+            "hidden_information": "对话中可能透露的用户不知道的信息",
+            "emotional_arc": "情绪弧线"
+        }}
     }}
 }}
+
+⚠️ **JSON 格式要求（必须遵守）**：
+1. 只输出纯 JSON，不要包含 markdown 代码块标记
+2. 不要在数组或对象的最后一个元素后面添加逗号（如 [1, 2, 3,] 是错误的）
+3. 所有字符串值必须用双引号包围
+4. 确保所有括号正确闭合
 
 请保持分析的自然性和灵活性,不要受固定模式限制。
 """
         return prompt
 
 
+    
+    def _sanitize_json_string(self, json_str: str) -> str:
+        """
+        预处理 JSON 字符串，修复常见的 LLM 输出格式问题
+        
+        Args:
+            json_str: 原始 JSON 字符串
+            
+        Returns:
+            清理后的 JSON 字符串
+        """
+        import re
+        
+        # 1. 移除可能的 BOM 和特殊不可见字符
+        json_str = json_str.strip()
+        if json_str.startswith('\ufeff'):
+            json_str = json_str[1:]
+        
+        # 2. 移除 // 和 /* */ 风格的注释（LLM 有时会添加）
+        json_str = re.sub(r'//[^\n]*\n', '\n', json_str)
+        json_str = re.sub(r'/\*[\s\S]*?\*/', '', json_str)
+        
+        # 3. 移除 JSON 对象/数组末尾的多余逗号
+        json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+        
+        # 4. 修复常见的布尔值问题 (True -> true, False -> false, None -> null)
+        json_str = re.sub(r':\s*True\b', ': true', json_str)
+        json_str = re.sub(r':\s*False\b', ': false', json_str)
+        json_str = re.sub(r':\s*None\b', ': null', json_str)
+        
+        # 5. 修复缺少逗号的情况
+        # 模式: }\n{ 或 }\n"key" 或 ]\n[ 或 ]\n"value"
+        json_str = self._fix_missing_commas(json_str)
+        
+        # 6. 修复未加引号的字符串值 - 这是 LLM 最常见的错误
+        # 处理模式: "key": 中文或其他非JSON值的内容
+        # 例如: "对杜先生": 绝对服从、崇拜 -> "对杜先生": "绝对服从、崇拜"
+        lines = json_str.split('\n')
+        fixed_lines = []
+        
+        for line in lines:
+            fixed_line = self._fix_unquoted_string_values(line)
+            fixed_lines.append(fixed_line)
+        
+        json_str = '\n'.join(fixed_lines)
+        
+        # 7. 尝试修复截断的 JSON（确保括号闭合）
+        json_str = self._fix_truncated_json(json_str)
+        
+        return json_str
+    
+    def _fix_missing_commas(self, json_str: str) -> str:
+        """
+        修复缺少逗号的常见情况
+        
+        常见模式:
+        - "value1"\n"key2" -> "value1",\n"key2"
+        - }\n"key" -> },\n"key"
+        - ]\n[ -> ],\n[
+        - }\n{ -> },\n{
+        - 数字后直接跟 "key"
+        """
+        import re
+        
+        # 模式1: 字符串值后缺少逗号，直接跟另一个key
+        # "value"\n   "key" -> "value",\n   "key"
+        json_str = re.sub(r'(")\s*\n(\s*"[^"]+"\s*:)', r'\1,\n\2', json_str)
+        
+        # 模式2: } 后缺少逗号，直接跟 "key"
+        # }\n   "key" -> },\n   "key"
+        json_str = re.sub(r'(\})\s*\n(\s*"[^"]+"\s*:)', r'\1,\n\2', json_str)
+        
+        # 模式3: ] 后缺少逗号，直接跟 "key"
+        # ]\n   "key" -> ],\n   "key"
+        json_str = re.sub(r'(\])\s*\n(\s*"[^"]+"\s*:)', r'\1,\n\2', json_str)
+        
+        # 模式4: } 后缺少逗号，直接跟 {
+        # }\n   { -> },\n   {
+        json_str = re.sub(r'(\})\s*\n(\s*\{)', r'\1,\n\2', json_str)
+        
+        # 模式5: ] 后缺少逗号，直接跟 [
+        # ]\n   [ -> ],\n   [
+        json_str = re.sub(r'(\])\s*\n(\s*\[)', r'\1,\n\2', json_str)
+        
+        # 模式6: 数字/布尔/null 后缺少逗号，直接跟 "key"
+        # 123\n   "key" -> 123,\n   "key"
+        json_str = re.sub(r'(\d+|true|false|null)\s*\n(\s*"[^"]+"\s*:)', r'\1,\n\2', json_str)
+        
+        # 模式7: 字符串值后缺少逗号，直接跟 { 或 [
+        # "value"\n   { -> "value",\n   {
+        json_str = re.sub(r'(")\s*\n(\s*[\[{])', r'\1,\n\2', json_str)
+        
+        return json_str
+    
+    def _fix_truncated_json(self, json_str: str) -> str:
+        """
+        修复被截断的 JSON，确保括号正确闭合
+        """
+        # 统计未闭合的括号
+        open_braces = 0
+        open_brackets = 0
+        in_string = False
+        escape_next = False
+        
+        for char in json_str:
+            if escape_next:
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                escape_next = True
+                continue
+            
+            if char == '"':
+                in_string = not in_string
+                continue
+            
+            if in_string:
+                continue
+            
+            if char == '{':
+                open_braces += 1
+            elif char == '}':
+                open_braces -= 1
+            elif char == '[':
+                open_brackets += 1
+            elif char == ']':
+                open_brackets -= 1
+        
+        # 补齐缺失的闭合括号
+        if open_braces > 0 or open_brackets > 0:
+            # 如果 JSON 被截断在字符串中间，先闭合字符串
+            if in_string:
+                json_str += '"'
+            
+            # 补齐括号（先 ] 后 }）
+            json_str += ']' * max(0, open_brackets)
+            json_str += '}' * max(0, open_braces)
+            
+            print(f"[LiveCharacterEngine] ⚠️ 检测到截断的 JSON，补齐了 {open_brackets} 个 ] 和 {open_braces} 个 }}")
+        
+        return json_str
+    
+    def _fix_unquoted_string_values(self, line: str) -> str:
+        """
+        修复单行中未加引号的字符串值
+        
+        例如:
+        "key": 中文内容  ->  "key": "中文内容"
+        "key": some text,  ->  "key": "some text",
+        """
+        import re
+        
+        # 匹配模式: "key": 后面跟着非 JSON 标准值的内容
+        # JSON 标准值: "string", number, true, false, null, {, [
+        # 我们要找的是冒号后面不是这些标准值开头的情况
+        
+        # 这个正则匹配: "key": 后面跟着不是 ", {, [, 数字, true, false, null 的内容
+        pattern = r'("[\w\u4e00-\u9fff]+")\s*:\s*(?![\[\{"\d]|true|false|null)([^\n\r,}\]]+)'
+        
+        def fix_value(match):
+            key = match.group(1)
+            value = match.group(2).strip()
+            
+            # 如果值已经被引号包围或是空的，不处理
+            if not value or value.startswith('"') or value.startswith("'"):
+                return match.group(0)
+            
+            # 移除尾部的逗号（如果有的话）
+            trailing = ''
+            if value.endswith(','):
+                value = value[:-1].strip()
+                trailing = ','
+            
+            # 转义值中的引号
+            value = value.replace('"', '\\"')
+            
+            return f'{key}: "{value}"{trailing}'
+        
+        return re.sub(pattern, fix_value, line)
+    
+    def _try_parse_json(self, json_str: str) -> Optional[Dict]:
+        """
+        尝试多种方式解析 JSON
+        
+        Args:
+            json_str: JSON 字符串
+            
+        Returns:
+            解析结果或 None
+        """
+        import json
+        
+        # 尝试 1: 直接解析
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"[LiveCharacterEngine] 直接解析失败: {e}")
+        
+        # 尝试 2: 预处理后解析
+        try:
+            sanitized = self._sanitize_json_string(json_str)
+            return json.loads(sanitized)
+        except json.JSONDecodeError as e:
+            print(f"[LiveCharacterEngine] 预处理后解析失败: {e}")
+        
+        # 尝试 3: 使用更宽松的解析（如果安装了demjson3）
+        try:
+            import demjson3
+            return demjson3.decode(json_str)
+        except ImportError:
+            pass  # demjson3 未安装，跳过
+        except Exception as e:
+            print(f"[LiveCharacterEngine] demjson3 解析失败: {e}")
+        
+        return None
     
     def parse_llm_response(self, llm_response: str) -> Dict[str, Any]:
         """
@@ -140,32 +518,50 @@ class LiveCharacterEngine:
         import json
         import re
         
+        if not llm_response or not llm_response.strip():
+            print(f"[LiveCharacterEngine] ❌ LLM 响应为空")
+            return {}
+        
         print(f"[LiveCharacterEngine] 开始解析 LLM 响应 (长度: {len(llm_response)})")
         
-        try:
-            # 尝试直接解析JSON
-            result = json.loads(llm_response)
+        # 尝试直接解析
+        result = self._try_parse_json(llm_response)
+        if result:
             print(f"[LiveCharacterEngine] ✅ 直接解析 JSON 成功")
-        except Exception as e:
-            print(f"[LiveCharacterEngine] 直接解析失败: {e}")
-            # 如果失败,尝试提取JSON块
-            json_match = re.search(r'```json\s*(.*?)\s*```', llm_response, re.DOTALL)
+        else:
+            # 如果失败，尝试提取 JSON 块
+            json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', llm_response, re.DOTALL)
             if json_match:
-                try:
-                    json_str = json_match.group(1)
-                    print(f"[LiveCharacterEngine] 提取到 JSON 块 (长度: {len(json_str)})")
-                    result = json.loads(json_str)
+                json_str = json_match.group(1).strip()
+                print(f"[LiveCharacterEngine] 提取到 JSON 块 (长度: {len(json_str)})")
+                
+                result = self._try_parse_json(json_str)
+                if result:
                     print(f"[LiveCharacterEngine] ✅ JSON 块解析成功")
-                except Exception as e2:
-                    print(f"[LiveCharacterEngine] ❌ JSON 块解析失败: {e2}")
-                    print(f"[LiveCharacterEngine] JSON 块内容前 500 字符:")
-                    print(json_str[:500] if len(json_str) > 500 else json_str)
+                else:
+                    # 详细诊断输出
+                    print(f"[LiveCharacterEngine] ❌ JSON 块解析失败")
+                    self._diagnose_json_error(json_str)
                     return {}
             else:
-                print(f"[LiveCharacterEngine] ❌ 未找到 JSON 块")
-                print(f"[LiveCharacterEngine] 响应内容前 500 字符:")
-                print(llm_response[:500] if len(llm_response) > 500 else llm_response)
-                return {}
+                # 尝试找到任何看起来像 JSON 对象的内容
+                brace_match = re.search(r'\{[\s\S]*\}', llm_response)
+                if brace_match:
+                    json_str = brace_match.group(0)
+                    print(f"[LiveCharacterEngine] 提取到疑似 JSON 对象 (长度: {len(json_str)})")
+                    
+                    result = self._try_parse_json(json_str)
+                    if result:
+                        print(f"[LiveCharacterEngine] ✅ 疑似 JSON 解析成功")
+                    else:
+                        print(f"[LiveCharacterEngine] ❌ 疑似 JSON 解析失败")
+                        self._diagnose_json_error(json_str)
+                        return {}
+                else:
+                    print(f"[LiveCharacterEngine] ❌ 未找到 JSON 块或对象")
+                    print(f"[LiveCharacterEngine] 响应内容前 500 字符:")
+                    print(llm_response[:500] if len(llm_response) > 500 else llm_response)
+                    return {}
         
         # 兼容新旧格式
         if "character_states" in result:
@@ -179,12 +575,35 @@ class LiveCharacterEngine:
                 "scene_trigger": {
                     "suggested_action": "none",
                     "character_left": None,
-
                     "characters_present": list(result.keys()),
                     "private_conversation_likely": False,
                     "reason": "旧格式响应,无触发建议"
                 }
             }
+    
+    def _diagnose_json_error(self, json_str: str):
+        """详细诊断 JSON 解析错误"""
+        import json
+        
+        try:
+            json.loads(json_str)
+        except json.JSONDecodeError as e:
+            error_line = e.lineno
+            error_col = e.colno
+            error_pos = e.pos
+            
+            print(f"[LiveCharacterEngine] 📍 错误位置: 行 {error_line}, 列 {error_col}, 字符位置 {error_pos}")
+            
+            # 显示错误附近的内容
+            lines = json_str.split('\n')
+            if 0 < error_line <= len(lines):
+                # 显示错误行及前后各1行
+                start = max(0, error_line - 2)
+                end = min(len(lines), error_line + 1)
+                print(f"[LiveCharacterEngine] 📝 错误附近内容:")
+                for i in range(start, end):
+                    marker = ">>> " if i == error_line - 1 else "    "
+                    print(f"{marker}L{i+1}: {lines[i][:100]}{'...' if len(lines[i]) > 100 else ''}")
 
     
     def evaluate_character_actions(
@@ -335,6 +754,131 @@ class LiveCharacterEngine:
             "raw_action": action
         }
     
+    def calculate_scene_trigger_score(
+        self,
+        suggested_action: str,
+        character_states: Dict,
+        trigger_history: List[Dict] = None,
+        scene_trigger: Dict = None
+    ) -> Dict:
+        """
+        计算场景触发评分，用于验证 LLM 建议是否应该执行
+        
+        Args:
+            suggested_action: LLM 建议的行动 (phone_call/eavesdrop/none)
+            character_states: 角色状态
+            trigger_history: 最近触发历史
+            scene_trigger: LLM 返回的完整触发信息
+            
+        Returns:
+            {
+                "score": 0-100,
+                "should_trigger": True/False,
+                "adjusted_action": 最终行动,
+                "reason": 判断原因
+            }
+        """
+        if suggested_action == "none":
+            return {
+                "score": 0,
+                "should_trigger": False,
+                "adjusted_action": "none",
+                "reason": "LLM 建议不触发"
+            }
+        
+        score = 50  # 基础分（LLM 认为应该触发）
+        reasons = []
+        
+        # 1. 触发历史惩罚（phone_call 严格，eavesdrop 宽松）
+        if trigger_history:
+            recent_same_action = sum(
+                1 for t in trigger_history 
+                if t.get("action") == suggested_action
+            )
+            
+            if suggested_action == "phone_call":
+                # 电话严格惩罚
+                if recent_same_action >= 2:
+                    score -= 30
+                    reasons.append(f"近期已触发 {recent_same_action} 次电话 (-30)")
+                elif recent_same_action == 1:
+                    score -= 15
+                    reasons.append(f"刚触发过电话 (-15)")
+            elif suggested_action == "eavesdrop":
+                # 偷听宽松惩罚（减半）
+                if recent_same_action >= 3:
+                    score -= 15
+                    reasons.append(f"近期已触发 {recent_same_action} 次偷听 (-15)")
+                elif recent_same_action >= 2:
+                    score -= 8
+                    reasons.append(f"近期有过偷听体验 (-8)")
+                # 1次偷听不惩罚，鼓励多样性
+        
+        # 2. 情绪强度加成（0 ~ +25）
+        max_intensity = 0
+        for char_name, state in character_states.items():
+            emotional = state.get("emotional", {})
+            intensity = emotional.get("intensity", 0)
+            if intensity > max_intensity:
+                max_intensity = intensity
+        
+        if max_intensity >= 8:
+            score += 25
+            reasons.append(f"高情绪强度 {max_intensity} (+25)")
+        elif max_intensity >= 6:
+            score += 15
+            reasons.append(f"中等情绪强度 {max_intensity} (+15)")
+        elif max_intensity >= 4:
+            score += 5
+            reasons.append(f"情绪强度 {max_intensity} (+5)")
+        
+        # 3. 认知需求加成（0 ~ +15）
+        total_desires = 0
+        for char_name, state in character_states.items():
+            cognitive = state.get("cognitive", {})
+            desires = cognitive.get("desires", [])
+            total_desires += len(desires) if isinstance(desires, list) else 0
+        
+        if total_desires >= 3:
+            score += 15
+            reasons.append(f"多个认知需求 ({total_desires}) (+15)")
+        elif total_desires >= 1:
+            score += 5
+            reasons.append(f"有认知需求 ({total_desires}) (+5)")
+        
+        # 4. 社交动机加成（0 ~ +10）
+        has_hidden_thoughts = False
+        for char_name, state in character_states.items():
+            social = state.get("social", {})
+            if social.get("hidden_thoughts"):
+                has_hidden_thoughts = True
+                break
+        
+        if has_hidden_thoughts:
+            score += 10
+            reasons.append("存在未说出的想法 (+10)")
+        
+        # 限制范围
+        score = max(0, min(100, score))
+        
+        # 判断是否应该触发
+        should_trigger = score >= self.threshold
+        adjusted_action = suggested_action if should_trigger else "none"
+        
+        final_reason = f"评分 {score}/{self.threshold}: " + "; ".join(reasons) if reasons else f"评分 {score}/{self.threshold}"
+        
+        if not should_trigger:
+            final_reason += f" → 评分不足，降级为 none"
+        
+        print(f"[LiveCharacterEngine] 🎯 场景评分: {score}, 阈值: {self.threshold}, 触发: {should_trigger}")
+        
+        return {
+            "score": score,
+            "should_trigger": should_trigger,
+            "adjusted_action": adjusted_action,
+            "reason": final_reason
+        }
+
     def generate_summary(self, character_states: Dict) -> str:
         """
         生成简短摘要(专门给LLM用)

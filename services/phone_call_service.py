@@ -24,7 +24,7 @@ class PhoneCallService:
         self.tts_service = TTSService(get_sovits_host())
         self.audio_merger = AudioMerger()
     
-    async def generate(self, chat_branch: str, speakers: List[str], context: List[Dict], generate_audio: bool = True, user_name: str = None, last_call_info: Dict = None) -> Dict:
+    async def generate(self, chat_branch: str, speakers: List[str], context: List[Dict], generate_audio: bool = True, user_name: str = None, last_call_info: Dict = None, call_reason: str = "", call_tone: str = "") -> Dict:
         """
         生成主动电话内容
         
@@ -35,17 +35,6 @@ class PhoneCallService:
         3. 前端将LLM响应发回后端
         4. 后端解析并生成音频
         
-        流程:
-        1. 加载配置
-        2. 提取上下文数据
-        3. 获取所有说话人的可用情绪
-        4. 构建提示词 (包含说话人列表)
-        5. ⚠️ 不再调用LLM - 由前端调用
-        6. 解析响应 (由 parse_and_generate 方法处理)
-        7. (可选)生成音频
-        8. (可选)合并音频
-        9. 返回结果
-        
         Args:
             chat_branch: 对话分支ID
             speakers: 说话人列表
@@ -53,9 +42,11 @@ class PhoneCallService:
             generate_audio: 是否生成音频(默认True)
             user_name: 用户名，用于在prompt中区分用户身份
             last_call_info: 上次通话信息，用于二次电话差异化
+            call_reason: 打电话的原因（由 LLM 分析得出）
+            call_tone: 通话氛围（如轻松闲聊、深情倾诉等）
             
         Returns:
-            包含prompt、llm_config的字典 (不包含segments,需要前端调用LLM后再处理)
+            包含prompt、llm_config的字典
         """
         print(f"\n[PhoneCallService] 开始准备主动电话: chat_branch={chat_branch}, speakers={speakers}, 上下文={len(context)}条消息")
         if last_call_info:
@@ -71,9 +62,10 @@ class PhoneCallService:
         tts_config = phone_call_config.get("tts_config", {})
         text_lang = tts_config.get("text_lang", "zh")  # 读取语言配置,默认中文
         
-        # 读取消息提取和过滤配置
-        extract_tag = phone_call_config.get("extract_tag", "")  # 提取标签
-        filter_tags = phone_call_config.get("filter_tags", "")  # 过滤标签
+        # 读取消息提取和过滤配置（从共享的 message_processing 读取）
+        msg_processing = settings.get("message_processing", {})
+        extract_tag = msg_processing.get("extract_tag", "")  # 提取标签
+        filter_tags = msg_processing.get("filter_tags", "")  # 过滤标签
         
         # 2. 提取上下文数据
         extracted_data = self.data_extractor.extract(context, extractors)
@@ -101,17 +93,19 @@ class PhoneCallService:
         # 4. 构建提示词 (包含说话人和情绪信息，以及上次通话信息)
         prompt = self.prompt_builder.build(
             template=prompt_template,
-            char_name=speakers[0] if speakers else "Unknown",  # 保持兼容性
+            char_name=speakers[0] if speakers else "Unknown",
             context=context,
             extracted_data=extracted_data,
             emotions=speakers_emotions.get(speakers[0], []) if speakers else [],
-            speakers=speakers,  # 新增: 传递说话人列表
-            speakers_emotions=speakers_emotions,  # 新增: 传递说话人情绪映射
-            text_lang=text_lang,  # 新增: 传递语言配置
-            extract_tag=extract_tag,  # 新增: 传递提取标签
-            filter_tags=filter_tags,  # 新增: 传递过滤标签
-            user_name=user_name,  # 新增: 传递用户名
-            last_call_info=last_call_info  # 新增: 传递上次通话信息
+            speakers=speakers,
+            speakers_emotions=speakers_emotions,
+            text_lang=text_lang,
+            extract_tag=extract_tag,
+            filter_tags=filter_tags,
+            user_name=user_name,
+            last_call_info=last_call_info,
+            call_reason=call_reason,  # 新增: 电话原因
+            call_tone=call_tone  # 新增: 通话氛围
         )
         
         print(f"[PhoneCallService] ✅ Prompt构建完成: {len(prompt)} 字符")

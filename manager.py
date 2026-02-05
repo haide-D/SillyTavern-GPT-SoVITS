@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from config import FRONTEND_DIR, init_settings
 from routers import data, tts, system
 from config import FRONTEND_DIR
-from routers import data, tts, system, admin, phone_call, speakers, eavesdrop, continuous_analysis
+from routers import data, tts, system, admin, phone_call, speakers, eavesdrop, continuous_analysis, sovits_installer
 
 # 导入自定义日志中间件
 from middleware.logging_middleware import LoggingMiddleware
@@ -116,6 +116,36 @@ async def serve_auto_call_audio(speaker_name: str, filename: str):
         }
     )
 
+# 挂载对话追踪音频目录
+eavesdrop_audio_dir = os.path.join(cache_dir, "eavesdrop")
+os.makedirs(eavesdrop_audio_dir, exist_ok=True)
+
+@app.get("/api/audio/eavesdrop/{filename}")
+async def serve_eavesdrop_audio(filename: str):
+    """
+    提供对话追踪音频文件
+    """
+    # URL 解码
+    filename = unquote(filename)
+    
+    # 构建文件路径
+    file_path = os.path.join(eavesdrop_audio_dir, filename)
+    
+    # 检查文件是否存在
+    if not os.path.exists(file_path):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"音频文件不存在: {filename}")
+    
+    # 返回文件
+    return FileResponse(
+        file_path,
+        media_type="audio/wav",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
 # 3. 注册路由
 app.include_router(data.router, tags=["Data Management"])
 app.include_router(tts.router, tags=["TTS Core"])
@@ -125,7 +155,86 @@ app.include_router(phone_call.router, prefix="/api", tags=["Phone Call"])
 app.include_router(speakers.router, prefix="/api", tags=["Speakers Management"])
 app.include_router(eavesdrop.router, prefix="/api/eavesdrop", tags=["Eavesdrop Tracking"])
 app.include_router(continuous_analysis.router, prefix="/api", tags=["Continuous Analysis"])
+app.include_router(sovits_installer.router, tags=["GPT-SoVITS Installation"])
 
+
+# GPT-SoVITS 自动启动检查
+def auto_start_sovits():
+    """检查并自动启动 GPT-SoVITS 服务"""
+    import subprocess
+    import socket
+    from pathlib import Path
+    
+    try:
+        from routers.sovits_installer import load_sovits_config
+        config = load_sovits_config()
+        
+        # 检查是否配置了自动启动
+        if not config.auto_start:
+            print("[GPT-SoVITS] ⏸️  自动启动已禁用")
+            return
+        
+        # 检查是否已配置安装路径
+        if not config.install_path:
+            print("[GPT-SoVITS] ⚠️  未配置安装路径，请访问 http://localhost:3000/admin 进行配置")
+            return
+        
+        install_path = Path(config.install_path)
+        if not install_path.exists():
+            print(f"[GPT-SoVITS] ⚠️  安装路径不存在: {install_path}")
+            print("[GPT-SoVITS] ⚠️  请访问 http://localhost:3000/admin 重新配置")
+            return
+        
+        # 检查端口是否已被占用（可能已经在运行）
+        port = config.api_port
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('127.0.0.1', port))
+        sock.close()
+        
+        if result == 0:
+            print(f"[GPT-SoVITS] ✅ 端口 {port} 已在运行，跳过自动启动")
+            return
+        
+        # 查找启动脚本
+        python_exe = install_path / "runtime" / "python.exe"
+        api_script = install_path / "api_v2.py"
+        config_yaml = install_path / "GPT_SoVITS" / "configs" / "tts_infer.yaml"
+        
+        if not python_exe.exists():
+            print(f"[GPT-SoVITS] ⚠️  未找到 Python: {python_exe}")
+            return
+        
+        if not api_script.exists():
+            print(f"[GPT-SoVITS] ⚠️  未找到 API 脚本: {api_script}")
+            return
+        
+        # 构建启动命令
+        cmd = [
+            str(python_exe),
+            str(api_script),
+            "-a", "127.0.0.1",
+            "-p", str(port)
+        ]
+        
+        if config_yaml.exists():
+            cmd.extend(["-c", str(config_yaml)])
+        
+        # 在新窗口中启动
+        print(f"[GPT-SoVITS] 🚀 正在启动服务 (端口: {port})...")
+        if os.name == 'nt':
+            subprocess.Popen(
+                cmd,
+                cwd=str(install_path),
+                creationflags=subprocess.CREATE_NEW_CONSOLE
+            )
+        else:
+            subprocess.Popen(cmd, cwd=str(install_path))
+        
+        print("[GPT-SoVITS] ✅ 服务已在新窗口中启动")
+        
+    except Exception as e:
+        print(f"[GPT-SoVITS] ❌ 自动启动失败: {e}")
+        print("[GPT-SoVITS] ⚠️  请手动启动或访问 http://localhost:3000/admin 配置")
 
 
 # 实时对话路由
@@ -141,6 +250,9 @@ except Exception as e:
     print(f"[Manager] ⚠️ 实时对话路由加载失败: {e}")
 
 if __name__ == "__main__":
+    # 自动启动 GPT-SoVITS
+    auto_start_sovits()
+    
     # 必须是 0.0.0.0，否则局域网无法访问
     # access_log=False 禁用默认访问日志,使用自定义日志中间件
     uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)

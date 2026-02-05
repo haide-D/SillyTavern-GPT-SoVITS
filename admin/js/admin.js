@@ -25,6 +25,10 @@ document.addEventListener('DOMContentLoaded', () => {
     bindFetchModelsButton();
     // 绑定测试 LLM 连接按钮
     bindTestConnectionButton();
+    // 绑定分析引擎 LLM 按钮
+    bindAnalysisLLMButtons();
+    // 绑定设置页 Tab 切换
+    bindSettingsTabs();
 
     // 显示通告弹窗
     document.getElementById('notice-dialog').style.display = 'flex';
@@ -530,6 +534,22 @@ async function confirmBatchEmotion() {
     }
 }
 
+// ==================== 设置页 Tab 切换 ====================
+function bindSettingsTabs() {
+    document.querySelectorAll('.settings-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            // 移除所有 active
+            document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.remove('active'));
+
+            // 激活当前
+            tab.classList.add('active');
+            const tabId = 'settings-tab-' + tab.dataset.tab;
+            document.getElementById(tabId).classList.add('active');
+        });
+    });
+}
+
 // ==================== 配置管理 ====================
 async function loadSettings() {
     try {
@@ -542,11 +562,44 @@ async function loadSettings() {
         document.getElementById('setting-sovits-host').value = settings.sovits_host || 'http://127.0.0.1:9880';
         document.getElementById('setting-default-lang').value = settings.default_lang || 'Chinese';
 
-        // 电话呼叫启用开关
+        // ========== 分析引擎配置 ==========
+        const analysis = settings.analysis_engine || {};
+        document.getElementById('setting-analysis-enabled').value = String(analysis.enabled !== false);
+        document.getElementById('setting-analysis-interval').value = analysis.analysis_interval || 3;
+        document.getElementById('setting-analysis-threshold').value = analysis.trigger_threshold || 60;
+
+        // 分析 LLM 配置
+        const analysisLlm = analysis.llm || {};
+        document.getElementById('setting-analysis-llm-api-url').value = analysisLlm.api_url || '';
+        document.getElementById('setting-analysis-llm-api-key').value = analysisLlm.api_key || '';
+
+        // 处理分析引擎模型下拉框
+        const analysisModelSelect = document.getElementById('setting-analysis-llm-model');
+        const savedAnalysisModel = analysisLlm.model || '';
+        if (savedAnalysisModel) {
+            let hasOpt = false;
+            for (let i = 0; i < analysisModelSelect.options.length; i++) {
+                if (analysisModelSelect.options[i].value === savedAnalysisModel) {
+                    hasOpt = true;
+                    break;
+                }
+            }
+            if (!hasOpt) {
+                const opt = document.createElement('option');
+                opt.value = savedAnalysisModel;
+                opt.textContent = savedAnalysisModel;
+                analysisModelSelect.appendChild(opt);
+            }
+            analysisModelSelect.value = savedAnalysisModel;
+        }
+        document.getElementById('setting-analysis-llm-temperature').value = analysisLlm.temperature || 0.8;
+        document.getElementById('setting-analysis-llm-max-tokens').value = analysisLlm.max_tokens || 5000;
+
+        // ========== 电话功能配置 ==========
         const phoneCallEnabled = settings.phone_call?.enabled !== false;
         document.getElementById('setting-phone-call-enabled').value = String(phoneCallEnabled);
 
-        // LLM 配置
+        // 电话 LLM 配置
         const llm = settings.phone_call?.llm || {};
         document.getElementById('setting-llm-api-url').value = llm.api_url || 'http://127.0.0.1:7861/v1';
         document.getElementById('setting-llm-api-key').value = llm.api_key || '';
@@ -582,17 +635,16 @@ async function loadSettings() {
         document.getElementById('setting-tts-text-split-method').value = tts.text_split_method || 'cut0';
         document.getElementById('setting-tts-use-aux-ref-audio').value = String(tts.use_aux_ref_audio || false);
 
-        // 消息提取和过滤配置
-        const extractTag = settings.phone_call?.extract_tag || '';
-        const filterTags = settings.phone_call?.filter_tags || '';
-        document.getElementById('setting-extract-tag').value = extractTag;
-        document.getElementById('setting-filter-tags').value = filterTags;
+        // 消息处理配置（共享）
+        const msgProcessing = settings.message_processing || {};
+        document.getElementById('setting-extract-tag').value = msgProcessing.extract_tag || '';
+        document.getElementById('setting-filter-tags').value = msgProcessing.filter_tags || '';
 
-        // 自动生成配置
-        const autoGen = settings.phone_call?.auto_generation || {};
-        document.getElementById('setting-auto-floor-interval').value = autoGen.floor_interval || 3;
-        document.getElementById('setting-auto-start-floor').value = autoGen.start_floor || 3;
-        document.getElementById('setting-auto-max-context-messages').value = autoGen.max_context_messages || 10;
+        // 自动生成配置 - 已废弃，现由分析引擎控制
+        // const autoGen = settings.phone_call?.auto_generation || {};
+        // document.getElementById('setting-auto-floor-interval').value = autoGen.floor_interval || 3;
+        // document.getElementById('setting-auto-start-floor').value = autoGen.start_floor || 3;
+        // document.getElementById('setting-auto-max-context-messages').value = autoGen.max_context_messages || 10;
     } catch (error) {
         console.error('加载配置失败:', error);
     }
@@ -604,10 +656,30 @@ async function saveSettings() {
         cache_dir: document.getElementById('setting-cache-dir').value.trim(),
         sovits_host: document.getElementById('setting-sovits-host').value.trim(),
         default_lang: document.getElementById('setting-default-lang').value,
+
+        // 分析引擎配置
+        analysis_engine: {
+            enabled: document.getElementById('setting-analysis-enabled').value === 'true',
+            analysis_interval: parseInt(document.getElementById('setting-analysis-interval').value) || 3,
+            trigger_threshold: parseInt(document.getElementById('setting-analysis-threshold').value) || 60,
+            llm: {
+                api_url: document.getElementById('setting-analysis-llm-api-url').value.trim(),
+                api_key: document.getElementById('setting-analysis-llm-api-key').value.trim(),
+                model: document.getElementById('setting-analysis-llm-model').value.trim(),
+                temperature: parseFloat(document.getElementById('setting-analysis-llm-temperature').value) || 0.8,
+                max_tokens: parseInt(document.getElementById('setting-analysis-llm-max-tokens').value) || 5000
+            }
+        },
+
+        // 消息处理配置（共享）
+        message_processing: {
+            extract_tag: document.getElementById('setting-extract-tag').value.trim(),
+            filter_tags: document.getElementById('setting-filter-tags').value.trim()
+        },
+
+        // 电话功能配置
         phone_call: {
             enabled: document.getElementById('setting-phone-call-enabled').value === 'true',
-            extract_tag: document.getElementById('setting-extract-tag').value.trim(),
-            filter_tags: document.getElementById('setting-filter-tags').value.trim(),
             llm: {
                 api_url: document.getElementById('setting-llm-api-url').value.trim(),
                 api_key: document.getElementById('setting-llm-api-key').value.trim(),
@@ -620,12 +692,13 @@ async function saveSettings() {
                 prompt_lang: document.getElementById('setting-tts-prompt-lang').value,
                 text_split_method: document.getElementById('setting-tts-text-split-method').value,
                 use_aux_ref_audio: document.getElementById('setting-tts-use-aux-ref-audio').value === 'true'
-            },
-            auto_generation: {
-                floor_interval: parseInt(document.getElementById('setting-auto-floor-interval').value) || 3,
-                start_floor: parseInt(document.getElementById('setting-auto-start-floor').value) || 3,
-                max_context_messages: parseInt(document.getElementById('setting-auto-max-context-messages').value) || 10
             }
+            // auto_generation - 已废弃，现由分析引擎控制
+            // auto_generation: {
+            //     floor_interval: parseInt(document.getElementById('setting-auto-floor-interval').value) || 3,
+            //     start_floor: parseInt(document.getElementById('setting-auto-start-floor').value) || 3,
+            //     max_context_messages: parseInt(document.getElementById('setting-auto-max-context-messages').value) || 10
+            // }
         }
     };
 
@@ -784,6 +857,88 @@ function bindTestConnectionButton() {
             btn.textContent = '🧪 测试连接';
         }
     });
+}
+
+// 绑定分析引擎 LLM 按钮
+function bindAnalysisLLMButtons() {
+    // 获取模型列表按钮
+    const fetchBtn = document.getElementById('fetch-analysis-models-btn');
+    if (fetchBtn) {
+        fetchBtn.addEventListener('click', async () => {
+            const apiUrl = document.getElementById('setting-analysis-llm-api-url').value.trim();
+            const apiKey = document.getElementById('setting-analysis-llm-api-key').value.trim();
+            const modelSelect = document.getElementById('setting-analysis-llm-model');
+
+            if (!apiUrl || !apiKey) {
+                showNotification('请先填写分析引擎 LLM API 地址和密钥', 'warning');
+                return;
+            }
+
+            const currentValue = modelSelect.value;
+            fetchBtn.disabled = true;
+            fetchBtn.textContent = '获取中...';
+
+            try {
+                const models = await fetchLLMModels(apiUrl, apiKey);
+                models.sort((a, b) => a.localeCompare(b));
+
+                modelSelect.innerHTML = '<option value="">请选择模型...</option>';
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+
+                if (currentValue && models.includes(currentValue)) {
+                    modelSelect.value = currentValue;
+                } else if (models.length > 0) {
+                    modelSelect.value = models[0];
+                }
+
+                showNotification(`成功获取 ${models.length} 个模型`, 'success');
+            } catch (error) {
+                showNotification(`获取模型失败: ${error.message}`, 'error');
+            } finally {
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = '🔄 获取模型列表';
+            }
+        });
+    }
+
+    // 测试连接按钮
+    const testBtn = document.getElementById('test-analysis-llm-btn');
+    if (testBtn) {
+        testBtn.addEventListener('click', async () => {
+            const apiUrl = document.getElementById('setting-analysis-llm-api-url').value.trim();
+            const apiKey = document.getElementById('setting-analysis-llm-api-key').value.trim();
+            const model = document.getElementById('setting-analysis-llm-model').value.trim();
+            const temperature = parseFloat(document.getElementById('setting-analysis-llm-temperature').value) || 0.8;
+
+            if (!apiUrl || !apiKey) {
+                showNotification('请先填写分析引擎 LLM API 地址和密钥', 'warning');
+                return;
+            }
+
+            if (!model) {
+                showNotification('请先选择分析引擎模型', 'warning');
+                return;
+            }
+
+            testBtn.disabled = true;
+            testBtn.textContent = '测试中...';
+
+            try {
+                const content = await testLLMConnection(apiUrl, apiKey, model, temperature);
+                showNotification(`✅ 连接成功! LLM 响应: "${content.substring(0, 50)}${content.length > 50 ? '...' : ''}"`, 'success');
+            } catch (error) {
+                showNotification(`❌ 连接失败: ${error.message}`, 'error');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '🧪 测试连接';
+            }
+        });
+    }
 }
 
 // 测试 LLM 连接
@@ -1088,3 +1243,243 @@ async function performUpdate() {
     }
 }
 
+
+// ==================== GPT-SoVITS 配置管理 ====================
+
+
+// 加载 GPT-SoVITS 配置
+async function loadSovitsConfig() {
+    try {
+        const response = await fetch('/api/sovits/config');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const config = data.config;
+
+        if (config.install_path) {
+            document.getElementById('sovits-install-path').value = config.install_path;
+        }
+
+        if (config.version_type) {
+            const radio = document.querySelector(`input[name="gpu-type"][value="${config.version_type}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        document.getElementById('sovits-auto-start').checked = config.auto_start !== false;
+
+        // 更新状态徽章
+        const statusBadge = document.getElementById('sovits-install-status');
+        if (config.installed && config.install_path) {
+            statusBadge.textContent = '已配置';
+            statusBadge.className = 'status-badge status-success';
+        } else {
+            statusBadge.textContent = '未配置';
+            statusBadge.className = 'status-badge status-warning';
+        }
+    } catch (error) {
+        console.error('加载 GPT-SoVITS 配置失败:', error);
+    }
+}
+
+// 保存 GPT-SoVITS 配置
+async function saveSovitsConfig() {
+    const config = {
+        installed: true,
+        version_type: document.querySelector('input[name="gpu-type"]:checked').value,
+        install_path: document.getElementById('sovits-install-path').value.trim(),
+        auto_start: document.getElementById('sovits-auto-start').checked,
+        api_port: 9880
+    };
+
+    if (!config.install_path) {
+        showNotification('请填写 GPT-SoVITS 安装路径', 'warning');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/sovits/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showNotification('GPT-SoVITS 配置已保存', 'success');
+            loadSovitsConfig(); // 刷新状态
+        } else {
+            showNotification(data.detail || '保存失败', 'error');
+        }
+    } catch (error) {
+        console.error('保存配置失败:', error);
+        showNotification('保存配置失败', 'error');
+    }
+}
+
+// 解压 GPT-SoVITS 压缩包
+async function extractSovitsPackage() {
+    const archivePath = document.getElementById('sovits-archive-path').value.trim();
+    const extractTo = document.getElementById('sovits-extract-to').value.trim();
+
+    if (!archivePath) {
+        showNotification('请填写压缩包路径', 'warning');
+        return;
+    }
+
+    if (!extractTo) {
+        showNotification('请填写解压目标目录', 'warning');
+        return;
+    }
+
+    const progressDiv = document.getElementById('extract-progress');
+    const progressBar = document.getElementById('extract-progress-bar');
+    const progressText = document.getElementById('extract-progress-text');
+
+    progressDiv.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressText.textContent = '正在解压，请稍候（文件较大，可能需要几分钟）...';
+
+    try {
+        const response = await fetch('/api/sovits/extract', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                archive_path: archivePath,
+                extract_to: extractTo,
+                delete_after: true
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            progressBar.style.width = '100%';
+            progressText.textContent = `解压完成！路径: ${data.extracted_path}`;
+
+            // 自动填充安装路径
+            document.getElementById('sovits-install-path').value = data.extracted_path;
+
+            showNotification('解压完成！已自动填充安装路径', 'success');
+
+            // 切换到手动模式显示路径
+            document.querySelector('input[name="install-mode"][value="manual"]').checked = true;
+            toggleInstallMode();
+        } else {
+            progressText.textContent = '解压失败';
+            showNotification(data.detail || '解压失败', 'error');
+        }
+    } catch (error) {
+        console.error('解压失败:', error);
+        progressText.textContent = '解压失败';
+        showNotification('解压失败，请检查路径是否正确', 'error');
+    }
+}
+
+// 启动 GPT-SoVITS 服务
+async function startSovitsService() {
+    showNotification('正在启动 GPT-SoVITS 服务...', 'info');
+
+    try {
+        const response = await fetch('/api/sovits/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            showNotification(`GPT-SoVITS 服务已启动 (PID: ${data.pid})`, 'success');
+            // 刷新仪表盘状态
+            loadDashboard();
+            loadSovitsStatus();
+        } else {
+            showNotification(data.detail || data.message || '启动失败', 'error');
+        }
+    } catch (error) {
+        console.error('启动服务失败:', error);
+        showNotification('启动服务失败', 'error');
+    }
+}
+
+// 停止 GPT-SoVITS 服务
+async function stopSovitsService() {
+    showNotification('正在停止 GPT-SoVITS 服务...', 'info');
+
+    try {
+        const response = await fetch('/api/sovits/stop', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification('GPT-SoVITS 服务已停止', 'success');
+            // 刷新状态
+            loadDashboard();
+            loadSovitsStatus();
+        } else {
+            showNotification(data.message || '停止失败', 'warning');
+        }
+    } catch (error) {
+        console.error('停止服务失败:', error);
+        showNotification('停止服务失败', 'error');
+    }
+}
+
+// 测试 GPT-SoVITS 连接
+async function testSovitsConnection() {
+    showNotification('正在测试连接...', 'info');
+
+    try {
+        const response = await fetch('/api/sovits/test', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification(`连接成功！端口: ${data.port}`, 'success');
+        } else {
+            showNotification(data.message || '连接失败', 'error');
+        }
+    } catch (error) {
+        console.error('测试连接失败:', error);
+        showNotification('测试连接失败', 'error');
+    }
+}
+
+// 加载 GPT-SoVITS 服务状态
+async function loadSovitsStatus() {
+    try {
+        const response = await fetch('/api/sovits/status');
+        if (!response.ok) return;
+
+        const status = await response.json();
+
+        // 更新安装状态徽章
+        const statusBadge = document.getElementById('sovits-install-status');
+        if (status.api_reachable) {
+            statusBadge.textContent = '运行中';
+            statusBadge.className = 'status-badge status-success';
+        } else if (status.installed && status.install_path) {
+            statusBadge.textContent = '已配置';
+            statusBadge.className = 'status-badge status-warning';
+        } else {
+            statusBadge.textContent = '未配置';
+            statusBadge.className = 'status-badge';
+        }
+    } catch (error) {
+        console.error('加载 GPT-SoVITS 状态失败:', error);
+    }
+}
+
+// 页面加载时也加载 GPT-SoVITS 配置
+document.addEventListener('DOMContentLoaded', () => {
+    // 延迟加载，确保其他初始化完成
+    setTimeout(() => {
+        loadSovitsConfig();
+        loadSovitsStatus();
+    }, 500);
+});

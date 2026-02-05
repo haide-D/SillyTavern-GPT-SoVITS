@@ -805,9 +805,9 @@ body[data-bubble-style="kawaii"] .voice-bubble.loading {
     }
 }
 
-/* 对话追踪通知动画 (绿色闪烁) */
+/* 对话追踪通知动画 (绿色闪烁 + 震动) */
 #tts-manager-btn.eavesdrop-available {
-    animation: eavesdrop-pulse 1.5s ease-in-out infinite;
+    animation: phone-vibrate 0.5s ease-in-out infinite, eavesdrop-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes eavesdrop-pulse {

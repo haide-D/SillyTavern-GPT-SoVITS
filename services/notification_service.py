@@ -44,7 +44,7 @@ class NotificationService:
     
     
     @classmethod
-    async def notify_llm_request(cls, call_id: int, char_name: str, prompt: str, llm_config: Dict, speakers: List[str], chat_branch: str):
+    async def notify_llm_request(cls, call_id: int, char_name: str, prompt: str, llm_config: Dict, speakers: List[str], chat_branch: str, caller: str = None):
         """
         推送LLM调用请求通知 (新架构)
         
@@ -52,16 +52,21 @@ class NotificationService:
         
         Args:
             call_id: 电话记录ID
-            char_name: 角色名称
+            char_name: WebSocket 路由目标（主角色卡名称）
             prompt: LLM提示词
             llm_config: LLM配置
             speakers: 说话人列表
             chat_branch: 对话分支ID
+            caller: 实际打电话的角色（用于通知显示）
         """
+        # 实际打电话的人: 优先使用 caller，回退到 speakers[0]
+        actual_caller = caller or (speakers[0] if speakers else char_name)
+        
         message = {
             "type": "llm_request",
             "call_id": call_id,
-            "char_name": char_name,
+            "char_name": char_name,  # WebSocket 路由用
+            "caller": actual_caller,  # 实际打电话的人（用于显示）
             "prompt": prompt,
             "llm_config": llm_config,
             "speakers": speakers,
@@ -69,13 +74,14 @@ class NotificationService:
             "timestamp": asyncio.get_event_loop().time()
         }
         
-        print(f"[NotificationService] 📤 通知前端调用LLM: call_id={call_id}, char={char_name}")
+        print(f"[NotificationService] 📤 通知前端调用LLM: call_id={call_id}, caller={actual_caller}, ws_target={char_name}")
         await cls.broadcast_to_char(char_name, message)
     
     @classmethod
     async def notify_eavesdrop_llm_request(cls, record_id: int, char_name: str, prompt: str, 
                                             llm_config: Dict, speakers: List[str], 
-                                            chat_branch: str, scene_description: Optional[str] = None):
+                                            chat_branch: str, scene_description: Optional[str] = None,
+                                            text_lang: str = "zh"):
         """
         推送对话追踪LLM调用请求通知
         
@@ -89,6 +95,7 @@ class NotificationService:
             speakers: 说话人列表
             chat_branch: 对话分支ID
             scene_description: 场景描述
+            text_lang: TTS 文本语言配置
         """
         message = {
             "type": "eavesdrop_llm_request",
@@ -99,6 +106,7 @@ class NotificationService:
             "speakers": speakers,
             "chat_branch": chat_branch,
             "scene_description": scene_description,
+            "text_lang": text_lang,
             "timestamp": asyncio.get_event_loop().time()
         }
         

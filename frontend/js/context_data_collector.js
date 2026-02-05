@@ -13,6 +13,11 @@ import { SpeakerManager } from './speaker_manager.js';
 import { PhoneCallAPIClient } from './phone_call_api_client.js';
 
 export class ContextDataCollector {
+    // 防重复：记录最后发送的指纹和时间
+    static _lastSentFingerprint = null;
+    static _lastSentTime = 0;
+    static _DEBOUNCE_MS = 500;  // 500ms 内相同指纹不重复发送
+
     /**
      * 获取当前对话分支ID
      */
@@ -237,6 +242,17 @@ export class ContextDataCollector {
                 console.warn('[ContextDataCollector] ⚠️ 数据采集失败,跳过 webhook');
                 return;
             }
+
+            // 防重复检查：相同指纹在 500ms 内不重复发送
+            const now = Date.now();
+            if (data.context_fingerprint === this._lastSentFingerprint &&
+                (now - this._lastSentTime) < this._DEBOUNCE_MS) {
+                console.log(`[ContextDataCollector] ⏭️ 跳过重复 webhook: ${data.context_fingerprint}`);
+                return;
+            }
+
+            this._lastSentFingerprint = data.context_fingerprint;
+            this._lastSentTime = now;
 
             await PhoneCallAPIClient.sendWebhook(data);
 

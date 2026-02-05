@@ -14,7 +14,7 @@
         <aside class="sidebar">
             <div class="logo">
                 <h1>🎙️ TTS 管理</h1>
-                <p class="version">v1.0.0</p>
+                <p class="version">v2.0.0</p>
             </div>
 
             <nav class="nav">
@@ -121,7 +121,88 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
+                <!-- 推理后端 -->
+                <div class="section-header" style="margin-top: 2rem; margin-bottom: 1rem;">
+                    <h3
+                        style="font-size: 1.25rem; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                        🚀 推理后端
+                    </h3>
+                </div>
+
+                <div class="cards-grid">
+                    <!-- GPT-SoVITS 安装配置卡片 -->
+                    <div class="card" id="sovits-install-card" style="grid-column: span 2;">
+                        <div class="card-header">
+                            <h3>📦 GPT-SoVITS 安装配置</h3>
+                            <span class="status-badge" id="sovits-install-status">未配置</span>
+                        </div>
+                        <div class="card-body">
+                            <!-- GPU 类型选择 -->
+                            <div class="form-group">
+                                <label>GPU 类型</label>
+                                <div class="radio-group" id="gpu-type-group">
+                                    <label class="radio-label">
+                                        <input type="radio" name="gpu-type" value="nvidia_general" checked>
+                                        <span>NVIDIA 通用版 (RTX 20/30/40)</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="gpu-type" value="nvidia_50">
+                                        <span>NVIDIA 50系列 (RTX 50)</span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="gpu-type" value="amd" disabled>
+                                        <span>AMD 版 (暂未提供)</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- 安装路径 -->
+                            <div class="form-group">
+                                <label>GPT-SoVITS 安装路径</label>
+                                <input type="text" id="sovits-install-path" class="input"
+                                    placeholder="例: G:\GPT-SoVITS-v2pro-20250604">
+                                <small>GPT-SoVITS 整合包的根目录（包含 api_v2.py 的目录）</small>
+                            </div>
+
+                            <hr style="border-color: var(--border-color); margin: 1rem 0;">
+
+                            <!-- 自动启动选项 -->
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 8px;">
+                                    <input type="checkbox" id="sovits-auto-start" checked>
+                                    <span>启动插件时自动启动 GPT-SoVITS API</span>
+                                </label>
+                            </div>
+
+                            <!-- 操作按钮 -->
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem;">
+                                <button class="btn btn-success" onclick="saveSovitsConfig()">💾 保存配置</button>
+                                <button class="btn btn-primary" onclick="startSovitsService()">▶️ 启动服务</button>
+                                <button class="btn btn-danger" onclick="stopSovitsService()">⏹️ 停止服务</button>
+                                <button class="btn btn-secondary" onclick="testSovitsConnection()">🧪 测试连接</button>
+                            </div>
+
+                            <hr style="border-color: var(--border-color); margin: 1rem 0;">
+
+                            <!-- 下载链接 -->
+                            <div class="download-links">
+                                <small style="display: block; margin-bottom: 8px; color: var(--text-secondary);">💡
+                                    下载整合包：原作者仓库：https://github.com/RVC-Boss/GPT-SoVITS</small>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    <a href="https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604.7z"
+                                        target="_blank" class="btn btn-secondary" style="font-size: 0.875rem;">
+                                        📥 NVIDIA 通用版
+                                    </a>
+                                    <a href="https://www.modelscope.cn/models/FlowerCry/gpt-sovits-7z-pacakges/resolve/master/GPT-SoVITS-v2pro-20250604-nvidia50.7z"
+                                        target="_blank" class="btn btn-secondary" style="font-size: 0.875rem;">
+                                        📥 NVIDIA 50系列版
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -164,181 +245,274 @@
                     <button class="btn btn-success" onclick="saveSettings()">💾 保存配置</button>
                 </header>
 
-                <div class="settings-form">
-                    <div class="form-group">
-                        <label>模型目录路径</label>
-                        <input type="text" id="setting-base-dir" class="input" placeholder="例: G:\Models\MyCharacters">
-                        <small>存放 GPT-SoVITS 模型的根目录</small>
-                    </div>
+                <!-- Tab 标签栏 -->
+                <div class="settings-tabs">
+                    <button class="settings-tab active" data-tab="basic">📁 基础配置</button>
+                    <button class="settings-tab" data-tab="analysis">🧠 分析引擎</button>
+                    <button class="settings-tab" data-tab="phone">📞 电话功能</button>
+                </div>
 
-                    <div class="form-group">
-                        <label>缓存目录路径</label>
-                        <input type="text" id="setting-cache-dir" class="input" placeholder="例: G:\Cache">
-                        <small>存放生成音频缓存的目录</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>GPT-SoVITS API 地址</label>
-                        <input type="text" id="setting-sovits-host" class="input" value="http://127.0.0.1:9880">
-                        <small>GPT-SoVITS 推理服务的 API 地址</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>默认语言</label>
-                        <select id="setting-default-lang" class="select">
-                            <option value="Chinese">中文</option>
-                            <option value="Japanese">日语</option>
-                            <option value="English">英语</option>
-                        </select>
-                    </div>
-
-                    <!-- 电话呼叫启用开关 -->
-                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">📞 电话呼叫功能</h3>
-
-                    <div class="form-group">
-                        <label>启用电话呼叫</label>
-                        <select id="setting-phone-call-enabled" class="select">
-                            <option value="true">启用</option>
-                            <option value="false">禁用</option>
-                        </select>
-                        <small>是否启用主动电话呼叫功能</small>
-                    </div>
-
-                    <!-- LLM 配置 -->
-                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">📞 LLM 配置</h3>
-
-                    <div class="form-group">
-                        <label>LLM API 地址</label>
-                        <input type="text" id="setting-llm-api-url" class="input"
-                            placeholder="例: http://127.0.0.1:7861/v1/chat/completions">
-                        <small>LLM 服务的 API 地址</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label>LLM API Key</label>
-                        <input type="text" id="setting-llm-api-key" class="input" placeholder="例: pwd">
-                        <small>LLM 服务的 API 密钥</small>
-                    </div>
-
-                    <div class="form-group">
-                        <div
-                            style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
-                            <label>LLM 模型</label>
-                            <div style="display:flex; gap:8px;">
-                                <button type="button" id="test-llm-connection-btn" class="btn btn-secondary"
-                                    style="padding:4px 12px; font-size:12px;">
-                                    🧪 测试连接
-                                </button>
-                                <button type="button" id="fetch-llm-models-btn" class="btn btn-secondary"
-                                    style="padding:4px 12px; font-size:12px;">
-                                    🔄 获取模型列表
-                                </button>
-                            </div>
+                <!-- 基础配置 Tab -->
+                <div id="settings-tab-basic" class="settings-tab-content active">
+                    <div class="settings-form">
+                        <div class="form-group">
+                            <label>模型目录路径</label>
+                            <input type="text" id="setting-base-dir" class="input"
+                                placeholder="例: G:\Models\MyCharacters">
+                            <small>存放 GPT-SoVITS 模型的根目录</small>
                         </div>
-                        <select id="setting-llm-model" class="select">
-                            <option value="">请选择模型...</option>
-                        </select>
-                        <small>使用的 LLM 模型名称,点击上方按钮从 API 获取可用模型</small>
+
+                        <div class="form-group">
+                            <label>缓存目录路径</label>
+                            <input type="text" id="setting-cache-dir" class="input" placeholder="例: G:\Cache">
+                            <small>存放生成音频缓存的目录</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>GPT-SoVITS API 地址</label>
+                            <input type="text" id="setting-sovits-host" class="input" value="http://127.0.0.1:9880">
+                            <small>GPT-SoVITS 推理服务的 API 地址</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>默认语言</label>
+                            <select id="setting-default-lang" class="select">
+                                <option value="Chinese">中文</option>
+                                <option value="Japanese">日语</option>
+                                <option value="English">英语</option>
+                            </select>
+                        </div>
+
+                        <h3 class="settings-section-title">📄 消息处理（共享）</h3>
+
+                        <div class="form-group">
+                            <label>消息提取标签</label>
+                            <input type="text" id="setting-extract-tag" class="input" placeholder="例: conxt">
+                            <small>提取特定标签内的内容(如 &lt;conxt&gt;...&lt;/conxt&gt;),留空则不提取</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>消息过滤标签</label>
+                            <textarea id="setting-filter-tags" class="input" rows="3"
+                                placeholder="例: <small>, [statbar], <thought target=|</thought>"></textarea>
+                            <small>
+                                过滤 chat 消息中的标签内容,支持三种格式:<br>
+                                1. &lt;xxx&gt; - 过滤 HTML 风格标签<br>
+                                2. [xxx] - 过滤方括号风格标签<br>
+                                3. 前缀|后缀 - 过滤自定义前后缀包裹的内容<br>
+                                多个标签用逗号分隔
+                            </small>
+                        </div>
                     </div>
+                </div>
 
-                    <div class="form-group">
-                        <label>LLM 温度</label>
-                        <input type="number" id="setting-llm-temperature" class="input" step="0.1" min="0" max="2"
-                            placeholder="0.8">
-                        <small>控制生成文本的随机性 (0.0-2.0)</small>
+                <!-- 分析引擎 Tab -->
+                <div id="settings-tab-analysis" class="settings-tab-content">
+                    <div class="settings-form">
+                        <h3 class="settings-section-title">🧠 分析引擎配置</h3>
+
+                        <div class="form-group">
+                            <label>启用分析引擎</label>
+                            <select id="setting-analysis-enabled" class="select">
+                                <option value="true">启用</option>
+                                <option value="false">禁用</option>
+                            </select>
+                            <small>是否启用持续分析功能</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>分析间隔（楼层）</label>
+                            <input type="number" id="setting-analysis-interval" class="input" min="1" placeholder="3">
+                            <small>每隔多少轮对话触发一次分析</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>触发阈值</label>
+                            <input type="number" id="setting-analysis-threshold" class="input" min="0" max="100"
+                                placeholder="60">
+                            <small>行动触发的评分阈值 (0-100)影响触发频率</small>
+                        </div>
+
+                        <h3 class="settings-section-title">🤖 分析 LLM 配置</h3>
+
+                        <div class="form-group">
+                            <label>API 地址</label>
+                            <input type="text" id="setting-analysis-llm-api-url" class="input"
+                                placeholder="例: http://127.0.0.1:8045/v1">
+                            <small>用于角色状态分析的 LLM API 地址</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <input type="text" id="setting-analysis-llm-api-key" class="input" placeholder="例: sk-xxx">
+                        </div>
+
+                        <div class="form-group">
+                            <div
+                                style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+                                <label>模型</label>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="button" id="test-analysis-llm-btn" class="btn btn-secondary"
+                                        style="padding:4px 12px; font-size:12px;">
+                                        🧪 测试连接
+                                    </button>
+                                    <button type="button" id="fetch-analysis-models-btn" class="btn btn-secondary"
+                                        style="padding:4px 12px; font-size:12px;">
+                                        🔄 获取模型列表
+                                    </button>
+                                </div>
+                            </div>
+                            <select id="setting-analysis-llm-model" class="select">
+                                <option value="">请选择模型...</option>
+                            </select>
+                            <small>用于角色状态分析的 LLM 模型</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>温度</label>
+                            <input type="number" id="setting-analysis-llm-temperature" class="input" step="0.1" min="0"
+                                max="2" placeholder="0.8">
+                        </div>
+
+                        <div class="form-group">
+                            <label>最大 Token 数</label>
+                            <input type="number" id="setting-analysis-llm-max-tokens" class="input" min="100"
+                                max="32000" placeholder="5000">
+                        </div>
                     </div>
+                </div>
 
-                    <div class="form-group">
-                        <label>LLM 最大 Token 数</label>
-                        <input type="number" id="setting-llm-max-tokens" class="input" min="100" max="32000"
-                            placeholder="5000">
-                        <small>LLM 生成的最大 Token 数量 (默认: 5000)</small>
-                    </div>
+                <!-- 电话功能 Tab -->
+                <div id="settings-tab-phone" class="settings-tab-content">
+                    <div class="settings-form">
+                        <h3 class="settings-section-title">📞 电话功能</h3>
 
-                    <!-- TTS 配置 -->
-                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">🎙️ TTS 配置</h3>
+                        <div class="form-group">
+                            <label>启用电话呼叫</label>
+                            <select id="setting-phone-call-enabled" class="select">
+                                <option value="true">启用</option>
+                                <option value="false">禁用</option>
+                            </select>
+                            <small>是否启用主动电话呼叫功能</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>消息提取标签</label>
-                        <input type="text" id="setting-extract-tag" class="input" placeholder="例: conxt">
-                        <small>提取特定标签内的内容(如 &lt;conxt&gt;...&lt;/conxt&gt;),留空则不提取</small>
-                    </div>
+                        <h3 class="settings-section-title">🤖 电话 LLM 配置</h3>
 
-                    <div class="form-group">
-                        <label>消息过滤标签</label>
-                        <textarea id="setting-filter-tags" class="input" rows="3"
-                            placeholder="例: <small>, [statbar], <thought target=|</thought>"></textarea>
-                        <small>
-                            过滤 chat 消息中的标签内容,支持三种格式:<br>
-                            1. &lt;xxx&gt; - 过滤 HTML 风格标签<br>
-                            2. [xxx] - 过滤方括号风格标签<br>
-                            3. 前缀|后缀 - 过滤自定义前后缀包裹的内容<br>
-                            多个标签用逗号分隔
-                        </small>
-                    </div>
+                        <div class="form-group">
+                            <label>LLM API 地址</label>
+                            <input type="text" id="setting-llm-api-url" class="input"
+                                placeholder="例: http://127.0.0.1:7861/v1/chat/completions">
+                            <small>LLM 服务的 API 地址</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>文本语言</label>
-                        <select id="setting-tts-text-lang" class="select">
-                            <option value="zh">中文 (zh)</option>
-                            <option value="en">英语 (en)</option>
-                            <option value="ja">日语 (ja)</option>
-                        </select>
-                        <small>生成语音的文本语言</small>
-                    </div>
+                        <div class="form-group">
+                            <label>LLM API Key</label>
+                            <input type="text" id="setting-llm-api-key" class="input" placeholder="例: pwd">
+                            <small>LLM 服务的 API 密钥</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>提示语言</label>
-                        <select id="setting-tts-prompt-lang" class="select">
-                            <option value="zh">中文 (zh)</option>
-                            <option value="en">英语 (en)</option>
-                            <option value="ja">日语 (ja)</option>
-                        </select>
-                        <small>提示词的语言</small>
-                    </div>
+                        <div class="form-group">
+                            <div
+                                style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+                                <label>LLM 模型</label>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="button" id="test-llm-connection-btn" class="btn btn-secondary"
+                                        style="padding:4px 12px; font-size:12px;">
+                                        🧪 测试连接
+                                    </button>
+                                    <button type="button" id="fetch-llm-models-btn" class="btn btn-secondary"
+                                        style="padding:4px 12px; font-size:12px;">
+                                        🔄 获取模型列表
+                                    </button>
+                                </div>
+                            </div>
+                            <select id="setting-llm-model" class="select">
+                                <option value="">请选择模型...</option>
+                            </select>
+                            <small>使用的 LLM 模型名称,点击上方按钮从 API 获取可用模型</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>文本分割方法</label>
-                        <select id="setting-tts-text-split-method" class="select">
-                            <option value="cut0">cut0 - 不分割</option>
-                            <option value="cut1">cut1 - 按标点分割</option>
-                            <option value="cut2">cut2 - 按句子分割</option>
-                            <option value="cut3">cut3 - 按段落分割</option>
-                            <option value="cut4">cut4 - 按长度分割</option>
-                            <option value="cut5">cut5 - 智能分割</option>
-                        </select>
-                        <small>文本分割策略</small>
-                    </div>
+                        <div class="form-group">
+                            <label>LLM 温度</label>
+                            <input type="number" id="setting-llm-temperature" class="input" step="0.1" min="0" max="2"
+                                placeholder="0.8">
+                            <small>控制生成文本的随机性 (0.0-2.0)</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>使用辅助参考音频</label>
-                        <select id="setting-tts-use-aux-ref-audio" class="select">
-                            <option value="false">否</option>
-                            <option value="true">是</option>
-                        </select>
-                        <small>使用辅助音频，让情绪转换的时候更加自然，但偶尔也会失真</small>
-                    </div>
+                        <div class="form-group">
+                            <label>LLM 最大 Token 数</label>
+                            <input type="number" id="setting-llm-max-tokens" class="input" min="100" max="32000"
+                                placeholder="5000">
+                            <small>LLM 生成的最大 Token 数量 (默认: 5000)</small>
+                        </div>
 
-                    <!-- 自动生成配置 -->
-                    <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #00d9ff;">🤖 自动生成配置</h3>
+                        <h3 class="settings-section-title">🎙️ TTS 配置</h3>
 
-                    <div class="form-group">
-                        <label>楼层间隔</label>
-                        <input type="number" id="setting-auto-floor-interval" class="input" min="1" placeholder="3">
-                        <small>每隔多少条消息触发一次自动生成(这里指的是轮次，即AI回复)</small>
-                    </div>
+                        <div class="form-group">
+                            <label>文本语言</label>
+                            <select id="setting-tts-text-lang" class="select">
+                                <option value="zh">中文 (zh)</option>
+                                <option value="en">英语 (en)</option>
+                                <option value="ja">日语 (ja)</option>
+                            </select>
+                            <small>生成语音的文本语言</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>起始楼层</label>
-                        <input type="number" id="setting-auto-start-floor" class="input" min="1" placeholder="3">
-                        <small>从第几条消息开始触发自动生成(这里指的是轮次，即AI回复)</small>
-                    </div>
+                        <div class="form-group">
+                            <label>提示语言</label>
+                            <select id="setting-tts-prompt-lang" class="select">
+                                <option value="zh">中文 (zh)</option>
+                                <option value="en">英语 (en)</option>
+                                <option value="ja">日语 (ja)</option>
+                            </select>
+                            <small>提示词的语言</small>
+                        </div>
 
-                    <div class="form-group">
-                        <label>最大上下文消息数</label>
-                        <input type="number" id="setting-auto-max-context-messages" class="input" min="1"
-                            placeholder="10">
-                        <small>自动生成时使用的最大上下文消息数量</small>
+                        <div class="form-group">
+                            <label>文本分割方法</label>
+                            <select id="setting-tts-text-split-method" class="select">
+                                <option value="cut0">cut0 - 不分割</option>
+                                <option value="cut1">cut1 - 按标点分割</option>
+                                <option value="cut2">cut2 - 按句子分割</option>
+                                <option value="cut3">cut3 - 按段落分割</option>
+                                <option value="cut4">cut4 - 按长度分割</option>
+                                <option value="cut5">cut5 - 智能分割</option>
+                            </select>
+                            <small>文本分割策略</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>使用辅助参考音频</label>
+                            <select id="setting-tts-use-aux-ref-audio" class="select">
+                                <option value="false">否</option>
+                                <option value="true">是</option>
+                            </select>
+                            <small>使用辅助音频，让情绪转换的时候更加自然，但偶尔也会失真</small>
+                        </div>
+
+                        <!-- 
+                        ========== 已废弃：自动生成现由分析引擎控制 ==========
+                        <h3 class="settings-section-title">🤖 自动生成配置</h3>
+
+                        <div class="form-group">
+                            <label>楼层间隔</label>
+                            <input type="number" id="setting-auto-floor-interval" class="input" min="1" placeholder="3">
+                            <small>每隔多少条消息触发一次自动生成(这里指的是轮次，即AI回复)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>起始楼层</label>
+                            <input type="number" id="setting-auto-start-floor" class="input" min="1" placeholder="3">
+                            <small>从第几条消息开始触发自动生成(这里指的是轮次，即AI回复)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>最大上下文消息数</label>
+                            <input type="number" id="setting-auto-max-context-messages" class="input" min="1"
+                                placeholder="10">
+                            <small>自动生成时使用的最大上下文消息数量</small>
+                        </div>
+                        -->
                     </div>
                 </div>
             </section>
@@ -490,7 +664,9 @@
             <div class="dialog-body">
                 <div class="notice-content" style="line-height: 1.8; color: var(--text-primary);">
                     <p>欢迎使用 SillyTavern GPT-SoVITS 管理面板！</p>
-                    <p>V1.4版本 主动电话功能已上线！</p>
+                    <p style="color: #ff4757; font-size: 1.2em; font-weight: bold;">本插件永久免费，包括模型资源！如果你用到了需要收费的，请加群联系作者！
+                    </p>
+                    <p>V2.0版本 情感引擎已上线！多人对话！</p>
                     <p>请前往系统配置完成设置后使用：</p>
                     <ul style="padding-left: 20px; margin: 10px 0;">
                         <li>确认填好api与密钥</li>
@@ -500,10 +676,10 @@
                         style="margin-top: 15px; padding: 12px; background: rgba(0, 217, 255, 0.1); border: 1px solid rgba(0, 217, 255, 0.2); border-radius: 8px; text-align: center;">
                         <p
                             style="margin: 0; font-size: 1.1em; font-weight: bold; color: #00d9ff; text-shadow: 0 0 10px rgba(0, 217, 255, 0.3);">
-                            🎉 欢迎加入大本营Q群：571745067
+                            🎉 欢迎加入作者大本营Q群：571745067
                         </p>
                         <p style="margin: 5px 0 0; font-size: 0.9em; color: var(--text-secondary);">
-                            资源分享 · 版本通知 · 日常交流
+                            免费模型分享 · 版本通知 · 日常交流
                         </p>
                     </div>
                 </div>

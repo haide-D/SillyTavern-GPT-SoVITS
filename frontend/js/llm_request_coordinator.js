@@ -26,11 +26,12 @@ export class LLMRequestCoordinator {
     static async handleLLMRequest(data) {
         console.log('[LLMRequestCoordinator] 📥 收到 LLM 请求:', data);
 
-        const { call_id, char_name, prompt, llm_config, speakers, chat_branch } = data;
+        const { call_id, char_name, caller, prompt, llm_config, speakers, chat_branch } = data;
 
         try {
-            // 显示通知
-            this.showNotification(`正在为 ${char_name} 生成主动电话...`);
+            // 显示通知: 使用 caller（实际打电话的人），回退到 speakers[0] 或 char_name
+            const displayName = caller || (speakers && speakers[0]) || char_name;
+            this.showNotification(`正在为 ${displayName} 生成主动电话...`);
 
             // 调用 LLM
             console.log('[LLMRequestCoordinator] 🤖 调用 LLM...');
@@ -134,7 +135,7 @@ export class LLMRequestCoordinator {
     static async handleEavesdrop(data) {
         console.log('[LLMRequestCoordinator] 🎧 收到对话追踪 LLM 请求:', data);
 
-        const { record_id, char_name, prompt, llm_config, speakers, chat_branch, scene_description } = data;
+        const { record_id, char_name, prompt, llm_config, speakers, chat_branch, scene_description, text_lang } = data;
 
         try {
             // 显示通知
@@ -153,13 +154,14 @@ export class LLMRequestCoordinator {
 
             console.log('[LLMRequestCoordinator] ✅ LLM 响应成功 (对话追踪), 长度:', llmResponse.length);
 
-            // 将结果发送回后端
+            // 将结果发送回后端 (包含 text_lang 配置)
             await PhoneCallAPIClient.completeEavesdrop({
                 record_id: record_id,
                 llm_response: llmResponse,
                 chat_branch: chat_branch,
                 speakers: speakers,
-                char_name: char_name
+                char_name: char_name,
+                text_lang: text_lang || 'zh'
             });
 
         } catch (error) {

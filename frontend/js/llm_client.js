@@ -91,6 +91,18 @@ async function callLLM(config) {
 
             if (!response.ok) {
                 const errorText = await response.text();
+                // ✅ 打印完整请求信息
+                console.error('[LLM_Client] ❌ HTTP 错误');
+                console.error('[LLM_Client] 请求 URL:', llmUrl);
+                console.error('[LLM_Client] 请求模型:', config.model);
+                console.error('[LLM_Client] 请求体 (不含 prompt):', JSON.stringify({
+                    model: requestBody.model,
+                    temperature: requestBody.temperature,
+                    max_tokens: requestBody.max_tokens,
+                    prompt_length: config.prompt?.length || 0
+                }));
+                console.error('[LLM_Client] 响应状态:', response.status);
+                console.error('[LLM_Client] 响应内容:', errorText);
                 throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
             }
 
@@ -99,6 +111,22 @@ async function callLLM(config) {
 
         } catch (error) {
             lastError = error;
+
+            // ✅ 在错误时打印完整请求信息（首次或最后一次重试）
+            if (attempt === 1 || attempt === MAX_RETRIES) {
+                console.error('[LLM_Client] ❌ LLM 调用失败');
+                console.error('[LLM_Client] 错误信息:', error.message);
+                console.error('[LLM_Client] 请求 URL:', llmUrl);
+                console.error('[LLM_Client] 请求模型:', config.model);
+                console.error('[LLM_Client] 请求配置:', JSON.stringify({
+                    temperature: requestBody.temperature,
+                    max_tokens: requestBody.max_tokens,
+                    prompt_length: config.prompt?.length || 0
+                }));
+                if (error.rawResponse) {
+                    console.error('[LLM_Client] 原始响应数据:', JSON.stringify(error.rawResponse, null, 2));
+                }
+            }
 
             // 只有网络错误才重试
             if (isNetworkError(error) && attempt < MAX_RETRIES) {

@@ -56,11 +56,36 @@ def init_settings():
             settings[key] = val
             dirty = True
 
+    # 深度合并函数
+    def deep_merge(defaults: dict, user_config: dict) -> bool:
+        """深度合并配置,只补充缺失字段,返回是否有修改"""
+        modified = False
+        for key, default_val in defaults.items():
+            if key not in user_config:
+                user_config[key] = default_val
+                modified = True
+            elif isinstance(default_val, dict) and isinstance(user_config.get(key), dict):
+                # 递归合并嵌套字典
+                if deep_merge(default_val, user_config[key]):
+                    modified = True
+        return modified
+
+    # message_processing 配置 - 共享的消息过滤配置
+    message_processing_defaults = {
+        "extract_tag": "",
+        "filter_tags": "<small>, [statbar]"
+    }
+    # 类型安全检查：如果值不是字典，用默认值覆盖
+    if "message_processing" not in settings or not isinstance(settings["message_processing"], dict):
+        settings["message_processing"] = message_processing_defaults
+        dirty = True
+    else:
+        if deep_merge(message_processing_defaults, settings["message_processing"]):
+            dirty = True
+
     # phone_call 配置 - 使用深度合并,只补充缺失字段,不覆盖用户设置
     phone_call_defaults = {
         "enabled": True,
-        "extract_tag": "",
-        "filter_tags": "<small>, [statbar]",
         "trigger": {
             "type": "message_count",
             "threshold": 5
@@ -107,22 +132,9 @@ def init_settings():
         }
     }
 
-    # 深度合并函数
-    def deep_merge(defaults: dict, user_config: dict) -> bool:
-        """深度合并配置,只补充缺失字段,返回是否有修改"""
-        modified = False
-        for key, default_val in defaults.items():
-            if key not in user_config:
-                user_config[key] = default_val
-                modified = True
-            elif isinstance(default_val, dict) and isinstance(user_config.get(key), dict):
-                # 递归合并嵌套字典
-                if deep_merge(default_val, user_config[key]):
-                    modified = True
-        return modified
-
     # 初始化或深度合并 phone_call 配置
-    if "phone_call" not in settings:
+    # 类型安全检查
+    if "phone_call" not in settings or not isinstance(settings["phone_call"], dict):
         settings["phone_call"] = phone_call_defaults
         dirty = True
     else:
@@ -130,23 +142,53 @@ def init_settings():
         if deep_merge(phone_call_defaults, settings["phone_call"]):
             dirty = True
 
-    # analysis_llm 默认配置 - 用于统一分析系统
-    analysis_llm_defaults = {
-        "api_url": "",
-        "api_key": "",
-        "model": "",
-        "temperature": 0.8,
-        "max_tokens": 5000
+    # analysis_engine 默认配置 - 分析引擎独立配置
+    analysis_engine_defaults = {
+        "enabled": True,
+        "analysis_interval": 2,          # 每几楼层分析一次
+        "max_history_records": 100,       # 最大历史记录数
+        "llm_context_limit": 10,          # 发给 LLM 的历史记录数量
+        "trigger_threshold": 60,          # 行动触发阈值 (0-100)
+        "llm": {
+            "api_url": "",
+            "api_key": "",
+            "model": "",
+            "temperature": 0.8,
+            "max_tokens": 5000
+        }
     }
     
-    if "analysis_llm" not in settings:
-        settings["analysis_llm"] = analysis_llm_defaults
+    # 类型安全检查
+    if "analysis_engine" not in settings or not isinstance(settings["analysis_engine"], dict):
+        settings["analysis_engine"] = analysis_engine_defaults
         dirty = True
     else:
-        if deep_merge(analysis_llm_defaults, settings["analysis_llm"]):
+        if deep_merge(analysis_engine_defaults, settings["analysis_engine"]):
             dirty = True
-
-    phone_call = settings["phone_call"]
+    
+    # 迁移旧配置（兼容性处理）
+    if "analysis_llm" in settings:
+        # 如果用户有旧的 analysis_llm 配置，迁移到 analysis_engine.llm
+        old_llm = settings.pop("analysis_llm")
+        if deep_merge(old_llm, settings["analysis_engine"]["llm"]):
+            pass  # 合并旧配置到新位置
+        dirty = True
+    
+    # 迁移 phone_call 中的旧分析配置
+    phone_call = settings.get("phone_call", {})
+    if "continuous_analysis" in phone_call:
+        old_ca = phone_call.pop("continuous_analysis")
+        settings["analysis_engine"]["analysis_interval"] = old_ca.get("analysis_interval", 3)
+        settings["analysis_engine"]["max_history_records"] = old_ca.get("max_history_records", 100)
+        settings["analysis_engine"]["llm_context_limit"] = old_ca.get("llm_context_limit", 10)
+        dirty = True
+    if "live_character" in phone_call:
+        old_lc = phone_call.pop("live_character")
+        settings["analysis_engine"]["trigger_threshold"] = old_lc.get("threshold", 60)
+        dirty = True
+    if "smart_trigger" in phone_call:
+        phone_call.pop("smart_trigger")  # 已废弃，直接删除
+        dirty = True
 
 
     if dirty:
@@ -170,3 +212,40 @@ def get_sovits_host():
     """获取配置的 GPT-SoVITS 服务地址"""
     s = init_settings()
     return s.get("sovits_host", SOVITS_HOST)
+
+
+def get_character_mappings():
+    """获取角色-模型映射表"""
+    return load_json(MAPPINGS_FILE)
+
+
+def get_bound_characters():
+    """获取所有已绑定模型的角色名列表"""
+    mappings = get_character_mappings()
+    return list(mappings.keys())
+
+
+def is_character_bound(char_name: str) -> bool:
+    """检查角色是否已绑定模型"""
+    mappings = get_character_mappings()
+    return char_name in mappings
+
+
+def filter_bound_speakers(speakers: list) -> list:
+    """
+    过滤说话人列表，只保留已绑定模型的角色
+    
+    Args:
+        speakers: 说话人列表
+        
+    Returns:
+        已绑定模型的说话人列表
+    """
+    mappings = get_character_mappings()
+    bound_speakers = [s for s in speakers if s in mappings]
+    
+    if len(bound_speakers) < len(speakers):
+        unbound = [s for s in speakers if s not in mappings]
+        print(f"[Config] ⚠️ 以下角色未绑定模型，已过滤: {unbound}")
+    
+    return bound_speakers

@@ -35,23 +35,30 @@ class EavesdropService:
         user_name: str = "用户",
         text_lang: str = "zh",
         max_context_messages: int = 20,
-        scene_description: str = None
+        scene_description: str = None,
+        eavesdrop_config: Dict = None  # 分析 LLM 提供的对话主题和框架
     ) -> Dict:
         """
         构建对话追踪 Prompt
         
         Args:
             context: 对话上下文
-            speakers: 参与角色列表
+            speakers: 参与角色列表（在场角色）
             user_name: 用户名
             text_lang: 文本语言
             max_context_messages: 最大上下文消息数
             scene_description: 场景描述（可选）
+            eavesdrop_config: 分析 LLM 提供的对话主题、框架等配置
             
         Returns:
             包含 prompt、speakers_emotions 等信息的字典
         """
-        print(f"[EavesdropService] 构建 Prompt: speakers={speakers}")
+        print(f"[EavesdropService] 构建 Prompt: speakers={speakers}, text_lang={text_lang}")
+        
+        if eavesdrop_config:
+            print(f"[EavesdropService] 🎭 使用分析 LLM 提供的配置:")
+            print(f"  - 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
+            print(f"  - 戏剧张力: {eavesdrop_config.get('dramatic_tension', '未指定')}")
         
         # 获取所有说话人的可用情绪
         speakers_emotions = {}
@@ -69,13 +76,14 @@ class EavesdropService:
         if len(valid_speakers) < 2:
             raise ValueError(f"需要至少2个有效角色进行对话追踪,当前只有 {len(valid_speakers)} 个")
         
-        # 构建 Prompt
+        # 构建 Prompt（使用分析 LLM 提供的配置）
         prompt = self.prompt_builder.build_eavesdrop_prompt(
             context=context,
             speakers_emotions=speakers_emotions,
             user_name=user_name,
             text_lang=text_lang,
-            max_context_messages=max_context_messages
+            max_context_messages=max_context_messages,
+            eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
         )
         
         # 读取 LLM 配置

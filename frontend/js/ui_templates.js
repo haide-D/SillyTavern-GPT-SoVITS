@@ -47,7 +47,7 @@ export function getDashboardHTML(data) {
                     <div class="tts-card">
                         <div class="tts-card-title">🎨 视觉体验</div>
                         <label class="tts-switch-row">
-                            <span class="tts-switch-label">美化卡专用模式</span>
+                            <span class="tts-switch-label">美化卡专用模式，非前端美化卡请勿勾选</span>
                             <input type="checkbox" id="tts-iframe-switch" class="tts-toggle" ${settings.iframe_mode ? 'checked' : ''}>
                         </label>
 
@@ -89,15 +89,6 @@ export function getDashboardHTML(data) {
                                 <option value="English" ${currentLang === 'English' ? 'selected' : ''}>English (英语)</option>
                             </select>
                             <div style="font-size:11px; color:#888; margin-top:4px;">对应 reference_audios 下的子文件夹</div>
-                        </div>
-                        <div class="tts-input-row" style="margin-top:10px;">
-                            <span class="tts-input-label">模型路径</span>
-                            <input type="text" id="tts-base-path" class="tts-modern-input" value="${currentBase}" placeholder="绝对路径">
-                        </div>
-
-                        <div class="tts-input-row">
-                            <span class="tts-input-label">输出路径</span>
-                            <input type="text" id="tts-cache-path" class="tts-modern-input" value="${currentCache}" placeholder="绝对路径">
                         </div>
 
                         <div style="text-align:right; margin-top:12px;">

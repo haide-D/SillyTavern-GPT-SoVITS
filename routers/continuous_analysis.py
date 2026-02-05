@@ -26,8 +26,12 @@ class ContinuousAnalysisCompleteRequest(BaseModel):
     chat_branch: str
     floor: int
     context_fingerprint: str
-    llm_response: str
+    llm_response: Optional[str] = None  # ✅ 改为可选，允许前端在 LLM 失败时传 null
     speakers: List[str]
+    user_name: Optional[str] = None  # 用户名，用于 Prompt 构建
+    char_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
+    error: Optional[str] = None  # ✅ 新增: 前端 LLM 调用错误信息
+    raw_response: Optional[str] = None  # ✅ 新增: 前端 LLM 原始响应（用于调试）
 
 
 class SmartTriggerEvaluateRequest(BaseModel):
@@ -74,7 +78,36 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         print(f"  - 楼层: {req.floor}")
         print(f"  - 分支: {req.chat_branch}")
         print(f"  - 说话人: {req.speakers}")
+        print(f"  - 用户名: {req.user_name}")
+        print(f"  - 角色名: {req.char_name}")
+        print(f"  - 上下文指纹: {req.context_fingerprint}")
         print(f"  - LLM 响应长度: {len(req.llm_response) if req.llm_response else 0}")
+        
+        # ✅ 如果前端 LLM 调用失败，打印完整错误信息
+        if req.error or not req.llm_response:
+            print(f"\n{'!'*60}")
+            print(f"[ContinuousAnalysis] ⚠️ 前端 LLM 调用失败!")
+            print(f"  - 错误信息: {req.error}")
+            print(f"  - 完整请求体:")
+            print(f"    chat_branch: {req.chat_branch}")
+            print(f"    floor: {req.floor}")
+            print(f"    context_fingerprint: {req.context_fingerprint}")
+            print(f"    speakers: {req.speakers}")
+            print(f"    user_name: {req.user_name}")
+            print(f"    char_name: {req.char_name}")
+            print(f"    llm_response: {req.llm_response}")
+            print(f"    error: {req.error}")
+            # ✅ 打印 LLM 原始响应
+            if req.raw_response:
+                print(f"\n  📦 LLM 原始响应:")
+                print(f"{req.raw_response}")
+            print(f"{'!'*60}\n")
+            
+            return {
+                "success": False,
+                "message": f"前端 LLM 调用失败: {req.error or '响应为空'}"
+            }
+        
         print(f"{'='*60}\n")
         
         # 保存分析结果 (返回包含 suggested_action 等信息)
@@ -94,55 +127,94 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         
         # 提取触发信息
         suggested_action = result.get("suggested_action", "none")
-        character_left = result.get("character_left")
+        caller = result.get("caller")  # 新格式：打电话的角色
+        call_reason = result.get("call_reason", "")  # 打电话原因
+        call_tone = result.get("call_tone", "")  # 通话氛围
         trigger_reason = result.get("trigger_reason", "")
         
-        print(f"[ContinuousAnalysis] 📊 触发建议: {suggested_action}, 离场角色: {character_left}")
+        print(f"[ContinuousAnalysis] 📊 触发建议: {suggested_action}, reason: {trigger_reason}")
+        if suggested_action == "phone_call" and caller:
+            print(f"[ContinuousAnalysis] 📞 电话详情: caller={caller}, reason={call_reason}, tone={call_tone}")
         
         # ==================== 根据分析结果分流 ====================
         trigger_result = None
         
-        if suggested_action == "phone_call" and character_left:
-            # 触发主动电话
-            print(f"[ContinuousAnalysis] 📞 触发主动电话: {character_left}")
-            scheduler = AutoCallScheduler()
-            call_id = await scheduler.schedule_auto_call(
-                chat_branch=req.chat_branch,
-                speakers=req.speakers,
-                trigger_floor=req.floor,
-                context=[],  # 上下文由前端提供，此处简化
-                context_fingerprint=req.context_fingerprint,
-                user_name=None,
-                char_name=character_left
-            )
-            trigger_result = {
-                "action": "phone_call",
-                "call_id": call_id,
-                "character": character_left
-            }
+        if suggested_action == "phone_call" and caller:
+                # 触发主动电话
+                print(f"[ContinuousAnalysis] 📞 触发主动电话: caller={caller}, ws_target={req.char_name}")
+                scheduler = AutoCallScheduler()
+                call_id = await scheduler.schedule_auto_call(
+                    chat_branch=req.chat_branch,
+                    speakers=[caller],  # 打电话的角色
+                    trigger_floor=req.floor,
+                    context=[],  # 上下文由 PhoneCallService 根据 chat_branch 提取
+                    context_fingerprint=req.context_fingerprint,
+                    user_name=req.user_name,
+                    char_name=req.char_name,  # ✅ 修复: 使用主角色卡名称进行 WebSocket 路由
+                    call_reason=call_reason,  # 传递电话原因
+                    call_tone=call_tone  # 传递通话氛围
+                )
+                trigger_result = {
+                    "action": "phone_call",
+                    "call_id": call_id,
+                    "character": caller,
+                    "call_reason": call_reason,
+                    "call_tone": call_tone
+                }
             
         elif suggested_action == "eavesdrop":
             # 触发对话追踪
             print(f"[ContinuousAnalysis] 🎧 触发对话追踪")
-            eavesdrop_scheduler = EavesdropScheduler()
-            record_id = await eavesdrop_scheduler.schedule_eavesdrop(
-                chat_branch=req.chat_branch,
-                speakers=req.speakers,
-                trigger_floor=req.floor,
-                context=[],
-                context_fingerprint=req.context_fingerprint,
-                user_name=None,
-                char_name=req.speakers[0] if req.speakers else None,
-                scene_description=trigger_reason
-            )
-            trigger_result = {
-                "action": "eavesdrop",
-                "record_id": record_id
-            }
+            
+            # 提取离场角色
+            character_left = result.get("character_left")
+            
+            # 从分析结果中提取在场角色（而不是使用原始 speakers 列表）
+            present_characters = result.get("present_characters", [])
+            if not present_characters:
+                # 后备：如果没有在场角色信息，使用原始 speakers 但排除离场角色
+                present_characters = [s for s in req.speakers if s != character_left] if character_left else req.speakers
+            
+            # ✅ 过滤出有语音功能的角色
+            from config import filter_bound_speakers
+            valid_speakers = filter_bound_speakers(present_characters)
+            
+            if len(valid_speakers) < 2:
+                # 对话追踪至少需要2个角色有语音
+                print(f"[ContinuousAnalysis] ⚠️ 跳过对话追踪: 有语音功能的角色少于2个 (valid_speakers={valid_speakers})")
+                trigger_result = {
+                    "action": "skipped",
+                    "reason": f"有语音功能的角色少于2个"
+                }
+            else:
+                # 提取 eavesdrop 配置（分析 LLM 提供的对话主题和框架）
+                eavesdrop_config = result.get("eavesdrop_config", {})
+                
+                print(f"[ContinuousAnalysis] 📍 在场角色: {present_characters} -> 有效角色: {valid_speakers}")
+                if eavesdrop_config:
+                    print(f"[ContinuousAnalysis] 🎭 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
+                
+                eavesdrop_scheduler = EavesdropScheduler()
+                record_id = await eavesdrop_scheduler.schedule_eavesdrop(
+                    chat_branch=req.chat_branch,
+                    speakers=valid_speakers,  # ✅ 使用过滤后的角色列表
+                    trigger_floor=req.floor,
+                    context=[],
+                    context_fingerprint=req.context_fingerprint,
+                    user_name=req.user_name,
+                    char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由
+                    scene_description=trigger_reason,
+                    eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
+                )
+                trigger_result = {
+                    "action": "eavesdrop",
+                    "record_id": record_id
+                }
         
-        # 通知前端分析完成
+        # 通知前端分析完成 (使用主角色卡名称作为 WebSocket 路由目标)
+        ws_target = req.char_name if req.char_name else (req.speakers[0] if req.speakers else "unknown")
         await NotificationService.broadcast_to_char(
-            char_name=req.speakers[0] if req.speakers else "unknown",
+            char_name=ws_target,
             message={
                 "type": "continuous_analysis_complete",
                 "floor": req.floor,

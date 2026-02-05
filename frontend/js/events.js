@@ -165,22 +165,27 @@ export const TTS_Events = {
 
                 if (!CACHE.mappings[charName]) {
                     if (window.TTS_UI) {
-                        window.TTS_UI.showDashboard();
-                        // 修复首次弹出时数据未加载的问题：先刷新数据，确保模型列表已加载
-                        const fillFormAfterRefresh = () => {
+                        // 修复竞态条件：先刷新数据，确保模型列表已加载，再弹出面板
+                        const showPanelAndFill = () => {
+                            window.TTS_UI.showDashboard();
                             $('#tts-new-char').val(charName);
                             $('#tts-new-model').focus();
-                            // 稍微延迟一下 alert，避免阻塞 UI 渲染
                             setTimeout(() => {
                                 alert(`⚠️ 角色 "${charName}" 尚未绑定 TTS 模型。\n已为您自动填好角色名，请在右侧选择模型并点击"绑定"！`);
                             }, 100);
                         };
-                        // 如果 refreshData 回调存在，先刷新数据再填充表单
+
                         if (window.TTS_UI.CTX && window.TTS_UI.CTX.Callbacks && window.TTS_UI.CTX.Callbacks.refreshData) {
-                            window.TTS_UI.CTX.Callbacks.refreshData().then(fillFormAfterRefresh);
+                            // 先刷新数据，完成后再弹出面板（确保模型列表已加载）
+                            window.TTS_UI.CTX.Callbacks.refreshData()
+                                .then(showPanelAndFill)
+                                .catch((err) => {
+                                    console.warn('[TTS] 刷新数据失败，仍弹出面板:', err);
+                                    showPanelAndFill(); // 即使失败也弹出面板
+                                });
                         } else {
-                            // 降级处理：直接填充
-                            fillFormAfterRefresh();
+                            // 降级处理：直接弹出
+                            showPanelAndFill();
                         }
                     }
                     return;
@@ -251,21 +256,27 @@ export const TTS_Events = {
 
             if (!CACHE.mappings[charName]) {
                 if (window.TTS_UI) {
-                    window.TTS_UI.showDashboard();
-                    // 修复首次弹出时数据未加载的问题：先刷新数据，确保模型列表已加载
-                    const fillFormAfterRefresh = () => {
+                    // 修复竞态条件：先刷新数据，确保模型列表已加载，再弹出面板
+                    const showPanelAndFill = () => {
+                        window.TTS_UI.showDashboard();
                         $('#tts-new-char').val(charName);
                         $('#tts-new-model').focus();
                         setTimeout(() => {
                             alert(`⚠ 角色 "${charName}" 尚未绑定 TTS 模型。\n请为该角色配置后重试,面板已自动打开,请选择模型并点击绑定。`);
                         }, 100);
                     };
-                    // 如果 refreshData 回调存在，先刷新数据再填充表单
+
                     if (window.TTS_UI.CTX && window.TTS_UI.CTX.Callbacks && window.TTS_UI.CTX.Callbacks.refreshData) {
-                        window.TTS_UI.CTX.Callbacks.refreshData().then(fillFormAfterRefresh);
+                        // 先刷新数据，完成后再弹出面板（确保模型列表已加载）
+                        window.TTS_UI.CTX.Callbacks.refreshData()
+                            .then(showPanelAndFill)
+                            .catch((err) => {
+                                console.warn('[TTS] 刷新数据失败，仍弹出面板:', err);
+                                showPanelAndFill(); // 即使失败也弹出面板
+                            });
                     } else {
-                        // 降级处理：直接填充
-                        fillFormAfterRefresh();
+                        // 降级处理：直接弹出
+                        showPanelAndFill();
                     }
                 }
                 return;

@@ -30,7 +30,8 @@ class EavesdropScheduler:
         context_fingerprint: str,
         user_name: str = None,
         char_name: str = None,
-        scene_description: str = None
+        scene_description: str = None,
+        eavesdrop_config: Dict = None  # 分析 LLM 提供的对话主题和框架
     ) -> Optional[int]:
         """
         调度对话追踪任务
@@ -44,6 +45,7 @@ class EavesdropScheduler:
             user_name: 用户名
             char_name: 主角色卡名称，用于 WebSocket 推送路由
             scene_description: 场景描述
+            eavesdrop_config: 分析 LLM 提供的对话主题、框架等配置
             
         Returns:
             记录ID,如果已存在或正在执行则返回 None
@@ -104,7 +106,8 @@ class EavesdropScheduler:
         # 异步执行生成任务
         asyncio.create_task(self._execute_generation(
             record_id, chat_branch, speakers, trigger_floor, context, 
-            context_fingerprint, user_name, char_name, scene_description
+            context_fingerprint, user_name, char_name, scene_description,
+            eavesdrop_config
         ))
         
         return record_id
@@ -119,7 +122,8 @@ class EavesdropScheduler:
         context_fingerprint: str,
         user_name: str = None, 
         char_name: str = None,
-        scene_description: str = None
+        scene_description: str = None,
+        eavesdrop_config: Dict = None
     ):
         """
         执行生成任务(异步)
@@ -139,18 +143,33 @@ class EavesdropScheduler:
             # 更新状态为 generating
             self.db.update_eavesdrop_status(record_id, "generating")
             
-            # 第一阶段: 构建prompt
+            # 读取 TTS 配置中的语言设置（用于 Prompt 构建）
+            settings = load_json(SETTINGS_FILE) or {}
+            # ✅ 修复：正确路径是 settings["phone_call"]["tts_config"]，而不是 settings["tts"]
+            phone_call_config = settings.get("phone_call", {})
+            tts_config = phone_call_config.get("tts_config", {})
+            text_lang = tts_config.get("text_lang", "zh")
+            print(f"[EavesdropScheduler] 📋 TTS 语言配置 (from phone_call.tts_config): text_lang={text_lang}")
+            
+            # 第一阶段: 构建prompt（使用分析 LLM 提供的对话主题和框架）
             result = await self.eavesdrop_service.build_prompt(
                 context=context,
                 speakers=speakers,
                 user_name=user_name,
-                scene_description=scene_description
+                text_lang=text_lang,  # ✅ 传递语言配置
+                scene_description=scene_description,
+                eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
             )
             
             prompt = result.get("prompt")
             llm_config = result.get("llm_config")
             
             print(f"[EavesdropScheduler] ✅ Prompt构建完成: {len(prompt)} 字符")
+            print(f"[EavesdropScheduler] 📝 完整 LLM 请求内容:")
+            print(f"========== PROMPT START ==========")
+            print(prompt)
+            print(f"========== PROMPT END ==========")
+            print(f"[EavesdropScheduler] 🔧 LLM 配置: {llm_config}")
             
             # WebSocket 路由目标
             ws_target = char_name if char_name else (speakers[0] if speakers else "Unknown")
@@ -160,6 +179,8 @@ class EavesdropScheduler:
             from services.notification_service import NotificationService
             notification_service = NotificationService()
             
+            # text_lang 已在上面读取，直接使用
+            
             await notification_service.notify_eavesdrop_llm_request(
                 record_id=record_id,
                 char_name=ws_target,
@@ -167,7 +188,8 @@ class EavesdropScheduler:
                 llm_config=llm_config,
                 speakers=speakers,
                 chat_branch=chat_branch,
-                scene_description=scene_description
+                scene_description=scene_description,
+                text_lang=text_lang
             )
             
             print(f"[EavesdropScheduler] ✅ 已通知前端调用LLM: record_id={record_id}")

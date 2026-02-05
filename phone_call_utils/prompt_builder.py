@@ -52,7 +52,7 @@ class PromptBuilder:
 - 其他情况 → suggested_action: "none"
 - character_left: 离场角色名，如果没有则为 null"""
 
-    # 对话追踪模板 - 用于生成多人私下对话
+    # 对话追踪模板 - 用于生成多人私下对话（基础版）
     EAVESDROP_TEMPLATE = """你是一个创意编剧，正在编写一段角色之间的私下对话。
 
 **场景背景**:
@@ -72,7 +72,19 @@ class PromptBuilder:
    - 透露一些 {{user_name}} 不知道的信息
 3. 每个角色的说话风格要符合其性格
 4. 情绪要自然过渡
-5. 使用 {{lang_display}} 进行对话
+5. **text 字段必须使用{{lang_display}}进行对话，这是强制要求，不可使用其他语言**
+6. **translation 字段必须填写中文翻译（即使 text 已经是中文也要复制过来）**
+
+**⚠️ 重要：纯语音内容规范**:
+这是一个 TTS 语音合成系统，text 字段只能包含**可朗读的纯对话文本**。
+**严禁**在 text 字段中包含：
+- ❌ 括号内的动作描述，如 `（轻微吸气）`、`（看向窗外）`
+- ❌ 括号内的心理活动，如 `（心想这个人真讨厌）`
+- ❌ 括号内的场景描述，如 `（伤口隐痛）`、`（身体僵硬）`
+- ❌ 任何非语音的标注，如 `*叹气*`、`[停顿]`
+
+**正确示例**: `"你懂什么？这叫禁忌的诱惑，是男人骨子里的本能。"`
+**错误示例**: `"（轻微吸气）你...你懂什么？（由于伤口隐痛身体有些僵硬）"`
 
 **输出格式 (严格 JSON)**:
 ```json
@@ -82,8 +94,8 @@ class PromptBuilder:
     {
       "speaker": "角色名",
       "emotion": "情绪标签",
-      "text": "说话内容 ({{lang_display}})",
-      "translation": "中文翻译 (必须)",
+      "text": "纯对话内容，无任何括号或动作描述，**必须使用{{lang_display}}**",
+      "translation": "中文翻译 (必填！不能省略！如果text是中文就复制text内容)",
       "pause_after": 0.5
     }
   ]
@@ -93,8 +105,68 @@ class PromptBuilder:
 **规则**:
 - speaker 必须是上述角色之一
 - emotion 必须是该角色的可用情绪
-- 生成 15-25 个对话片段
+- **text 字段只能是纯对话，禁止任何括号或动作描述**
+- **translation 字段必填，必须是中文，不能为空或省略**
+- 生成 10-25 个对话片段
 - 让对话自然流畅，角色交替说话"""
+
+    # 增强版对话追踪模板 - 使用分析 LLM 提供的主题和框架
+    EAVESDROP_TEMPLATE_ENHANCED = """你是一个创意编剧，正在按照编剧大纲编写一段角色之间的私下对话。
+
+**场景背景**:
+{{user_name}} 不在场，但可以"偷听"到以下角色的对话。
+
+**参与角色及其可用情绪**:
+{{speakers_emotions}}
+
+**对话历史参考**:
+{{context}}
+
+{{eavesdrop_guidance}}
+
+**创作要求**:
+1. **严格按照上述对话大纲和主题进行创作**
+2. 每个角色的说话风格要符合其性格
+3. 情绪要自然过渡，符合情绪弧线
+4. **text 字段必须使用{{lang_display}}进行对话，这是强制要求，不可使用其他语言**
+5. **translation 字段必须填写中文翻译（即使 text 已经是中文也要复制过来）**
+
+**⚠️ 重要：纯语音内容规范**:
+这是一个 TTS 语音合成系统，text 字段只能包含**可朗读的纯对话文本**。
+**严禁**在 text 字段中包含：
+- ❌ 括号内的动作描述，如 `（轻微吸气）`、`（看向窗外）`
+- ❌ 括号内的心理活动，如 `（心想这个人真讨厌）`
+- ❌ 括号内的场景描述，如 `（伤口隐痛）`、`（身体僵硬）`
+- ❌ 任何非语音的标注，如 `*叹气*`、`[停顿]`
+
+**正确示例**: `"你懂什么？这叫禁忌的诱惑，是男人骨子里的本能。"`
+**错误示例**: `"（轻微吸气）你...你懂什么？（由于伤口隐痛身体有些僵硬）"`
+
+**输出格式 (严格 JSON)**:
+```json
+{
+  "scene_description": "场景描述",
+  "segments": [
+    {
+      "speaker": "角色名",
+      "emotion": "情绪标签",
+      "text": "纯对话内容，无任何括号或动作描述，**必须使用{{lang_display}}**",
+      "translation": "中文翻译 (必填！不能省略！如果text是中文就复制text内容)",
+      "pause_after": 0.5
+    }
+  ]
+}
+```
+
+**规则**:
+- speaker 必须是上述角色之一
+- emotion 必须是该角色的可用情绪
+- **text 字段只能是纯对话，禁止任何括号或动作描述**
+- **translation 字段必填，必须是中文，不能为空或省略**
+- 生成 15-25 个对话片段
+- 让对话自然流畅，角色交替说话
+- **对话内容必须紧扣主题，不能偏离大纲"""
+
 
     
     # 默认 JSON 格式 Prompt 模板
@@ -123,7 +195,7 @@ class PromptBuilder:
   "segments": [
     {
       "emotion": "emotion_tag",
-      "text": "what to say in {{lang_display}}",
+      "text": "对话内容，**必须使用{{lang_display}}**",
       "translation": "中文翻译 (必须写上，如果已经是中文，就写上中文)",
       "pause_after": 0.8,
       "speed": 1.0,
@@ -136,7 +208,7 @@ class PromptBuilder:
 **Field Requirements**:
 - **speaker**: MUST be one of the available speakers listed above ({{speakers}})可以优先选择跟{{user_name}}关系最接近来作为speaker,或者当前刚离场的人物，注意区分当前说话人知道哪些事情，不知道哪些事情。
 - **emotion**: must be one of the emotions available for the selected speaker，注意情绪要符合这次的电话主题，可以使用一种情绪，或者几种情绪的组合。但是千万不能为了符合情绪而改变说话内容。情绪是为内容服务的，宁愿情绪少，也不能硬凑情绪。
-- **text**: what to say in {{lang_display}},必须{{lang_display}}说话内容, make it natural and emotional，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。电话内容必须是当前场景下的事情，不能让打电话人突然脱离场景。
+- **text**: **必须使用{{lang_display}}**，这是强制要求！对话内容必须自然有情感，开头用符合角色身份跟主角关系的问候语，要像真实打电话一样。电话内容必须是当前场景下的事情，不能让打电话人突然脱离场景。
   * Use multiple short segments instead of one long segment
 - **pause_after**: pause duration after this segment (0.2-0.8 seconds, null for default 0.3s)
   * Use longer pauses (0.7-0.8s) for major emotion transitions
@@ -149,6 +221,17 @@ class PromptBuilder:
     insert a transition segment with speed=1.0 between them to make the change smooth.
     Example: If going from speed 0.8 → 1.2, insert a 1.0 speed segment in between.
 - **filler_word**: optional filler word
+
+**⚠️ 重要：纯语音内容规范**:
+这是一个 TTS 语音合成系统，text 字段只能包含**可朗读的纯对话文本**。
+**严禁**在 text 字段中包含：
+- ❌ 括号内的动作描述，如 `（轻微吸气）`、`（看向窗外）`
+- ❌ 括号内的心理活动，如 `（心想这个人真讨厌）`
+- ❌ 括号内的场景描述，如 `（伤口隐痛）`、`（身体僵硬）`
+- ❌ 任何非语音的标注，如 `*叹气*`、`[停顿]`
+
+**正确示例**: `"喂？是我，我有点想你了..."`
+**错误示例**: `"（深呼吸）喂？是我...（声音有些颤抖）"`
 
 **Generate 10-15 segments** that sound natural and emotionally expressive.
 **Remember**: Use NATURAL phrases. When changing speed dramatically, add a neutral-speed transition segment."""
@@ -165,36 +248,41 @@ class PromptBuilder:
     
     @staticmethod
     def build(
-        template: str = None,  # 如果为 None,使用默认模板
+        template: str = None,
         char_name: str = "", 
         context: List[Dict] = None, 
         extracted_data: Dict = None, 
         emotions: List[str] = None,
         max_context_messages: int = 20,
-        speakers: List[str] = None,  # 新增: 说话人列表
-        speakers_emotions: Dict[str, List[str]] = None,  # 新增: 说话人情绪映射
-        text_lang: str = "zh",  # 新增: 文本语言配置
-        extract_tag: str = "",  # 新增: 消息提取标签
-        filter_tags: str = "",  # 新增: 消息过滤标签
-        user_name: str = None,  # 新增: 用户名，用于区分用户身份
-        last_call_info: Dict = None  # 新增: 上次通话信息，用于二次电话
+        speakers: List[str] = None,
+        speakers_emotions: Dict[str, List[str]] = None,
+        text_lang: str = "zh",
+        extract_tag: str = "",
+        filter_tags: str = "",
+        user_name: str = None,
+        last_call_info: Dict = None,
+        call_reason: str = "",  # 新增: 打电话的原因
+        call_tone: str = ""  # 新增: 通话氛围
     ) -> str:
         """
         构建LLM提示词
         
         Args:
             template: 提示词模板
-            char_name: 角色名称 (保持兼容性)
+            char_name: 角色名称
             context: 对话上下文
             extracted_data: 提取的数据
-            emotions: 可用情绪列表 (保持兼容性)
-            max_context_messages: 最大上下文消息数(默认20)
+            emotions: 可用情绪列表
+            max_context_messages: 最大上下文消息数
             speakers: 说话人列表
-            speakers_emotions: 说话人情绪映射 {说话人: [情绪列表]}
-            text_lang: 文本语言配置 (zh/ja/en)
-            extract_tag: 消息提取标签(如 "conxt"),留空则不提取
-            filter_tags: 消息过滤标签(逗号分隔),如 "<small>, [statbar]"
-            last_call_info: 上次通话信息，用于二次电话差异化
+            speakers_emotions: 说话人情绪映射
+            text_lang: 文本语言配置
+            extract_tag: 消息提取标签
+            filter_tags: 消息过滤标签
+            user_name: 用户名
+            last_call_info: 上次通话信息
+            call_reason: 打电话的原因（由 LLM 分析得出）
+            call_tone: 通话氛围（如轻松闲聊、深情倾诉等）
             
         Returns:
             完整提示词
@@ -245,6 +333,7 @@ class PromptBuilder:
         lang_info = PromptBuilder.LANG_MAP.get(text_lang, PromptBuilder.LANG_MAP["zh"])
         lang_name = lang_info["name"]
         lang_display = lang_info["display"]
+        print(f"[PromptBuilder] 🌐 build: text_lang={text_lang} -> lang_name={lang_name}, lang_display={lang_display}")
         
         # 处理上次通话摘要和二次电话指令
         last_call_summary = "无上次通话记录"
@@ -275,6 +364,23 @@ class PromptBuilder:
         # 新增: 替换上次通话和二次电话相关变量
         prompt = prompt.replace("{{last_call_summary}}", last_call_summary)
         prompt = prompt.replace("{{followup_call_instructions}}", followup_call_instructions)
+        
+        # 新增: 构建电话背景信息
+        call_context_section = ""
+        if call_reason or call_tone:
+            call_context_parts = ["\n**电话背景**:"]
+            if call_reason:
+                call_context_parts.append(f"- 打电话原因: {call_reason}")
+            if call_tone:
+                call_context_parts.append(f"- 通话氛围: {call_tone}")
+            call_context_parts.append("\n请根据以上背景生成自然的电话内容。\n")
+            call_context_section = "\n".join(call_context_parts)
+            print(f"[PromptBuilder] 📞 电话背景: reason={call_reason}, tone={call_tone}")
+        
+        prompt = prompt.replace("{{call_context}}", call_context_section)
+        # 如果模板中没有 {{call_context}} 占位符，在 {{context}} 后面插入
+        if call_context_section and "{{call_context}}" not in template:
+            prompt = prompt.replace("**Conversation History:**", f"**Conversation History:**\n{call_context_section}")
         
         print(f"[PromptBuilder] 构建提示词: {len(prompt)} 字符, {message_count} 条消息, {len(speakers)} 个说话人")
         
@@ -520,7 +626,8 @@ class PromptBuilder:
         speakers_emotions: Dict[str, List[str]],
         user_name: str = "用户",
         text_lang: str = "zh",
-        max_context_messages: int = 20
+        max_context_messages: int = 20,
+        eavesdrop_config: Dict = None  # 分析 LLM 提供的对话主题和框架
     ) -> str:
         """
         构建对话追踪 Prompt
@@ -531,6 +638,7 @@ class PromptBuilder:
             user_name: 用户名
             text_lang: 文本语言
             max_context_messages: 最大上下文消息数
+            eavesdrop_config: 分析 LLM 提供的对话主题、框架等配置
             
         Returns:
             格式化的对话追踪 Prompt
@@ -550,12 +658,55 @@ class PromptBuilder:
         # 获取语言显示
         lang_info = PromptBuilder.LANG_MAP.get(text_lang, PromptBuilder.LANG_MAP["zh"])
         lang_display = lang_info["display"]
+        print(f"[PromptBuilder] 🌐 build_eavesdrop_prompt: text_lang={text_lang} -> lang_display={lang_display}")
         
-        # 构建 prompt
-        prompt = PromptBuilder.EAVESDROP_TEMPLATE
+        # 根据是否有 eavesdrop_config 选择模板
+        if eavesdrop_config:
+            # 使用增强版模板（由分析 LLM 提供主题和框架）
+            prompt = PromptBuilder.EAVESDROP_TEMPLATE_ENHANCED
+            
+            # 构建对话指导信息
+            guidance_parts = []
+            
+            # 对话主题
+            theme = eavesdrop_config.get("conversation_theme")
+            if theme:
+                guidance_parts.append(f"**对话主题**: {theme}")
+            
+            # 对话大纲
+            outline = eavesdrop_config.get("conversation_outline", [])
+            if outline:
+                outline_text = "\n".join([f"  {i+1}. {step}" for i, step in enumerate(outline)])
+                guidance_parts.append(f"**对话大纲**:\n{outline_text}")
+            
+            # 戏剧张力
+            tension = eavesdrop_config.get("dramatic_tension")
+            if tension:
+                guidance_parts.append(f"**戏剧张力**: {tension}")
+            
+            # 隐藏信息（用户不知道的）
+            hidden_info = eavesdrop_config.get("hidden_information")
+            if hidden_info:
+                guidance_parts.append(f"**可揭示的隐藏信息**: {hidden_info}")
+            
+            # 情绪弧线
+            emotional_arc = eavesdrop_config.get("emotional_arc")
+            if emotional_arc:
+                guidance_parts.append(f"**情绪弧线**: {emotional_arc}")
+            
+            eavesdrop_guidance = "\n\n".join(guidance_parts) if guidance_parts else ""
+            prompt = prompt.replace("{{eavesdrop_guidance}}", eavesdrop_guidance)
+            
+            print(f"[PromptBuilder] 使用增强版 eavesdrop 模板，主题: {theme}")
+        else:
+            # 使用基础版模板
+            prompt = PromptBuilder.EAVESDROP_TEMPLATE
+            print(f"[PromptBuilder] 使用基础版 eavesdrop 模板")
+        
+        # 替换通用变量
         prompt = prompt.replace("{{context}}", context_text)
         prompt = prompt.replace("{{speakers_emotions}}", speakers_emotions_text.strip())
-        prompt = prompt.replace("{{user_name}}", user_name)
+        prompt = prompt.replace("{{user_name}}", user_name or "用户")  # 防止 None 导致 replace() 错误
         prompt = prompt.replace("{{lang_display}}", lang_display)
         
         return prompt

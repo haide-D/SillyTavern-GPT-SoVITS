@@ -143,6 +143,7 @@ class ResponseParser:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
             print(f"[ResponseParser] ❌ JSON 解析失败: {e}")
+            print(f"[ResponseParser] 完整响应内容:\n{response}")
             return ResponseParser.parse_emotion_segments(response, parser_config or {}, available_emotions)
         
         # 提取 segments
@@ -253,6 +254,7 @@ class ResponseParser:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
             print(f"[ResponseParser] ❌ JSON 解析失败: {e}")
+            print(f"[ResponseParser] 完整响应内容:\n{response}")
             return []
         
         # 提取 segments

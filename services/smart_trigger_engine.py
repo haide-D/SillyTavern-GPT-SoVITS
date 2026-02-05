@@ -55,8 +55,8 @@ class SmartTriggerEngine:
             return False, "智能触发功能未启用", 0
         
         try:
-            # 获取角色历史轨迹
-            history = self.db.get_character_history(chat_branch, character_name, limit=10)
+            # 获取角色历史轨迹 - 使用命名参数（兼容指纹查询）
+            history = self.db.get_character_history(character_name=character_name, limit=10, chat_branch=chat_branch)
             
             if not history:
                 return False, "无历史数据", 0

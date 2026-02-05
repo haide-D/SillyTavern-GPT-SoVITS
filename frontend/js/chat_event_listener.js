@@ -21,6 +21,7 @@ import { TriggerSystem, TriggerHelpers } from './trigger_system.js';
 import { PhoneCallAPIClient } from './phone_call_api_client.js';
 import { ContinuousAnalysisHandler } from './continuous_analysis_handler.js';
 import { LiveActionHandler } from './live_action_handler.js';
+import { ChatInjector } from './chat_injector.js';
 
 export const ChatEventListener = {
     // 当前角色名称
@@ -61,6 +62,9 @@ export const ChatEventListener = {
 
         // 5. 注册用户自定义触发器
         this.registerUserTriggers();
+
+        // 6. 初始化聊天注入器 (注册 swipe 恢复监听)
+        ChatInjector.init();
 
         this.initialized = true;
         console.log('[ChatEventListener] ✅ 聊天事件监听器初始化完成');
@@ -120,6 +124,11 @@ export const ChatEventListener = {
         // 注册活人感行动处理器
         const liveActionHandler = new LiveActionHandler();
         this.messageRouter.registerHandler('live_action_triggered', (msg) => liveActionHandler.handle(msg));
+
+        // 注册分析完成通知处理器（仅记录日志，实际触发逻辑由其他消息处理）
+        this.messageRouter.registerHandler('continuous_analysis_complete', (msg) => {
+            console.log(`[ChatEventListener] ✅ 分析完成: floor=${msg.floor}, action=${msg.suggested_action}`);
+        });
 
         console.log('[ChatEventListener] ✅ 消息路由初始化完成');
     },

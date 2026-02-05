@@ -6,3 +6,5 @@ python-multipart
 packaging
 pydub
 httpx
+py7zr
+psutil

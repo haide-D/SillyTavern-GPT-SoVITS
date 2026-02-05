@@ -769,3 +769,324 @@
 .call-download-btn:active {
     transform: scale(0.95);
 }
+
+/* =========================================
+   🎧 对话追踪 App 样式
+   ========================================= */
+
+/* 入口选择界面 */
+.eavesdrop-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 20px;
+}
+
+.eavesdrop-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+}
+
+.eavesdrop-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #fff;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.eavesdrop-status {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.eavesdrop-buttons {
+    display: flex;
+    gap: 20px;
+}
+
+.eavesdrop-btn {
+    padding: 15px 30px;
+    border: none;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.eavesdrop-btn.ignore-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.eavesdrop-btn.ignore-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.eavesdrop-btn.listen-btn {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+}
+
+.eavesdrop-btn.listen-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.5);
+}
+
+/* 监听中界面 */
+.listening-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    background: linear-gradient(135deg, #0f3443 0%, #34e89e20 100%);
+    padding: 20px;
+}
+
+.listening-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.listening-avatar {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.listening-title {
+    font-size: 20px;
+    font-weight: bold;
+    color: #fff;
+    margin-bottom: 5px;
+}
+
+.listening-duration {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.listening-visualizer {
+    margin: 20px 0;
+}
+
+.listening-subtitle-area {
+    width: 100%;
+    max-width: 320px;
+    max-height: 100px;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    margin-bottom: 15px;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.listening-subtitle-area::-webkit-scrollbar {
+    display: none;
+}
+
+.listening-stop-btn {
+    padding: 15px 40px;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+    transition: all 0.2s;
+}
+
+.listening-stop-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5);
+}
+
+/* 监听播放界面按钮容器 */
+.listening-playback-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+/* 监听下载按钮 */
+.listening-download-btn {
+    padding: 15px 30px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+    transition: all 0.2s;
+}
+
+.listening-download-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5);
+}
+
+/* 历史记录列表 */
+.eavesdrop-history-content {
+    padding: 15px;
+    flex: 1;
+    overflow-y: auto;
+    background: #f2f2f7;
+}
+
+.eavesdrop-history-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #888;
+}
+
+.eavesdrop-history-empty-icon {
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+.eavesdrop-history-item {
+    background: #fff;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid #22c55e;
+}
+
+.eavesdrop-history-item:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.eavesdrop-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.eavesdrop-history-speakers {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+}
+
+.eavesdrop-history-date {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.eavesdrop-history-play-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: #f0fdf4;
+    border-radius: 8px;
+}
+
+.eavesdrop-history-play-icon {
+    font-size: 20px;
+}
+
+.eavesdrop-history-play-text {
+    flex: 1;
+    font-size: 13px;
+    color: #166534;
+}
+
+.eavesdrop-history-play-arrow {
+    font-size: 12px;
+    color: #999;
+}
+
+/* 播放状态 - 加载中 */
+.eavesdrop-play-loading {
+    text-align: center;
+    padding: 10px;
+    color: #666;
+    font-size: 14px;
+}
+
+/* 播放状态 - 播放中 */
+.eavesdrop-play-active {
+    padding: 10px;
+    background: #f0fdf4;
+    border-radius: 8px;
+}
+
+.eavesdrop-play-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.eavesdrop-play-status {
+    font-size: 13px;
+    color: #166534;
+}
+
+.eavesdrop-stop-btn {
+    background: #dc2626;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.eavesdrop-progress-bar {
+    background: #bbf7d0;
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.eavesdrop-progress-fill {
+    background: #16a34a;
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s;
+}
+
+.eavesdrop-time-display {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #166534;
+}

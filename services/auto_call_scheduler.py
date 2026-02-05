@@ -17,7 +17,7 @@ class AutoCallScheduler:
         # 正在执行的任务集合 (char_name, floor)
         self._running_tasks = set()
     
-    async def schedule_auto_call(self, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], context_fingerprint: str, user_name: str = None, char_name: str = None) -> Optional[int]:
+    async def schedule_auto_call(self, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], context_fingerprint: str, user_name: str = None, char_name: str = None, call_reason: str = "", call_tone: str = "") -> Optional[int]:
         """
         调度自动电话生成任务
         
@@ -29,6 +29,8 @@ class AutoCallScheduler:
             context_fingerprint: 上下文指纹
             user_name: 用户名，用于在prompt中区分用户身份
             char_name: 主角色卡名称，用于 WebSocket 推送路由
+            call_reason: 打电话的原因（由 LLM 分析得出）
+            call_tone: 通话氛围（如轻松闲聊、深情倾诉等）
             
         Returns:
             任务ID,如果已存在或正在执行则返回 None
@@ -85,13 +87,15 @@ class AutoCallScheduler:
             return None
         
         print(f"[AutoCallScheduler] ✅ 创建任务: ID={call_id}, speakers={speakers} @ 楼层{trigger_floor}, 指纹={context_fingerprint[:8]}")
+        if call_reason:
+            print(f"[AutoCallScheduler] 📞 电话详情: reason={call_reason}, tone={call_tone}")
         
-        # 异步执行生成任务 (传递所有说话人、用户名和主角色名)
-        asyncio.create_task(self._execute_generation(call_id, chat_branch, speakers, trigger_floor, context, user_name, char_name))
+        # 异步执行生成任务 (传递所有说话人、用户名、主角色名和电话详情)
+        asyncio.create_task(self._execute_generation(call_id, chat_branch, speakers, trigger_floor, context, user_name, char_name, call_reason, call_tone))
         
         return call_id
     
-    async def _execute_generation(self, call_id: int, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], user_name: str = None, char_name: str = None):
+    async def _execute_generation(self, call_id: int, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], user_name: str = None, char_name: str = None, call_reason: str = "", call_tone: str = ""):
         """
         执行生成任务(异步) - 新架构
         
@@ -107,8 +111,10 @@ class AutoCallScheduler:
             speakers: 说话人列表
             trigger_floor: 触发楼层
             context: 对话上下文
-            user_name: 用户名，用于在prompt中区分用户身份
-            char_name: 主角色卡名称，用于 WebSocket 推送路由
+            user_name: 用户名称
+            char_name: 主角色卡名称
+            call_reason: 打电话的原因
+            call_tone: 通话氛围
         """
         task_key = trigger_floor
         self._running_tasks.add(task_key)
@@ -131,9 +137,11 @@ class AutoCallScheduler:
                 chat_branch=chat_branch,
                 speakers=speakers,
                 context=context,
-                generate_audio=False,  # 暂时不生成音频
-                user_name=user_name,  # 传递用户名
-                last_call_info=last_call_info  # 传递上次通话信息
+                generate_audio=False,
+                user_name=user_name,
+                last_call_info=last_call_info,
+                call_reason=call_reason,  # 传递电话原因
+                call_tone=call_tone  # 传递通话氛围
             )
             
             prompt = result.get("prompt")
@@ -155,10 +163,11 @@ class AutoCallScheduler:
                 prompt=prompt,
                 llm_config=llm_config,
                 speakers=speakers,  # 完整的 speakers 列表,供 LLM 选择
-                chat_branch=chat_branch
+                chat_branch=chat_branch,
+                caller=speakers[0] if speakers else None  # 实际打电话的人（用于通知显示）
             )
             
-            print(f"[AutoCallScheduler] ✅ 已通知前端调用LLM: call_id={call_id}")
+            print(f"[AutoCallScheduler] ✅ 已通知前端调用LLM: call_id={call_id}, caller={speakers[0] if speakers else 'unknown'}")
             print(f"[AutoCallScheduler] ⏳ 等待前端通过 /api/phone_call/complete_generation 返回LLM响应...")
             
             # 注意: 实际的音频生成将在 complete_generation API 中完成

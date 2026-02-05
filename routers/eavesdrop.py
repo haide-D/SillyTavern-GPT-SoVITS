@@ -126,10 +126,27 @@ async def complete_eavesdrop_generation(req: CompleteEavesdropRequest):
             record_id=record_id,
             status="completed",
             audio_path=result.get("audio_path"),
-            audio_url=result.get("audio_url")
+            audio_url=result.get("audio_url"),
+            segments=result.get("segments", [])
         )
         
         print(f"[Eavesdrop API] ✅ 生成完成: record_id={record_id}")
+        
+        # 通过 WebSocket 通知前端 (触发悬浮球震动和对话效果)
+        from services.notification_service import NotificationService
+        
+        ws_target = req.char_name if req.char_name else (req.speakers[0] if req.speakers else "Unknown")
+        print(f"[Eavesdrop API] 📤 通知前端: ws_target={ws_target}")
+        
+        notification_service = NotificationService()
+        await notification_service.notify_eavesdrop_ready(
+            char_name=ws_target,
+            record_id=record_id,
+            speakers=req.speakers,
+            segments=result.get("segments", []),
+            audio_url=result.get("audio_url"),
+            scene_description=None  # 可从记录获取
+        )
         
         return {
             "record_id": record_id,

@@ -56,10 +56,10 @@ export class NotificationHandler {
         console.log('[NotificationHandler] ✅ 来电数据已存储到 window.TTS_IncomingCall:', window.TTS_IncomingCall);
 
         // 触发悬浮球震动
-        this.triggerFloatingBallAnimation('incoming-call', `${char_name} 来电中...`);
+        this.triggerFloatingBallAnimation('incoming-call', `${actualCaller} 来电中...`);
 
         // 显示通知
-        this.showNotification(`📞 ${char_name} 来电!`, 'info');
+        this.showNotification(`📞 ${actualCaller} 来电!`, 'info');
     }
 
     /**

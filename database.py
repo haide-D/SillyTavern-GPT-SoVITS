@@ -654,10 +654,10 @@ class DatabaseManager:
     
     def is_eavesdrop_generated(self, chat_branch: str, context_fingerprint: str) -> bool:
         """
-        检查指定分支和上下文指纹是否已成功生成过对话追踪
+        检查指定上下文指纹是否已成功生成过对话追踪
         
         Args:
-            chat_branch: 对话分支ID
+            chat_branch: 对话分支ID (保留参数兼容性，但查询时仅用指纹)
             context_fingerprint: 上下文指纹
             
         Returns:
@@ -668,10 +668,11 @@ class DatabaseManager:
         
         try:
             # 只检查状态为 'completed' 的记录,允许 'failed' 状态的记录重试
+            # ✅ 仅使用指纹查询，因为指纹才是唯一标准
             cursor.execute('''
                 SELECT COUNT(*) FROM eavesdrop_records 
-                WHERE chat_branch = ? AND context_fingerprint = ? AND status = 'completed'
-            ''', (chat_branch, context_fingerprint))
+                WHERE context_fingerprint = ? AND status = 'completed'
+            ''', (context_fingerprint,))
             count = cursor.fetchone()[0]
             return count > 0
         finally:
@@ -679,18 +680,28 @@ class DatabaseManager:
     
     def update_eavesdrop_status(self, record_id: int, status: str,
                                  audio_path: str = None, audio_url: str = None,
+                                 segments: List[Dict] = None,
                                  error_message: str = None):
         """更新对话追踪记录状态"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
-            if audio_path:
-                cursor.execute('''
-                    UPDATE eavesdrop_records 
-                    SET status = ?, audio_path = ?, audio_url = ?, error_message = ?
-                    WHERE id = ?
-                ''', (status, audio_path, audio_url, error_message, record_id))
+            if audio_path or segments:
+                # 需要更新音频路径或 segments
+                segments_json = json.dumps(segments, ensure_ascii=False) if segments else None
+                if segments_json:
+                    cursor.execute('''
+                        UPDATE eavesdrop_records 
+                        SET status = ?, audio_path = ?, audio_url = ?, segments = ?, error_message = ?
+                        WHERE id = ?
+                    ''', (status, audio_path, audio_url, segments_json, error_message, record_id))
+                else:
+                    cursor.execute('''
+                        UPDATE eavesdrop_records 
+                        SET status = ?, audio_path = ?, audio_url = ?, error_message = ?
+                        WHERE id = ?
+                    ''', (status, audio_path, audio_url, error_message, record_id))
             else:
                 cursor.execute('''
                     UPDATE eavesdrop_records 
@@ -812,12 +823,13 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_latest_analysis(self, chat_branch: str) -> Optional[Dict[str, Any]]:
+    def get_latest_analysis(self, chat_branch: str = None, fingerprints: List[str] = None) -> Optional[Dict[str, Any]]:
         """
         获取最新的分析记录
         
         Args:
-            chat_branch: 对话分支ID
+            chat_branch: 对话分支ID (已弃用，仅作后备)
+            fingerprints: 上下文指纹列表 (优先使用)
             
         Returns:
             最新记录或 None
@@ -827,12 +839,26 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                SELECT * FROM continuous_analysis 
-                WHERE chat_branch = ? 
-                ORDER BY floor DESC 
-                LIMIT 1
-            ''', (chat_branch,))
+            if fingerprints:
+                # ✅ 优先使用指纹查询
+                placeholders = ','.join('?' * len(fingerprints))
+                cursor.execute(f'''
+                    SELECT * FROM continuous_analysis 
+                    WHERE context_fingerprint IN ({placeholders})
+                    ORDER BY floor DESC 
+                    LIMIT 1
+                ''', fingerprints)
+            elif chat_branch:
+                # 后备：使用分支查询
+                cursor.execute('''
+                    SELECT * FROM continuous_analysis 
+                    WHERE chat_branch = ? 
+                    ORDER BY floor DESC 
+                    LIMIT 1
+                ''', (chat_branch,))
+            else:
+                return None
+                
             row = cursor.fetchone()
             if row:
                 return self._analysis_row_to_dict(row)
@@ -840,14 +866,16 @@ class DatabaseManager:
         finally:
             conn.close()
     
-    def get_character_history(self, chat_branch: str, character_name: str, limit: int = 20) -> List[Dict[str, Any]]:
+    def get_character_history(self, character_name: str, limit: int = 20, 
+                              chat_branch: str = None, fingerprints: List[str] = None) -> List[Dict[str, Any]]:
         """
         获取特定角色的历史轨迹
         
         Args:
-            chat_branch: 对话分支ID
             character_name: 角色名称
             limit: 返回记录数量限制
+            chat_branch: 对话分支ID (已弃用，仅作后备)
+            fingerprints: 上下文指纹列表 (优先使用)
             
         Returns:
             该角色的历史状态记录列表
@@ -857,12 +885,25 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-                SELECT * FROM continuous_analysis 
-                WHERE chat_branch = ? 
-                ORDER BY floor DESC 
-                LIMIT ?
-            ''', (chat_branch, limit * 2))  # 获取更多记录,因为需要过滤
+            if fingerprints:
+                # ✅ 优先使用指纹查询
+                placeholders = ','.join('?' * len(fingerprints))
+                cursor.execute(f'''
+                    SELECT * FROM continuous_analysis 
+                    WHERE context_fingerprint IN ({placeholders})
+                    ORDER BY floor DESC 
+                    LIMIT ?
+                ''', fingerprints + [limit * 2])
+            elif chat_branch:
+                # 后备：使用分支查询
+                cursor.execute('''
+                    SELECT * FROM continuous_analysis 
+                    WHERE chat_branch = ? 
+                    ORDER BY floor DESC 
+                    LIMIT ?
+                ''', (chat_branch, limit * 2))
+            else:
+                return []
             
             rows = cursor.fetchall()
             results = []
@@ -897,5 +938,60 @@ class DatabaseManager:
             except:
                 d["character_states"] = {}
         return d
+    
+    def get_recent_trigger_history(self, fingerprints: List[str] = None, limit: int = 5, 
+                                    chat_branch: str = None) -> List[Dict[str, Any]]:
+        """
+        获取最近的触发历史（用于多样性判断）
+        
+        Args:
+            fingerprints: 上下文指纹列表 (优先使用)
+            limit: 返回记录数量限制
+            chat_branch: 对话分支ID (已弃用，仅作后备)
+            
+        Returns:
+            列表，每项包含 floor, suggested_action, character_left 等
+        """
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            if fingerprints:
+                # ✅ 优先使用指纹查询
+                placeholders = ','.join('?' * len(fingerprints))
+                cursor.execute(f'''
+                    SELECT floor, suggested_action, character_left, trigger_reason, timestamp
+                    FROM continuous_analysis 
+                    WHERE context_fingerprint IN ({placeholders})
+                    ORDER BY floor DESC 
+                    LIMIT ?
+                ''', fingerprints + [limit])
+            elif chat_branch:
+                # 后备：使用分支查询
+                cursor.execute('''
+                    SELECT floor, suggested_action, character_left, trigger_reason, timestamp
+                    FROM continuous_analysis 
+                    WHERE chat_branch = ? 
+                    ORDER BY floor DESC 
+                    LIMIT ?
+                ''', (chat_branch, limit))
+            else:
+                return []
+                
+            rows = cursor.fetchall()
+            
+            results = []
+            for row in rows:
+                results.append({
+                    "floor": row["floor"],
+                    "action": row["suggested_action"] or "none",
+                    "character": row["character_left"],
+                    "reason": row["trigger_reason"],
+                    "timestamp": row["timestamp"]
+                })
+            return results
+        finally:
+            conn.close()
 
 

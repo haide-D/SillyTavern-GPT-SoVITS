@@ -309,30 +309,40 @@
    通话字幕区域 (新版 - Apple Music 风格)
    ======================================== */
 
-/* 字幕容器 - 底部固定 */
-.call-subtitle-area {
-    position: absolute;
-    bottom: 160px;
-    left: 0;
+/* 字幕容器 - 固定高度可滚动 */
+.call-subtitle-area,
+.listening-subtitle-area {
     width: 100%;
-    padding: 0 24px;
+    max-height: 100px;
+    min-height: 60px;
+    padding: 8px 16px;
     text-align: center;
     z-index: 10;
-    pointer-events: none;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+    /* 隐藏滚动条但保留滚动功能 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.call-subtitle-area::-webkit-scrollbar,
+.listening-subtitle-area::-webkit-scrollbar {
+    display: none;
 }
 
 /* 字幕文本容器 */
 .subtitle-line {
     display: inline-block;
     max-width: 100%;
-    padding: 16px 24px;
-    background: rgba(0, 0, 0, 0.3);
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.35);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border-radius: 16px;
+    border-radius: 12px;
     opacity: 0;
-    transform: translateY(10px);
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateY(5px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .subtitle-line.visible {
@@ -342,11 +352,11 @@
 
 /* 字幕文本 */
 .subtitle-text {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 500;
     color: rgba(255, 255, 255, 0.5);
-    letter-spacing: 1px;
-    line-height: 1.6;
+    letter-spacing: 0.5px;
+    line-height: 1.5;
     word-break: break-word;
 }
 
@@ -651,17 +661,7 @@
     background: linear-gradient(180deg, #22c55e 0%, #16a34a 100%);
 }
 
-/* 监听字幕区域 */
-.listening-subtitle-area {
-    position: absolute;
-    bottom: 160px;
-    left: 0;
-    width: 100%;
-    padding: 0 24px;
-    text-align: center;
-    z-index: 10;
-    pointer-events: none;
-}
+/* 监听字幕区域 - 样式已在 .call-subtitle-area 定义 */
 
 /* 说话人标签 */
 .subtitle-speaker {

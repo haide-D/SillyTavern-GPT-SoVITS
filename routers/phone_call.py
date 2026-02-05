@@ -84,6 +84,10 @@ class MessageWebhookRequest(BaseModel):
     char_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
 
 
+# 防重复：最近处理的指纹缓存
+_recent_fingerprints = {}
+_FINGERPRINT_EXPIRE_SECONDS = 10  # 10秒后过期
+
 
 @router.post("/phone_call/build_prompt")
 async def build_prompt(req: BuildPromptRequest):
@@ -763,11 +767,14 @@ async def message_webhook(req: MessageWebhookRequest):
     Returns:
         处理结果
     """
+
+    
     try:
         check_phone_call_enabled()
         from services.continuous_analyzer import ContinuousAnalyzer
         from services.notification_service import NotificationService
         import uuid
+        import time
 
         # 添加详细的请求日志
         print(f"\n[Webhook] 收到请求:")
@@ -775,6 +782,26 @@ async def message_webhook(req: MessageWebhookRequest):
         print(f"  - speakers: {req.speakers}")
         print(f"  - current_floor: {req.current_floor}")
         print(f"  - context 条数: {len(req.context)}")
+        
+        # ==================== 防重复检查 ====================
+        # 同一指纹 10 秒内不重复处理
+        now = time.time()
+        
+        # 清理过期指纹
+        expired = [fp for fp, ts in _recent_fingerprints.items() 
+                   if now - ts > _FINGERPRINT_EXPIRE_SECONDS]
+        for fp in expired:
+            del _recent_fingerprints[fp]
+        
+        # 检查是否重复
+        if req.context_fingerprint in _recent_fingerprints:
+            print(f"[Webhook] ⏭️ 跳过重复请求: fingerprint={req.context_fingerprint}")
+            return {
+                "status": "skipped",
+                "message": "重复请求已跳过"
+            }
+        
+        _recent_fingerprints[req.context_fingerprint] = now
 
         # 如果没有说话人,跳过
         if not req.speakers or len(req.speakers) == 0:
@@ -812,7 +839,8 @@ async def message_webhook(req: MessageWebhookRequest):
             context=context_serializable,
             speakers=req.speakers,
             context_fingerprint=req.context_fingerprint,
-            user_name=req.user_name
+            user_name=req.user_name,
+            char_name=req.char_name  # 主角色卡名称用于 WebSocket 路由
         )
         
         if not analysis_data:
@@ -838,6 +866,8 @@ async def message_webhook(req: MessageWebhookRequest):
                 "floor": req.current_floor,
                 "context_fingerprint": req.context_fingerprint,
                 "speakers": req.speakers,
+                "user_name": req.user_name,
+                "char_name": req.char_name,  # 主角色卡名称用于回传时路由
                 "prompt": analysis_data["prompt"],
                 "llm_config": analysis_data["llm_config"]
             }

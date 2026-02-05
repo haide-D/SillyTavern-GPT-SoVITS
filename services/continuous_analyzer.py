@@ -25,9 +25,9 @@ class ContinuousAnalyzer:
         self.scene_analyzer = SceneAnalyzer()
         self.live_engine = LiveCharacterEngine()
         
-        # 加载配置
+        # 加载配置 - 从 analysis_engine 读取
         settings = load_json(SETTINGS_FILE)
-        self.config = settings.get("continuous_analysis", {})
+        self.config = settings.get("analysis_engine", {})
         
         # 默认配置
         self.enabled = self.config.get("enabled", True)
@@ -64,7 +64,8 @@ class ContinuousAnalyzer:
         context: List[Dict],
         speakers: List[str],
         context_fingerprint: str,
-        user_name: str = None
+        user_name: str = None,
+        char_name: str = None  # 主角色卡名称，用于 WebSocket 路由
     ) -> Optional[Dict]:
         """
         执行分析并记录到数据库 (新版 - 使用LiveCharacterEngine)
@@ -83,16 +84,41 @@ class ContinuousAnalyzer:
         try:
             print(f"[ContinuousAnalyzer] 开始分析楼层 {floor}: {chat_branch}")
             
-            # 使用LiveCharacterEngine构建Prompt
-            prompt = self.live_engine.build_analysis_prompt(context, speakers)
+            # 从 context 中提取历史消息指纹列表
+            fingerprints = []
+            for msg in context:
+                fp = msg.get("fingerprint") or msg.get("fp")
+                if fp:
+                    fingerprints.append(fp)
+            
+            # 查询历史通话记录（优先用指纹，支持跨分支匹配）
+            call_history = []
+            if fingerprints:
+                call_history = self.db.get_auto_call_history_by_fingerprints(fingerprints, limit=5)
+                if call_history:
+                    print(f"[ContinuousAnalyzer] 📞 根据指纹查询到 {len(call_history)} 条通话历史")
+            
+            if not call_history:
+                # 回退：用 chat_branch 查询
+                call_history = self.db.get_auto_call_history_by_chat_branch(chat_branch, limit=5)
+                if call_history:
+                    print(f"[ContinuousAnalyzer] 📞 根据分支查询到 {len(call_history)} 条通话历史")
+            
+            # 查询历史分析记录（获取离场角色等信息）
+            last_analysis = self.db.get_latest_analysis(chat_branch)
+            if last_analysis:
+                print(f"[ContinuousAnalyzer] 📊 查询到最近分析记录: 楼层={last_analysis.get('floor')}")
+            
+            # 使用LiveCharacterEngine构建Prompt（传入通话历史和分支ID）
+            prompt = self.live_engine.build_analysis_prompt(context, speakers, call_history, chat_branch)
             
             print(f"[ContinuousAnalyzer] 活人感分析Prompt已构建,等待 LLM 响应...")
             
             # 返回数据供前端调用 LLM
-            # 从 analysis_llm 配置读取 LLM 设置
+            # 从 analysis_engine.llm 配置读取 LLM 设置
             from config import load_json, SETTINGS_FILE
             settings = load_json(SETTINGS_FILE)
-            analysis_llm = settings.get("analysis_llm", {})
+            analysis_llm = settings.get("analysis_engine", {}).get("llm", {})
             
             return {
                 "type": "continuous_analysis_request",
@@ -100,6 +126,8 @@ class ContinuousAnalyzer:
                 "floor": floor,
                 "context_fingerprint": context_fingerprint,
                 "speakers": speakers,
+                "user_name": user_name,  # 添加用户名用于 Prompt 构建
+                "char_name": char_name,  # 主角色卡名称用于 WebSocket 路由
                 "prompt": prompt,
                 "llm_config": {
                     "api_url": analysis_llm.get("api_url", ""),
@@ -140,9 +168,37 @@ class ContinuousAnalyzer:
             # 使用LiveCharacterEngine解析LLM响应 (新格式含 character_states 和 scene_trigger)
             parsed_result = self.live_engine.parse_llm_response(llm_response)
             
+            # ✅ 解析失败时的错误处理和重试机制
             if not parsed_result:
-                print(f"[ContinuousAnalyzer] ⚠️ LLM响应解析失败")
-                return {"success": False, "error": "LLM响应解析失败"}
+                print(f"[ContinuousAnalyzer] ⚠️ LLM响应首次解析失败，打印完整响应：")
+                print("=" * 60)
+                print(llm_response)
+                print("=" * 60)
+                
+                # 尝试预处理后重试
+                print(f"[ContinuousAnalyzer] 🔄 尝试重试解析...")
+                
+                # 尝试提取 JSON 部分后重试
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', llm_response)
+                if json_match:
+                    retry_response = json_match.group(0)
+                    parsed_result = self.live_engine.parse_llm_response(retry_response)
+                
+                if not parsed_result:
+                    error_msg = "LLM响应解析失败（已重试）"
+                    print(f"[ContinuousAnalyzer] ❌ {error_msg}")
+                    # 截取响应前500字符用于前端显示
+                    preview = llm_response[:500] if len(llm_response) > 500 else llm_response
+                    return {
+                        "success": False, 
+                        "error": error_msg,
+                        "error_type": "parse_error",
+                        "llm_response_preview": preview,
+                        "llm_response_length": len(llm_response)
+                    }
+                else:
+                    print(f"[ContinuousAnalyzer] ✅ 重试解析成功")
             
             # 提取角色状态和触发建议
             character_states = parsed_result.get("character_states", {})
@@ -151,9 +207,45 @@ class ContinuousAnalyzer:
             # 提取触发信息
             suggested_action = scene_trigger.get("suggested_action", "none")
             trigger_reason = scene_trigger.get("reason", "")
-            character_left = scene_trigger.get("character_left")
+            character_left = scene_trigger.get("character_left")  # 保持向后兼容
             
-            print(f"[ContinuousAnalyzer] 📊 分析结果: action={suggested_action}, reason={trigger_reason}")
+            # 提取电话触发详情（新格式）
+            phone_call_details = scene_trigger.get("phone_call_details") or {}  # ✅ 修复: 处理 null 值
+            # 新格式优先，兼容旧格式 character_left
+            caller = phone_call_details.get("caller") or character_left
+            call_reason = phone_call_details.get("call_reason") or trigger_reason
+            call_tone = phone_call_details.get("call_tone", "")
+            
+            print(f"[ContinuousAnalyzer] 📊 分析结果: action={suggested_action}")
+            if suggested_action == "phone_call" and caller:
+                print(f"[ContinuousAnalyzer] 📞 电话详情: caller={caller}, reason={call_reason}, tone={call_tone}")
+            
+            # ✅ 新增: 评分系统二次验证
+            score_result = None
+            original_action = suggested_action
+            
+            if suggested_action != "none":
+                # 查询触发历史用于评分
+                trigger_history = self.db.get_recent_trigger_history(
+                    chat_branch=chat_branch, 
+                    limit=5
+                )
+                
+                # 调用评分系统
+                score_result = self.live_engine.calculate_scene_trigger_score(
+                    suggested_action=suggested_action,
+                    character_states=character_states,
+                    trigger_history=trigger_history,
+                    scene_trigger=scene_trigger
+                )
+                
+                print(f"[ContinuousAnalyzer] 🎯 评分验证: {score_result.get('reason')}")
+                
+                # 如果评分不足，降级为 none
+                if not score_result.get("should_trigger", False):
+                    suggested_action = "none"
+                    trigger_reason = f"[降级] {score_result.get('reason')}"
+                    print(f"[ContinuousAnalyzer] ⚠️ 评分 {score_result.get('score')} 不足，{original_action} → none")
             
             # 向后兼容:构建旧格式的characters_data
             characters_data = {}
@@ -200,6 +292,22 @@ class ContinuousAnalyzer:
             if record_id:
                 print(f"[ContinuousAnalyzer] ✅ 分析记录已保存: ID={record_id}, 楼层={floor}")
                 
+                # 优先使用分析 LLM 返回的 characters_present（而非二次提取）
+                characters_present = scene_trigger.get("characters_present", [])
+                if not characters_present:
+                    # 后备：从 characters_data 中提取
+                    characters_present = [
+                        char_name for char_name, char_data in characters_data.items()
+                        if char_data.get("present", False)
+                    ]
+                
+                # 提取 eavesdrop 配置（由分析 LLM 提供的对话主题和框架）
+                eavesdrop_config = scene_trigger.get("eavesdrop_config", {})
+                
+                print(f"[ContinuousAnalyzer] 📍 在场角色: {characters_present}")
+                if eavesdrop_config:
+                    print(f"[ContinuousAnalyzer] 🎭 对话主题: {eavesdrop_config.get('conversation_theme', '未指定')}")
+                
                 # 状态已保存，触发逻辑由上层 (routers/continuous_analysis.py) 根据 scene_trigger 处理
                 # 不在这里遍历触发每个角色的 potential_actions
                 
@@ -208,8 +316,15 @@ class ContinuousAnalyzer:
                     "record_id": record_id,
                     "scene_trigger": scene_trigger,
                     "suggested_action": suggested_action,
-                    "character_left": character_left,
-                    "trigger_reason": trigger_reason
+                    "original_action": original_action,  # LLM 原始建议
+                    "score_result": score_result,  # 评分详情
+                    "caller": caller,  # 打电话的角色（新格式或兼容旧格式）
+                    "call_reason": call_reason,  # 打电话原因
+                    "call_tone": call_tone,  # 通话氛围
+                    "trigger_reason": trigger_reason,
+                    "present_characters": characters_present,
+                    "character_left": character_left,  # ✅ 修复: 添加离场角色
+                    "eavesdrop_config": eavesdrop_config
                 }
             else:
                 print(f"[ContinuousAnalyzer] ⚠️ 记录已存在或保存失败: 楼层={floor}")
@@ -276,14 +391,16 @@ class ContinuousAnalyzer:
                     print(f"[ContinuousAnalyzer] ❌ 行动处理失败: {action_type}")
 
     
-    def get_character_trajectory(self, chat_branch: str, character_name: str, limit: int = None) -> List[Dict]:
+    def get_character_trajectory(self, character_name: str, limit: int = None, 
+                                    chat_branch: str = None, fingerprints: List[str] = None) -> List[Dict]:
         """
         获取角色的历史轨迹 (智能筛选,用于LLM)
         
         Args:
-            chat_branch: 对话分支ID
             character_name: 角色名称
             limit: 返回记录数量限制(None使用llm_context_limit)
+            chat_branch: 对话分支ID (已弃用，仅作后备)
+            fingerprints: 上下文指纹列表 (优先使用)
             
         Returns:
             角色历史轨迹列表(压缩版,只包含关键信息)
@@ -291,8 +408,13 @@ class ContinuousAnalyzer:
         if limit is None:
             limit = self.llm_context_limit
         
-        # 获取原始历史
-        history = self.db.get_character_history(chat_branch, character_name, limit)
+        # 获取原始历史 - 优先使用指纹
+        history = self.db.get_character_history(
+            character_name=character_name, 
+            limit=limit, 
+            chat_branch=chat_branch, 
+            fingerprints=fingerprints
+        )
         
         # 压缩数据(只保留关键信息)
         compressed = []
