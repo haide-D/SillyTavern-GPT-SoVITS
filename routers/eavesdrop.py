@@ -99,6 +99,31 @@ async def complete_eavesdrop_generation(req: CompleteEavesdropRequest):
     try:
         print(f"[Eavesdrop API] 完成生成: record_id={record_id}, speakers={req.speakers}")
         
+        # ✅ 检查 record 状态，防止重复处理
+        record = db.get_eavesdrop_record(record_id)
+        if record:
+            status = record.get("status")
+            # 已完成：直接返回已有结果
+            if status == "completed":
+                print(f"[Eavesdrop API] ⚠️ record_id={record_id} 已完成，跳过重复请求")
+                return {
+                    "record_id": record_id,
+                    "status": "already_completed",
+                    "audio_url": record.get("audio_url"),
+                    "segments": record.get("segments", [])
+                }
+            # 正在生成：返回等待状态，不重复处理
+            if status == "generating":
+                print(f"[Eavesdrop API] ⚠️ record_id={record_id} 正在生成中，跳过重复请求")
+                return {
+                    "record_id": record_id,
+                    "status": "already_generating",
+                    "message": "Generation in progress, please wait"
+                }
+        
+        # ✅ 立即更新状态为 generating，防止并发重复
+        db.update_eavesdrop_status(record_id=record_id, status="generating")
+        
         # 构建 speakers_emotions (每个说话人使用默认情绪列表)
         # TODO: 后续可以从数据库记录中获取更详细的情绪映射
         speakers_emotions = {}

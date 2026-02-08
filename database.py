@@ -730,6 +730,21 @@ class DatabaseManager:
         finally:
             conn.close()
     
+    def get_eavesdrop_record(self, record_id: int) -> Optional[Dict[str, Any]]:
+        """根据 ID 获取单个对话追踪记录"""
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('SELECT * FROM eavesdrop_records WHERE id = ?', (record_id,))
+            row = cursor.fetchone()
+            if row:
+                return self._eavesdrop_row_to_dict(row)
+            return None
+        finally:
+            conn.close()
+    
     def _eavesdrop_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """将对话追踪记录行转换为字典"""
         d = dict(row)
