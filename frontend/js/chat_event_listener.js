@@ -186,10 +186,17 @@ export const ChatEventListener = {
      * 绑定 WebSocket 消息监听
      */
     bindWebSocketListener() {
+        // ✅ 防止重复注册
+        if (this._wsListenerBound) {
+            console.log('[ChatEventListener] ℹ️ WebSocket 监听已绑定，跳过');
+            return;
+        }
+
         if (window.TTS_Events && window.TTS_Events.on) {
             window.TTS_Events.on('websocket_message', (data) => {
                 this.messageRouter.route(data);
             });
+            this._wsListenerBound = true;  // ✅ 标记已绑定
             console.log('[ChatEventListener] ✅ 已注册 WebSocket 消息监听');
         } else {
             console.warn('[ChatEventListener] ⚠️ TTS_Events 未就绪,稍后重试');

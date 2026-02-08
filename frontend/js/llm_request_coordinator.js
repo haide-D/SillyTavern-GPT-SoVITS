@@ -11,6 +11,11 @@
 import { LLM_Client } from './llm_client.js';
 import { PhoneCallAPIClient } from './phone_call_api_client.js';
 
+// ✅ 用于去重的记录ID集合
+const _processingEavesdropIds = new Set();
+const _processedEavesdropIds = new Set();
+const MAX_PROCESSED_IDS = 100;  // 最多保留的已处理ID数量
+
 export class LLMRequestCoordinator {
     /**
      * 处理 LLM 生成请求
@@ -137,6 +142,15 @@ export class LLMRequestCoordinator {
 
         const { record_id, char_name, prompt, llm_config, speakers, chat_branch, scene_description, text_lang } = data;
 
+        // ✅ 去重检查：防止同一个 record_id 被处理多次
+        if (_processingEavesdropIds.has(record_id) || _processedEavesdropIds.has(record_id)) {
+            console.warn(`[LLMRequestCoordinator] ⚠️ record_id=${record_id} 已在处理中或已处理，跳过重复请求`);
+            return;
+        }
+
+        // 标记为正在处理
+        _processingEavesdropIds.add(record_id);
+
         try {
             // 显示通知
             this.showNotification(`正在生成 ${speakers.join(' 和 ')} 的私下对话...`);
@@ -178,6 +192,16 @@ export class LLMRequestCoordinator {
             });
 
             this.showNotification(`对话追踪生成失败: ${error.message}`, 'error');
+        } finally {
+            // ✅ 清理处理中状态，标记为已处理
+            _processingEavesdropIds.delete(record_id);
+            _processedEavesdropIds.add(record_id);
+
+            // 限制已处理ID集合大小
+            if (_processedEavesdropIds.size > MAX_PROCESSED_IDS) {
+                const firstId = _processedEavesdropIds.values().next().value;
+                _processedEavesdropIds.delete(firstId);
+            }
         }
     }
 
