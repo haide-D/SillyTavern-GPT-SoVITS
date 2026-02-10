@@ -117,6 +117,8 @@ class EavesdropService:
         """
         完成对话追踪生成（解析 LLM 响应并生成音频）
         
+        优化策略：按说话人分组生成，减少模型权重切换次数
+        
         Args:
             llm_response: LLM 返回的响应
             speakers_emotions: 说话人情绪映射
@@ -125,6 +127,10 @@ class EavesdropService:
         Returns:
             包含 segments、audio_url 等信息的字典
         """
+        from services.model_weight_service import model_weight_service
+        from phone_call_utils.response_parser import EmotionSegment
+        from collections import defaultdict
+        
         print(f"[EavesdropService] 开始解析响应并生成音频")
         
         # 1. 解析响应
@@ -142,49 +148,71 @@ class EavesdropService:
         settings = load_json(SETTINGS_FILE)
         tts_config = settings.get("phone_call", {}).get("tts_config", {})
         
-        # 2. 为每个片段生成 TTS 音频
-        audio_bytes_list = []
-        previous_ref_audio = None
+        # 2. 按说话人分组，记录原始索引
+        # 格式: {speaker: [(original_index, segment, ref_audio), ...]}
+        speaker_groups = defaultdict(list)
         
         for i, seg in enumerate(segments):
-            try:
-                # 选择参考音频
-                ref_audio = self._select_ref_audio(seg.speaker, seg.emotion)
-                if not ref_audio:
-                    print(f"[EavesdropService] ⚠️ 跳过片段 {i}: 无参考音频")
+            ref_audio = self._select_ref_audio(seg.speaker, seg.emotion)
+            if not ref_audio:
+                print(f"[EavesdropService] ⚠️ 跳过片段 {i}: 无参考音频 (speaker={seg.speaker})")
+                continue
+            speaker_groups[seg.speaker].append((i, seg, ref_audio))
+        
+        print(f"[EavesdropService] 🎭 按说话人分组: {', '.join(f'{s}({len(items)}个)' for s, items in speaker_groups.items())}")
+        
+        # 3. 按说话人批量生成音频（每个说话人只切换一次模型）
+        # 格式: {original_index: audio_bytes}
+        audio_results = {}
+        
+        for speaker, items in speaker_groups.items():
+            print(f"[EavesdropService] 🔊 开始生成 {speaker} 的 {len(items)} 个片段")
+            
+            # 使用 ModelWeightService 切换到该说话人的模型
+            async with model_weight_service.use_model(speaker, f"eavesdrop_{speaker}") as success:
+                if not success:
+                    print(f"[EavesdropService] ❌ 无法切换到 {speaker} 的模型，跳过该角色")
                     continue
                 
-                # 将 MultiSpeakerSegment 转换为 EmotionSegment 格式
-                from phone_call_utils.response_parser import EmotionSegment
-                emotion_segment = EmotionSegment(
-                    emotion=seg.emotion,
-                    text=seg.text,
-                    speed=seg.speed
-                )
-                
-                # 生成 TTS (使用正确的 generate_audio 方法)
-                audio_bytes = await self.tts_service.generate_audio(
-                    segment=emotion_segment,
-                    ref_audio=ref_audio,
-                    tts_config=tts_config,
-                    previous_ref_audio=previous_ref_audio
-                )
-                
-                audio_bytes_list.append(audio_bytes)
-                previous_ref_audio = ref_audio  # 保存用于下一个情绪过渡
-                
-                # 更新 segment 的音频时长
-                # (简化处理,实际应该解析音频获取时长)
-                
-            except Exception as e:
-                print(f"[EavesdropService] ⚠️ 生成片段 {i} TTS 失败: {e}")
-                continue
+                # 批量生成该说话人的所有片段
+                for original_index, seg, ref_audio in items:
+                    try:
+                        emotion_segment = EmotionSegment(
+                            emotion=seg.emotion,
+                            text=seg.text,
+                            speed=seg.speed
+                        )
+                        
+                        audio_bytes = await self.tts_service.generate_audio(
+                            segment=emotion_segment,
+                            ref_audio=ref_audio,
+                            tts_config=tts_config,
+                            previous_ref_audio=None  # 分组生成时不使用情绪过渡
+                        )
+                        
+                        audio_results[original_index] = audio_bytes
+                        print(f"[EavesdropService] ✅ 片段 {original_index} ({speaker}) 生成成功")
+                        
+                    except Exception as e:
+                        print(f"[EavesdropService] ⚠️ 生成片段 {original_index} ({speaker}) TTS 失败: {e}")
+                        continue
+        
+        # 4. 按原始顺序重组音频列表
+        audio_bytes_list = []
+        valid_segments = []
+        
+        for i, seg in enumerate(segments):
+            if i in audio_results:
+                audio_bytes_list.append(audio_results[i])
+                valid_segments.append(seg)
 
         
         if not audio_bytes_list:
             raise ValueError("所有片段的 TTS 生成都失败了")
         
-        # 3. 合并音频
+        print(f"[EavesdropService] ✅ 共生成 {len(audio_bytes_list)} 个有效音频片段")
+        
+        # 5. 合并音频
         settings = load_json(SETTINGS_FILE)
         phone_call_config = settings.get("phone_call", {})
         audio_merger_config = phone_call_config.get("audio_merge", {})
@@ -194,14 +222,14 @@ class EavesdropService:
         audio_merger_config["same_speaker_pause"] = audio_merger_config.get("same_speaker_pause", 0.3)
         
         merged_audio = self.audio_merger.merge_multi_speaker_segments(
-            segments=segments[:len(audio_bytes_list)],  # 只取成功生成音频的片段
+            segments=valid_segments,  # 使用按原始顺序排列的有效片段
             audio_bytes_list=audio_bytes_list,
             config=audio_merger_config
         )
         
         print(f"[EavesdropService] ✅ 音频合并完成: {len(merged_audio)} bytes")
         
-        # 4. 保存音频文件
+        # 6. 保存音频文件
         import time
         timestamp = int(time.time())
         filename = f"eavesdrop_{timestamp}.wav"
@@ -215,9 +243,9 @@ class EavesdropService:
         
         print(f"[EavesdropService] ✅ 音频保存到: {audio_path}")
         
-        # 5. 返回结果
+        # 7. 返回结果
         return {
-            "segments": [seg.model_dump() for seg in segments[:len(audio_bytes_list)]],
+            "segments": [seg.model_dump() for seg in valid_segments],
             "audio_path": audio_path,
             "audio_url": f"/api/audio/eavesdrop/{filename}",
             "segment_count": len(audio_bytes_list)

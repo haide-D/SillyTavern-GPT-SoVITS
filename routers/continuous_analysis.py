@@ -28,6 +28,7 @@ class ContinuousAnalysisCompleteRequest(BaseModel):
     context_fingerprint: str
     llm_response: Optional[str] = None  # ✅ 改为可选，允许前端在 LLM 失败时传 null
     speakers: List[str]
+    context: Optional[List[Dict]] = None  # ✅ 新增: 对话上下文，用于 eavesdrop prompt 构建
     user_name: Optional[str] = None  # 用户名，用于 Prompt 构建
     char_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
     error: Optional[str] = None  # ✅ 新增: 前端 LLM 调用错误信息
@@ -199,7 +200,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                     chat_branch=req.chat_branch,
                     speakers=valid_speakers,  # ✅ 使用过滤后的角色列表
                     trigger_floor=req.floor,
-                    context=[],
+                    context=req.context or [],  # ✅ 修复: 使用前端传递的对话上下文
                     context_fingerprint=req.context_fingerprint,
                     user_name=req.user_name,
                     char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由

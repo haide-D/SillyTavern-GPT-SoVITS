@@ -434,4 +434,101 @@ export function extractAllSpeakers(messages) {
     return Array.from(speakers);
 }
 
+/**
+ * 消息内容提取与过滤
+ * 与后端 message_filter.py 逻辑保持一致
+ */
+
+/**
+ * 提取指定标签内的内容
+ * @param {string} text - 原始文本
+ * @param {string} tagName - 标签名称（如 "conxt"）
+ * @returns {string} - 提取的内容，未找到则返回原文本
+ */
+export function extractTagContent(text, tagName) {
+    if (!text || !tagName || !tagName.trim()) return text;
+
+    // 转义正则特殊字符
+    const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`<${escapedTag}>([\\s\\S]*?)</${escapedTag}>`, 'i');
+    const match = text.match(pattern);
+
+    return match ? match[1] : text;
+}
+
+/**
+ * 应用过滤标签
+ * 支持三种格式:
+ * 1. <xxx> - 过滤 <xxx>...</xxx> 包裹的内容
+ * 2. [xxx] - 过滤 [xxx]...[/xxx] 包裹的内容
+ * 3. 前缀|后缀 - 过滤以前缀开头、后缀结尾的内容
+ * 
+ * @param {string} text - 原始文本
+ * @param {string} filterTags - 过滤标签配置（逗号分隔）
+ * @returns {string} - 过滤后的文本
+ */
+export function applyFilterTags(text, filterTags) {
+    if (!text || !filterTags || !filterTags.trim()) return text;
+
+    let filtered = text;
+    const tags = filterTags.split(',').map(t => t.trim()).filter(t => t);
+
+    for (const tag of tags) {
+        // 格式3: 前缀|后缀
+        if (tag.includes('|')) {
+            const parts = tag.split('|');
+            if (parts.length === 2 && parts[0] && parts[1]) {
+                const prefix = parts[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const suffix = parts[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const pattern = new RegExp(`${prefix}[\\s\\S]*?${suffix}`, 'gi');
+                filtered = filtered.replace(pattern, '');
+            }
+        }
+        // 格式1: HTML 风格标签 <xxx>
+        else if (tag.startsWith('<') && tag.endsWith('>')) {
+            const tagName = tag.slice(1, -1);
+            const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = new RegExp(`<${escapedTag}[^>]*>[\\s\\S]*?</${escapedTag}>`, 'gi');
+            filtered = filtered.replace(pattern, '');
+        }
+        // 格式2: 方括号风格标签 [xxx]
+        else if (tag.startsWith('[') && tag.endsWith(']')) {
+            const tagName = tag.slice(1, -1);
+            const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = new RegExp(`\\[${escapedTag}\\][\\s\\S]*?\\[/${escapedTag}\\]`, 'gi');
+            filtered = filtered.replace(pattern, '');
+        }
+    }
+
+    return filtered;
+}
+
+/**
+ * 提取并过滤消息内容
+ * 1. 如果配置了 extract_tag，先提取标签内容
+ * 2. 然后应用 filter_tags 过滤
+ * 
+ * @param {string} text - 原始文本
+ * @param {string} extractTag - 提取标签名称
+ * @param {string} filterTags - 过滤标签配置
+ * @returns {string} - 处理后的文本
+ */
+export function extractAndFilter(text, extractTag, filterTags) {
+    if (!text) return text;
+
+    let processed = text;
+
+    // 步骤1: 提取标签内容
+    if (extractTag && extractTag.trim()) {
+        processed = extractTagContent(processed, extractTag.trim());
+    }
+
+    // 步骤2: 应用过滤标签
+    if (filterTags && filterTags.trim()) {
+        processed = applyFilterTags(processed, filterTags);
+    }
+
+    return processed;
+}
+
 console.log("🟢 [2] TTS_Utils.js 执行完毕");

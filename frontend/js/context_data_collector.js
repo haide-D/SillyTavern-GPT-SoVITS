@@ -101,11 +101,30 @@ export class ContextDataCollector {
 
         const { charName, userName } = charInfo;
 
-        return chat.slice(-limit).map(msg => ({
-            name: msg.name || (msg.is_user ? userName : charName),
-            is_user: msg.is_user || false,
-            mes: msg.mes || ""
-        }));
+        // 获取消息过滤配置
+        const CACHE = window.TTS_State?.CACHE;
+        const settings = CACHE?.settings || {};
+        const msgProcessing = settings.message_processing || {};
+        const extractTag = msgProcessing.extract_tag || '';
+        const filterTags = msgProcessing.filter_tags || '';
+
+        // 获取过滤函数
+        const extractAndFilter = window.TTS_Utils?.extractAndFilter;
+
+        return chat.slice(-limit).map(msg => {
+            let content = msg.mes || "";
+
+            // 应用消息过滤（如果配置了且函数可用）
+            if ((extractTag || filterTags) && extractAndFilter) {
+                content = extractAndFilter(content, extractTag, filterTags);
+            }
+
+            return {
+                name: msg.name || (msg.is_user ? userName : charName),
+                is_user: msg.is_user || false,
+                mes: content
+            };
+        });
     }
 
     /**

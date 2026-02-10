@@ -47,6 +47,27 @@ export class ContinuousAnalysisHandler {
             return;
         }
 
+        // ✅ 采集当前对话上下文（用于 eavesdrop prompt 构建）
+        let context = [];
+        try {
+            const stContext = window.SillyTavern?.getContext?.();
+            if (stContext?.chat) {
+                const charInfo = {
+                    charName: stContext.characters?.find(c => c.avatar === stContext.characterId)?.name || stContext.name2,
+                    userName: stContext.name1
+                };
+                // 提取最近的对话消息
+                context = stContext.chat.slice(-20).map(msg => ({
+                    name: msg.name || (msg.is_user ? charInfo.userName : charInfo.charName),
+                    is_user: msg.is_user || false,
+                    mes: msg.mes || ""
+                }));
+                console.log(`[ContinuousAnalysisHandler] 📜 采集到 ${context.length} 条对话上下文`);
+            }
+        } catch (e) {
+            console.warn('[ContinuousAnalysisHandler] ⚠️ 采集对话上下文失败:', e);
+        }
+
         try {
             // 调用LLM分析 - 使用LLM_Client而不是LLMRequestCoordinator
             const llmResponse = await LLM_Client.callLLM({
@@ -61,7 +82,7 @@ export class ContinuousAnalysisHandler {
             console.log('[ContinuousAnalysisHandler] ✅ LLM分析完成');
 
 
-            // 回传结果到后端
+            // 回传结果到后端（包含对话上下文）
             await this.sendResultToBackend({
                 chat_branch,
                 floor,
@@ -69,6 +90,7 @@ export class ContinuousAnalysisHandler {
                 speakers,
                 user_name,
                 char_name,
+                context,  // ✅ 新增: 传递对话上下文给后端
                 llm_response: llmResponse
             });
 
@@ -83,6 +105,7 @@ export class ContinuousAnalysisHandler {
                 speakers,
                 user_name,
                 char_name,
+                context,  // ✅ 即使失败也传递上下文
                 llm_response: null,
                 error: error.message,
                 raw_response: error.rawResponse ? JSON.stringify(error.rawResponse) : null  // ✅ 发送原始响应

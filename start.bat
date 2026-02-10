@@ -16,34 +16,44 @@ set "PYTHONPATH=%~dp0"
 :: 优先使用内置 runtime（嵌入式 Python）
 :: ============================================================
 set "RUNTIME_PYTHON=%~dp0runtime\python\python.exe"
+set "PYTHON_CMD="
 
 if exist "%RUNTIME_PYTHON%" (
     echo [INFO] Using embedded Python runtime...
     set "PYTHON_CMD=%RUNTIME_PYTHON%"
-) else (
-    :: 回退到系统 Python
-    echo [INFO] Embedded runtime not found, checking system Python...
-    where python >nul 2>nul
-    if !errorlevel! neq 0 (
-        echo.
-        echo [ERROR] Python not found!
-        echo Please ensure the 'runtime' folder exists, or install Python 3.10+.
-        echo.
-        pause
-        exit /b 1
-    )
-    set "PYTHON_CMD=python"
+    goto :python_found
+)
+
+:: 回退到系统 Python
+echo [INFO] Embedded runtime not found, checking system Python...
+where python >nul 2>nul
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Python not found!
+    echo Please ensure the 'runtime' folder exists, or install Python 3.10+.
+    echo.
+    pause
+    exit /b 1
+)
+set "PYTHON_CMD=python"
+
+:python_found
+:: 验证 PYTHON_CMD 是否有效
+if not defined PYTHON_CMD (
+    echo [ERROR] PYTHON_CMD is not set!
+    pause
+    exit /b 1
 )
 
 :: 显示 Python 版本
-echo [INFO] Python: 
-"!PYTHON_CMD!" --version
+echo [INFO] Python: %PYTHON_CMD%
+"%PYTHON_CMD%" --version
 
 :: ============================================================
 :: 安装/更新依赖
 :: ============================================================
 echo [INFO] Checking dependencies...
-"!PYTHON_CMD!" -m pip install -r requirements.txt -q
+"%PYTHON_CMD%" -m pip install -r requirements.txt -q
 
 :: ============================================================
 :: 启动服务
@@ -57,7 +67,7 @@ echo ---------------------------------------------------
 :: 后台启动一个延迟任务,5秒后自动打开浏览器
 start /b cmd /c "timeout /t 5 /nobreak >nul && start http://localhost:3000/admin"
 
-"!PYTHON_CMD!" manager.py
+"%PYTHON_CMD%" manager.py
 
 :: ============================================================
 :: 程序退出
