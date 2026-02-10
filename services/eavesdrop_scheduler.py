@@ -75,7 +75,7 @@ class EavesdropScheduler:
             
             if existing:
                 existing_id, existing_status = existing
-                if existing_status in ['generating', 'pending']:
+                if existing_status in ['generating', 'waiting_for_llm', 'pending']:
                     print(f"[EavesdropScheduler] 检测到卡住的记录: ID={existing_id}, status={existing_status}, 删除后重试")
                     cursor.execute("DELETE FROM eavesdrop_records WHERE id = ?", (existing_id,))
                     conn.commit()
@@ -140,8 +140,9 @@ class EavesdropScheduler:
         try:
             print(f"[EavesdropScheduler] 开始生成: ID={record_id}, speakers={speakers}")
             
-            # 更新状态为 generating
-            self.db.update_eavesdrop_status(record_id, "generating")
+            # 更新状态为 waiting_for_llm（注意：不能用 "generating"，
+            # 因为 complete_generation API 的防重复逻辑会检查 "generating" 状态并跳过）
+            self.db.update_eavesdrop_status(record_id, "waiting_for_llm")
             
             # 读取 TTS 配置中的语言设置（用于 Prompt 构建）
             settings = load_json(SETTINGS_FILE) or {}
@@ -204,7 +205,9 @@ class EavesdropScheduler:
                 status="failed",
                 error_message=str(e)
             )
-            # 移除运行中标记
+        finally:
+            # 无论成功还是失败，都移除运行中标记
+            # （调度器的工作在通知前端后就结束了，后续由 complete_generation API 接管）
             self._running_tasks.discard(task_key)
     
     def get_running_tasks(self) -> List[str]:
