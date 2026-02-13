@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 
 # ================= 路径配置 =================
 # 获取当前文件所在目录作为插件根目录
@@ -17,18 +18,48 @@ SOVITS_HOST = "http://127.0.0.1:9880"
 
 # ================= 配置加载逻辑 =================
 def load_json(filename):
-    if os.path.exists(filename):
-        try:
-            with open(filename, 'r', encoding='utf-8') as f: return json.load(f)
-        except: return {}
-    return {}
+    """读取 JSON 文件，文件不存在返回空字典，解析失败记录错误并返回空字典"""
+    if not os.path.exists(filename):
+        return {}
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[Config] ⚠️ 读取 {filename} 失败: {e}")
+        return {}
+
+def _safe_load_for_update(filename):
+    """写入前的保护性读取：文件存在但读取为空时抛异常，防止覆盖已有数据"""
+    if not os.path.exists(filename):
+        return {}
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        # 文件存在但读不出来 → 拒绝返回空字典，防止调用方用空数据覆盖
+        raise IOError(f"文件 {filename} 存在但读取失败，拒绝覆盖: {e}")
 
 def save_json(filename, data):
+    """原子写入 JSON：先写临时文件再 rename，避免写一半崩溃导致文件损坏"""
     try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        dir_name = os.path.dirname(filename)
+        fd, tmp_path = tempfile.mkstemp(suffix='.tmp', dir=dir_name)
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # Windows 上 rename 目标存在会报错，需要先删除
+            if os.path.exists(filename):
+                os.replace(tmp_path, filename)
+            else:
+                os.rename(tmp_path, filename)
+        except:
+            # 写入失败，清理临时文件
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
     except Exception as e:
-        print(f"Error saving {filename}: {e}")
+        print(f"[Config] ❌ 保存 {filename} 失败: {e}")
 
 def init_settings():
     """初始化并读取设置，确保文件和目录存在"""
