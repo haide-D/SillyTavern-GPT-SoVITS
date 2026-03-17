@@ -217,7 +217,8 @@ def init_settings():
             "system_prompt": "你是一个可以通过Telegram与用户聊天的角色扮演AI。请保持简短口语化的回复。"
         },
         "voice_reply": True,
-        "max_history": 20
+        "max_history": 20,
+        "world_setting": ""
     }
     
     # 类型安全检查

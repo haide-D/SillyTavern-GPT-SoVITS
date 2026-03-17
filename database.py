@@ -196,6 +196,53 @@ class DatabaseManager:
             cursor.execute("ALTER TABLE continuous_analysis ADD COLUMN trigger_reason TEXT")
             cursor.execute("ALTER TABLE continuous_analysis ADD COLUMN character_left TEXT")
 
+        # ==================== 记忆系统表 ====================
+        
+        # 记忆快照表 - 每次分析产出一条完整快照
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS memory_snapshots (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                context_fingerprint  TEXT NOT NULL UNIQUE,
+                parent_fingerprint   TEXT,
+                source               TEXT NOT NULL,
+                source_id            TEXT NOT NULL,
+                floor                INTEGER,
+                plot_summary         TEXT NOT NULL,
+                character_profiles   TEXT,
+                key_events           TEXT,
+                speakers             TEXT,
+                created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_snapshot_fingerprint
+            ON memory_snapshots(context_fingerprint)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_snapshot_parent
+            ON memory_snapshots(parent_fingerprint)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_snapshot_source
+            ON memory_snapshots(source, source_id)
+        ''')
+        
+        # 人物画像表 - KV 结构存储角色卡初始人设 (静态)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS memory_profiles (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                char_name   TEXT NOT NULL,
+                profile_key TEXT NOT NULL,
+                profile_val TEXT NOT NULL,
+                source      TEXT DEFAULT 'auto',
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(char_name, profile_key)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_profile_char 
+            ON memory_profiles(char_name)
+        ''')
 
         
         conn.commit()
@@ -1009,4 +1056,144 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    # ==================== 记忆快照相关方法 ====================
 
+    def add_memory_snapshot(self, context_fingerprint: str, source: str,
+                            source_id: str, plot_summary: str,
+                            character_profiles: Dict = None,
+                            key_events: List = None,
+                            speakers: List[str] = None,
+                            parent_fingerprint: str = None,
+                            floor: int = None) -> Optional[int]:
+        """添加记忆快照"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            profiles_json = json.dumps(character_profiles or {}, ensure_ascii=False)
+            events_json = json.dumps(key_events or [], ensure_ascii=False)
+            speakers_json = json.dumps(speakers or [], ensure_ascii=False)
+            
+            cursor.execute('''
+                INSERT INTO memory_snapshots (
+                    context_fingerprint, parent_fingerprint, source, source_id,
+                    floor, plot_summary, character_profiles, key_events, speakers
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (context_fingerprint, parent_fingerprint, source, source_id,
+                  floor, plot_summary, profiles_json, events_json, speakers_json))
+            conn.commit()
+            return cursor.lastrowid
+        except sqlite3.IntegrityError:
+            # 指纹已存在，跳过
+            return None
+        finally:
+            conn.close()
+
+    def get_memory_snapshots_by_fingerprints(
+        self, fingerprints: List[str], limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        酒馆侧查询：按指纹列表查找记忆快照
+        同时匹配 context_fingerprint 和 parent_fingerprint
+        """
+        if not fingerprints:
+            return []
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            placeholders = ','.join('?' * len(fingerprints))
+            cursor.execute(f'''
+                SELECT * FROM memory_snapshots
+                WHERE context_fingerprint IN ({placeholders})
+                   OR parent_fingerprint IN ({placeholders})
+                ORDER BY created_at DESC LIMIT ?
+            ''', fingerprints + fingerprints + [limit])
+            return [self._snapshot_row_to_dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_memory_snapshots_latest(
+        self, source: str = None, source_id: str = None, limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        TG 侧查询：按最新时间获取记忆快照
+        """
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            if source and source_id:
+                cursor.execute('''
+                    SELECT * FROM memory_snapshots
+                    WHERE source = ? AND source_id = ?
+                    ORDER BY created_at DESC LIMIT ?
+                ''', (source, source_id, limit))
+            else:
+                cursor.execute('''
+                    SELECT * FROM memory_snapshots
+                    ORDER BY created_at DESC LIMIT ?
+                ''', (limit,))
+            return [self._snapshot_row_to_dict(row) for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_latest_tavern_fingerprint(self) -> Optional[str]:
+        """获取最新的酒馆记忆指纹（供 TG 写入时做 parent_fingerprint）"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT context_fingerprint FROM memory_snapshots
+                WHERE source = 'tavern'
+                ORDER BY created_at DESC LIMIT 1
+            ''')
+            row = cursor.fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+
+    def _snapshot_row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        """将快照记录行转换为字典"""
+        d = dict(row)
+        for field in ('character_profiles', 'key_events', 'speakers'):
+            if d.get(field):
+                try:
+                    d[field] = json.loads(d[field])
+                except:
+                    d[field] = {} if field == 'character_profiles' else []
+        return d
+
+    # ==================== 人物画像 (角色卡静态数据) ====================
+
+    def upsert_memory_profile(self, char_name: str, profile_key: str,
+                               profile_val: str, source: str = "auto"):
+        """插入或更新人物画像"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO memory_profiles (char_name, profile_key, profile_val, source)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(char_name, profile_key) DO UPDATE SET
+                    profile_val = excluded.profile_val,
+                    source = excluded.source,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (char_name, profile_key, profile_val, source))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_memory_profiles(self, char_name: str) -> Dict[str, str]:
+        """获取角色的全部画像 KV"""
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                SELECT profile_key, profile_val FROM memory_profiles
+                WHERE char_name = ?
+                ORDER BY updated_at DESC
+            ''', (char_name,))
+            return {row["profile_key"]: row["profile_val"] for row in cursor.fetchall()}
+        finally:
+            conn.close()
