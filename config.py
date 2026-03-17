@@ -196,6 +196,38 @@ def init_settings():
     else:
         if deep_merge(analysis_engine_defaults, settings["analysis_engine"]):
             dirty = True
+            
+    # telegram 配置 - 独立的 TG 机器人配置
+    telegram_defaults = {
+        "enabled": False,
+        "bot_token": "",
+        "allowed_chat_ids": [],
+        "proxy": {
+            "enabled": True,
+            "http": "http://127.0.0.1:7890",
+            "https": "http://127.0.0.1:7890"
+        },
+        "character": "",
+        "llm": {
+            "api_url": "",
+            "api_key": "",
+            "model": "gemini-2.5-flash",
+            "temperature": 0.8,
+            "max_tokens": 2000,
+            "system_prompt": "你是一个可以通过Telegram与用户聊天的角色扮演AI。请保持简短口语化的回复。"
+        },
+        "voice_reply": True,
+        "max_history": 20
+    }
+    
+    # 类型安全检查
+    if "telegram" not in settings or not isinstance(settings["telegram"], dict):
+        settings["telegram"] = telegram_defaults
+        dirty = True
+    else:
+        if deep_merge(telegram_defaults, settings["telegram"]):
+            dirty = True
+    
     
     # 迁移旧配置（兼容性处理）
     if "analysis_llm" in settings:

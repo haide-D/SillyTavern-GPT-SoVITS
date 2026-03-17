@@ -10,7 +10,9 @@ from fastapi.responses import JSONResponse
 from config import FRONTEND_DIR, init_settings
 from routers import data, tts, system
 from config import FRONTEND_DIR
-from routers import data, tts, system, admin, phone_call, speakers, eavesdrop, continuous_analysis, sovits_installer
+from routers import data, tts, system, admin, phone_call, speakers, eavesdrop, continuous_analysis, sovits_installer, telegram
+from services.telegram_service import telegram_service
+from contextlib import asynccontextmanager
 
 # 导入自定义日志中间件
 from middleware.logging_middleware import LoggingMiddleware
@@ -18,7 +20,21 @@ from middleware.logging_middleware import LoggingMiddleware
 # 初始化配置(确保 system_settings.json 和目录存在)
 init_settings()
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 启动前
+    try:
+        await telegram_service.start()
+    except Exception as e:
+        print(f"Telegram Bot 启动失败: {e}")
+    yield
+    # 关闭后
+    try:
+        await telegram_service.stop()
+    except Exception as e:
+        pass
+
+app = FastAPI(lifespan=lifespan)
 
 # 0. 添加自定义日志中间件(必须在 CORS 之前)
 app.add_middleware(LoggingMiddleware)
@@ -148,7 +164,7 @@ app.include_router(speakers.router, prefix="/api", tags=["Speakers Management"])
 app.include_router(eavesdrop.router, prefix="/api/eavesdrop", tags=["Eavesdrop Tracking"])
 app.include_router(continuous_analysis.router, prefix="/api", tags=["Continuous Analysis"])
 app.include_router(sovits_installer.router, tags=["GPT-SoVITS Installation"])
-
+app.include_router(telegram.router, tags=["Telegram Bot"])
 
 # GPT-SoVITS 自动启动检查
 def auto_start_sovits():
