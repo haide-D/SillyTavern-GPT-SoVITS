@@ -1,11 +1,13 @@
 import asyncio
 from typing import Optional
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.constants import UpdateType
+from telegram.ext import Application, CommandHandler, MessageHandler, MessageReactionHandler, filters, ContextTypes
 from config import load_json, SETTINGS_FILE
 from telegram_utils.memory_manager import MemoryManager
 from telegram_utils.llm_handler import TelegramLLMHandler
 from telegram_utils.audio_handler import TelegramAudioHandler
+from telegram_utils.user_manager import user_manager
 
 class TelegramBotService:
     """Telegram Bot 服务 - 负责长轮询生命周期和事件路由机制"""
@@ -78,6 +80,9 @@ class TelegramBotService:
             # 注册 handlers
             self.app.add_handler(CommandHandler("start", self._cmd_start))
             self.app.add_handler(CommandHandler("clear", self._cmd_clear))
+            self.app.add_handler(CommandHandler("setpersona", self._cmd_setpersona))
+            self.app.add_handler(CommandHandler("whoami", self._cmd_whoami))
+            self.app.add_handler(MessageReactionHandler(self._handle_reaction))
             
             # 【临时增加的终极全捕获 DEBUG】
             async def _debug_all_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,7 +101,8 @@ class TelegramBotService:
             await self.app.start()
             
             print("[TelegramBot] 开始长轮询...")
-            await self.app.updater.start_polling(drop_pending_updates=True)
+            allowed_updates = [UpdateType.MESSAGE, UpdateType.MESSAGE_REACTION]
+            await self.app.updater.start_polling(drop_pending_updates=True, allowed_updates=allowed_updates)
             
             self.is_running = True
             print("[TelegramBot] ✅ 启动成功!")
@@ -142,13 +148,60 @@ class TelegramBotService:
         self.memory.clear_history(chat_id)
         await update.effective_message.reply_text("脑子空空......历史记录已清除。")
 
+    async def _cmd_setpersona(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        chat_id = str(update.effective_chat.id)
+        if not self._check_auth(chat_id):
+            return
+        
+        user = update.effective_user
+        if not user:
+            return
+            
+        # extract persona text
+        args = context.args
+        if not args:
+            await update.effective_message.reply_text("请提供人设描述，例如: /setpersona 我是一个喜欢在群里潜水的内向宅男。")
+            return
+            
+        persona_text = " ".join(args)
+        success = user_manager.set_user_persona(str(user.id), persona_text)
+        if success:
+            # 顺便更新一次基础信息
+            user_manager.update_user_activity(user, chat_id)
+            display_name = user_manager.get_user_display_name(user)
+            await update.effective_message.reply_text(f"已为您 [{display_name}] 设定群聊人设：\n{persona_text}")
+        else:
+            await update.effective_message.reply_text("人设设定失败，请检查终端日志。")
+
+    async def _cmd_whoami(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        chat_id = str(update.effective_chat.id)
+        if not self._check_auth(chat_id):
+            return
+            
+        user = update.effective_user
+        if not user:
+            return
+            
+        persona = user_manager.get_user_persona(str(user.id))
+        display_name = user_manager.get_user_display_name(user)
+        if persona:
+            await update.effective_message.reply_text(f"您的身份是 [{display_name}]\n当前人设设定为:\n{persona}")
+        else:
+            await update.effective_message.reply_text(f"您的身份是 [{display_name}]\n当前并未设定自定义人设。使用 /setpersona 马上设定！")
+
     async def _handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
+        user = update.effective_user
         user_text = update.effective_message.text or ""
         chat_type = update.effective_chat.type
         bot_username = context.bot.username
         
-        print(f"[TelegramBot] 收到消息: [{chat_id}]({chat_type}) {user_text}")
+        # 记录用户活跃并提取名字
+        user_manager.update_user_activity(user, chat_id)
+        display_name = user_manager.get_user_display_name(user)
+        user_id = str(user.id) if user else "Unknown"
+        
+        print(f"[TelegramBot] 收到消息: [{chat_id}]({chat_type}) {display_name}: {user_text}")
         
         if chat_type in ['group', 'supergroup']:
             is_reply = (update.effective_message.reply_to_message and 
@@ -157,6 +210,10 @@ class TelegramBotService:
             is_mention = f"@{bot_username}" in user_text
             
             if not (is_reply or is_mention):
+                # 记录但不回复 (旁听模式 eavesdropping)
+                if self._check_auth(chat_id):
+                    user_text_record = f"【群内闲聊旁听】[{display_name}]: {user_text}"
+                    self.memory.add_message(chat_id, "user", user_text_record, speaker_name=display_name, speaker_id=user_id)
                 return
                 
             user_text = user_text.replace(f"@{bot_username}", "").strip()
@@ -169,7 +226,8 @@ class TelegramBotService:
         
         try:
             # LLM 交互
-            llm_response = await self.llm_handler.generate_reply(chat_id, user_text)
+            # 修改: 将提问者的名字和ID一并传递给下层
+            llm_response = await self.llm_handler.generate_reply(chat_id, user_text, speaker_name=display_name, speaker_id=user_id, chat_type=chat_type)
             
             if not llm_response:
                 await update.effective_message.reply_text("[系统] LLM 未返回有效响应，请检查配置。")
@@ -196,6 +254,59 @@ class TelegramBotService:
         if not self._check_auth(chat_id):
             return
         await update.effective_message.reply_text("[系统提示] 多模态语音输入还在施工中，暂不可用哦~请发文字。")
+
+    async def _handle_reaction(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        reaction = update.message_reaction
+        if not reaction:
+            return
+            
+        chat_id = str(reaction.chat.id)
+        if not self._check_auth(chat_id):
+            return
+            
+        user = reaction.user
+        if not user:
+            return
+            
+        # 记录用户活跃并提取名字
+        user_manager.update_user_activity(user, chat_id)
+        display_name = user_manager.get_user_display_name(user)
+        user_id = str(user.id)
+        
+        # 提取新添加的 emoji
+        new_emojis = [r.emoji for r in reaction.new_reaction if getattr(r, 'emoji', None)]
+        old_emojis = [r.emoji for r in reaction.old_reaction if getattr(r, 'emoji', None)]
+        
+        added_emojis = [e for e in new_emojis if e not in old_emojis]
+        if not added_emojis:
+            return
+            
+        emoji_str = "、".join(added_emojis)
+        print(f"[TelegramBot] 收到 Reaction: [{chat_id}] {display_name} 给消息点了 {emoji_str}")
+        
+        # 将点赞行为包装为一条隐式动作文本，喂给 LLM
+        action_text = f"*(刚才我对你的上一条消息作出了反应，添加了 {emoji_str} 的表情图标)*"
+        
+        await context.bot.send_chat_action(chat_id=reaction.chat.id, action='typing')
+        try:
+            llm_response = await self.llm_handler.generate_reply(
+                chat_id, action_text, 
+                speaker_name=display_name, 
+                speaker_id=user_id, 
+                chat_type=reaction.chat.type
+            )
+            
+            if llm_response:
+                config = self._get_config()
+                if not config.get("voice_reply", True):
+                    await context.bot.send_message(chat_id=reaction.chat.id, text=llm_response)
+                else:
+                    success = await self.audio_handler.reply_voice(chat_id, llm_response)
+                    if not success:
+                        await context.bot.send_message(chat_id=reaction.chat.id, text=f"(语音发送失败)\n{llm_response}")
+                        
+        except Exception as e:
+            print(f"[TelegramBot] 处理 Reaction 失败: {e}")
 
 # 暴露单例
 telegram_service = TelegramBotService()

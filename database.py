@@ -244,6 +244,24 @@ class DatabaseManager:
             ON memory_profiles(char_name)
         ''')
 
+        # Telegram 群组多用户系统表
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS telegram_users (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT NOT NULL,
+                chat_id     TEXT,
+                username    TEXT,
+                first_name  TEXT,
+                persona     TEXT,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id)
+            )
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_tg_users_id
+            ON telegram_users(user_id)
+        ''')
+
         
         conn.commit()
         conn.close()
@@ -1197,3 +1215,75 @@ class DatabaseManager:
             return {row["profile_key"]: row["profile_val"] for row in cursor.fetchall()}
         finally:
             conn.close()
+
+    # ==================== Telegram 多用户系统表 ====================
+
+    def upsert_telegram_user(self, user_id: str, chat_id: str = None, 
+                             username: str = None, first_name: str = None, 
+                             persona: str = None):
+        """插入或更新Telegram用户信息（如果有任何一个字段非空，则更新对应字段）"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            # 先检查是否存在
+            cursor.execute("SELECT * FROM telegram_users WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                # 动态更新提供的非空字段
+                updates = []
+                params = []
+                if chat_id is not None:
+                    updates.append("chat_id = ?")
+                    params.append(chat_id)
+                if username is not None:
+                    updates.append("username = ?")
+                    params.append(username)
+                if first_name is not None:
+                    updates.append("first_name = ?")
+                    params.append(first_name)
+                if persona is not None:
+                    updates.append("persona = ?")
+                    params.append(persona)
+                
+                if updates:
+                    updates.append("updated_at = CURRENT_TIMESTAMP")
+                    query = f"UPDATE telegram_users SET {', '.join(updates)} WHERE user_id = ?"
+                    params.append(user_id)
+                    cursor.execute(query, tuple(params))
+            else:
+                cursor.execute('''
+                    INSERT INTO telegram_users (user_id, chat_id, username, first_name, persona)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (user_id, chat_id, username, first_name, persona))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_telegram_user(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """获取单个Telegram用户信息"""
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM telegram_users WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            conn.close()
+
+    def get_telegram_users_in_chat(self, chat_id: str) -> List[Dict[str, Any]]:
+        """获取在某个群组下记录过活动的所有用户"""
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM telegram_users WHERE chat_id = ? OR chat_id IS NULL", (chat_id,))
+            # 这里简化逻辑，只要是在该系统的所有 user 都可以返回，因为可能是跨群组的同一用户
+            # 但实际上如果只需要近期活跃的用户，可以在 LLM Handler 里直接过滤。这里提供全集备用。
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+

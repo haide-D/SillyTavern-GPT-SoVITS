@@ -28,7 +28,9 @@ class TelegramLLMHandler:
         except Exception as e:
             print(f"[TelegramLLM] 角色初始化失败: {e}")
         
-    async def generate_reply(self, chat_id: str, user_text: str) -> str:
+    async def generate_reply(self, chat_id: str, user_text: str, 
+                             speaker_name: str = None, speaker_id: str = None, 
+                             chat_type: str = "private") -> str:
         config = self._get_config()
         llm_config = config.get("llm", {})
         
@@ -48,7 +50,12 @@ class TelegramLLMHandler:
         self._ensure_character_init(char_name)
 
         # 1. 记录用户消息
-        self.memory.add_message(chat_id, "user", user_text)
+        if chat_type in ['group', 'supergroup'] and speaker_name:
+            user_text_record = f"【对你讲话】[{speaker_name}]: {user_text}"
+        else:
+            user_text_record = user_text
+            
+        self.memory.add_message(chat_id, "user", user_text_record, speaker_name=speaker_name, speaker_id=speaker_id)
         
         # 2. 从 MemoryService 获取记忆上下文
         memory_context = ""
@@ -69,9 +76,49 @@ class TelegramLLMHandler:
         from telegram_utils.prompt_builder import PromptBuilder
         system_prompt = PromptBuilder.build_system_prompt(base_prompt, memory_context)
         
+        # 3.5 动态拼接多用户与环境系统设定
+        from telegram_utils.user_manager import user_manager
+        
+        history_messages = self.memory.get_messages(chat_id)
+        active_uids = list(set([m.get("speaker_id") for m in history_messages if m.get("speaker_id")]))
+        active_personas = user_manager.get_active_personas_in_chat(chat_id, active_uids)
+        
+        group_context = ""
+        if chat_type in ['group', 'supergroup']:
+            group_context += "\n\n============== 【当前系统动态环境】 ==============\n"
+            group_context += "当前场景：这是一个【多人群组聊天室】。\n"
+            group_context += "请务必通过用户言论最前端的 `[群友名字]:` 标签来分辨不同的群友，不要认错人。\n"
+            if active_personas:
+                group_context += "\n以下是本群当前活跃成员的真实人设信息：\n"
+                for name, p in active_personas.items():
+                    group_context += f"- [{name}]: {p}\n"
+            
+            if speaker_name:
+                group_context += f"\n👉 【高优先级提示】：此刻刚刚对你讲最后一句活、正等着你回话的人是 [{speaker_name}]。请主要对 Ta 作出回应。\n"
+            group_context += "==================================================\n"
+        else:
+            group_context += "\n\n============== 【当前系统动态环境】 ==============\n"
+            group_context += "当前场景：这是你与用户的一对一【私密聊天房间】。\n"
+            if speaker_id:
+                persona = user_manager.get_user_persona(speaker_id)
+                if persona:
+                    group_context += f"\n【警告】当前与你私聊的用户给自己设定的专属人设是：\n{persona}\n请务必结合此核心人设给予针对性的反应和对待方式！\n"
+            group_context += "==================================================\n"
+            
+        system_prompt += group_context
+        
         # 4. 组装最终 messages
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(self.memory.get_messages(chat_id))
+        # 传递给 LLM 时去除无用的附加数据，保障兼容性
+        # 并合并连续的相同角色消息（防止某些 LLM API 严格校验交替发言而丢弃旁听群聊消息）
+        clean_history = []
+        for m in history_messages:
+            if clean_history and clean_history[-1]["role"] == m["role"]:
+                clean_history[-1]["content"] += f"\n\n{m['content']}"
+            else:
+                clean_history.append({"role": m["role"], "content": m["content"]})
+                
+        messages.extend(clean_history)
         
         payload = {
             "model": model,

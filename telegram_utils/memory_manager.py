@@ -14,10 +14,18 @@ class MemoryManager:
     def clear_history(self, chat_id: str):
         self.history[chat_id] = []
         
-    def add_message(self, chat_id: str, role: str, content: str):
+    def add_message(self, chat_id: str, role: str, content: str, 
+                    speaker_name: str = None, speaker_id: str = None):
         if chat_id not in self.history:
             self.history[chat_id] = []
-        self.history[chat_id].append({"role": role, "content": content})
+            
+        msg_record = {"role": role, "content": content}
+        if speaker_name:
+            msg_record["speaker_name"] = speaker_name
+        if speaker_id:
+            msg_record["speaker_id"] = speaker_id
+            
+        self.history[chat_id].append(msg_record)
         
         # 截断历史
         max_history = self._get_config().get("max_history", 20)
