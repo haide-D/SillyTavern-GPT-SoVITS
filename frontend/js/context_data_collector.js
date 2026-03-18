@@ -53,14 +53,22 @@ export class ContextDataCollector {
 
             const { characters, characterId, name1, name2 } = context;
 
-            // 获取当前角色
-            const currentChar = characters?.find(c => c.avatar === characterId);
+            // characterId 在 ST 中通常是当前角色在 characters 数组中的索引
+            let currentChar = null;
+            if (typeof characterId === 'number' && characters && characters[characterId]) {
+                currentChar = characters[characterId];
+            } else if (characters) {
+                // 回退方案: 尝试通过 name 匹配
+                currentChar = characters.find(c => c.name === name2);
+            }
+
             const charName = currentChar?.name || name2;
 
             return {
                 charName,
                 userName: name1,
-                characterId
+                characterId,
+                rawData: currentChar // 保存原始数据以供后续使用
             };
 
         } catch (error) {
@@ -277,6 +285,120 @@ export class ContextDataCollector {
 
         } catch (error) {
             console.error('[ContextDataCollector] ❌ 发送 webhook 失败:', error);
+        }
+    }
+    /**
+     * 采集世界书条目 (内嵌 + 全局)
+     * 
+     * @returns {Array<Object>} - 世界书条目列表
+     */
+    static collectWorldBookEntries() {
+        try {
+            const context = window.SillyTavern?.getContext?.();
+            if (!context) {
+                console.warn('[ContextDataCollector] ⚠️ 无法获取 SillyTavern 上下文,跳过世界书采集');
+                return [];
+            }
+
+            const { characters, characterId, worldInfoSettings } = context;
+            
+            // 使用相同逻辑获取 currentChar
+            let currentChar = null;
+            if (typeof characterId === 'number' && characters && characters[characterId]) {
+                currentChar = characters[characterId];
+            } else if (characters) {
+                currentChar = characters.find(c => c.name === context.name2);
+            }
+            
+            const entries = [];
+
+            // 1. 采集角色卡内嵌世界书 (character_book)
+            if (currentChar?.data?.character_book?.entries) {
+                const charEntries = currentChar.data.character_book.entries;
+                // ST 中的 entries 可能是数组也可能是一个对象(字典)
+                const entryList = Array.isArray(charEntries) ? charEntries : Object.values(charEntries);
+                
+                for (const entry of entryList) {
+                    if (entry && !entry.disable) {
+                        entries.push({
+                            uid: entry.uid || entry.id || Math.random().toString(36).substr(2, 9),
+                            comment: entry.comment || '无标题条目',
+                            content: entry.content || '',
+                            constant: !!entry.constant,
+                            source: 'character_book'
+                        });
+                    }
+                }
+            }
+
+            // 2. 采集全局世界书 (当前关联的)
+            // 在 ST 中, 当关联了世界书时，通常会加载到 context.worldInfoCaches 或 worldInfo
+            // 我们尝试使用 context 暴露的世界书 API 或数据结构
+            const worldInfo = context.worldInfo || context.worldInfoCaches?.entries || [];
+            
+            // 将 worldInfo (也可能是对象字典) 转换为数组
+            const globalEntries = Array.isArray(worldInfo) ? worldInfo : Object.values(worldInfo);
+            
+            for (const entry of globalEntries) {
+                 if (entry && !entry.disable) {
+                     // 检查是否在内嵌世界书中已有同名/同内容，去重
+                     const isDuplicate = entries.some(e => e.content === entry.content);
+                     if (!isDuplicate) {
+                         entries.push({
+                            uid: entry.uid || entry.id || Math.random().toString(36).substr(2, 9),
+                            comment: entry.comment || '无标题条目',
+                            content: entry.content || '',
+                            constant: !!entry.constant,
+                            source: 'global_worldbook'
+                        });
+                     }
+                 }
+            }
+
+            console.log(`[ContextDataCollector] 📚 采集到 ${entries.length} 个活跃世界书条目`);
+            return entries;
+
+        } catch (error) {
+            console.error('[ContextDataCollector] ❌ 采集世界书条目失败:', error);
+            return [];
+        }
+    }
+
+    /**
+     * 采集角色卡基础数据
+     * 
+     * @returns {Object|null} - 角色卡基础数据
+     */
+    static collectCharacterCardData() {
+        try {
+            const context = window.SillyTavern?.getContext?.();
+            if (!context) return null;
+
+            const { characters, characterId } = context;
+            
+            let currentChar = null;
+            if (typeof characterId === 'number' && characters && characters[characterId]) {
+                currentChar = characters[characterId];
+            } else if (characters) {
+                currentChar = characters.find(c => c.name === context.name2);
+            }
+            
+            if (!currentChar) return null;
+
+            // 扩展提取，兼容 V2 角色卡结构 data.description
+            const data = currentChar.data || {};
+            
+            return {
+                name: currentChar.name,
+                description: currentChar.description || data.description || '',
+                personality: currentChar.personality || data.personality || '',
+                scenario: currentChar.scenario || data.scenario || '',
+                first_mes: currentChar.first_mes || data.first_mes || '',
+                mes_example: currentChar.mes_example || data.mes_example || ''
+            };
+        } catch (error) {
+            console.error('[ContextDataCollector] ❌ 采集角色卡数据失败:', error);
+            return null;
         }
     }
 }

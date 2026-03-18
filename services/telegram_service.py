@@ -78,6 +78,16 @@ class TelegramBotService:
             # 注册 handlers
             self.app.add_handler(CommandHandler("start", self._cmd_start))
             self.app.add_handler(CommandHandler("clear", self._cmd_clear))
+            
+            # 【临时增加的终极全捕获 DEBUG】
+            async def _debug_all_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
+                try:
+                    if update.effective_chat and update.effective_chat.type in ['group', 'supergroup']:
+                        print(f"\n[DEBUG 底层事件捕获] 📥 => {update.to_dict()}\n")
+                except:
+                    pass
+            self.app.add_handler(MessageHandler(filters.ALL, _debug_all_events), group=-1)
+            
             self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_text))
             self.app.add_handler(MessageHandler(filters.VOICE, self._handle_voice))
 
@@ -119,26 +129,42 @@ class TelegramBotService:
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
         if not self._check_auth(chat_id):
-            await update.message.reply_text("抱歉，您没有使用此 Bot 的权限。")
+            await update.effective_message.reply_text("抱歉，您没有使用此 Bot 的权限。")
             return
             
         self.memory.clear_history(chat_id)
-        await update.message.reply_text("你好! 我是 SillyTavern 终端。发送 /clear 可以清空聊天历史。")
+        await update.effective_message.reply_text("你好! 我是 SillyTavern 终端。发送 /clear 可以清空聊天历史。")
 
     async def _cmd_clear(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
         if not self._check_auth(chat_id):
             return
         self.memory.clear_history(chat_id)
-        await update.message.reply_text("脑子空空......历史记录已清除。")
+        await update.effective_message.reply_text("脑子空空......历史记录已清除。")
 
     async def _handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
+        user_text = update.effective_message.text or ""
+        chat_type = update.effective_chat.type
+        bot_username = context.bot.username
+        
+        print(f"[TelegramBot] 收到消息: [{chat_id}]({chat_type}) {user_text}")
+        
+        if chat_type in ['group', 'supergroup']:
+            is_reply = (update.effective_message.reply_to_message and 
+                       update.effective_message.reply_to_message.from_user and 
+                       update.effective_message.reply_to_message.from_user.username == bot_username)
+            is_mention = f"@{bot_username}" in user_text
+            
+            if not (is_reply or is_mention):
+                return
+                
+            user_text = user_text.replace(f"@{bot_username}", "").strip()
+
         if not self._check_auth(chat_id):
+            print(f"[TelegramBot] 🚨 拦截消息：群组/用户 {chat_id} 不在白名单中。如果您需要机器人在本群回复，请将此数字添加进 allowed_chat_ids。")
             return
             
-        user_text = update.message.text
-        print(f"[TelegramBot] 收到消息: [{chat_id}] {user_text}")
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
         
         try:
@@ -146,30 +172,30 @@ class TelegramBotService:
             llm_response = await self.llm_handler.generate_reply(chat_id, user_text)
             
             if not llm_response:
-                await update.message.reply_text("[系统] LLM 未返回有效响应，请检查配置。")
+                await update.effective_message.reply_text("[系统] LLM 未返回有效响应，请检查配置。")
                 return
                 
             config = self._get_config()
             
             # 如果没开语音，或者生成语音失败，降级回文字发送
             if not config.get("voice_reply", True):
-                await update.message.reply_text(llm_response)
+                await update.effective_message.reply_text(llm_response)
             else:
                 # 尝试生成音频
                 success = await self.audio_handler.reply_voice(chat_id, llm_response)
                 # 兜底：如果没发出去语音，依然发文字
                 if not success:
-                    await update.message.reply_text(f"(语音发送失败)\n{llm_response}")
+                    await update.effective_message.reply_text(f"(语音发送失败)\n{llm_response}")
                 
         except Exception as e:
             print(f"[TelegramBot] 处理文字消息失败: {e}")
-            await update.message.reply_text(f"[系统错误] 处理消息失败: {e}")
+            await update.effective_message.reply_text(f"[系统错误] 处理消息失败: {e}")
             
     async def _handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
         if not self._check_auth(chat_id):
             return
-        await update.message.reply_text("[系统提示] 多模态语音输入还在施工中，暂不可用哦~请发文字。")
+        await update.effective_message.reply_text("[系统提示] 多模态语音输入还在施工中，暂不可用哦~请发文字。")
 
 # 暴露单例
 telegram_service = TelegramBotService()

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import asyncio
 import subprocess
 from typing import Optional
 from config import load_json, SETTINGS_FILE, get_sovits_host, get_character_mappings, get_current_dirs
@@ -87,7 +88,7 @@ class TelegramAudioHandler:
                 with os.fdopen(fd, "wb") as f:
                     f.write(wav_bytes)
                 
-                ogg_path = self._convert_to_ogg(temp_wav)
+                ogg_path = await self._convert_to_ogg(temp_wav)
                 if ogg_path:
                     success = await self._send_voice_file(chat_id, ogg_path)
                     os.remove(ogg_path)
@@ -103,7 +104,7 @@ class TelegramAudioHandler:
             traceback.print_exc()
             return False
             
-    def _convert_to_ogg(self, wav_path: str) -> Optional[str]:
+    async def _convert_to_ogg(self, wav_path: str) -> Optional[str]:
         """将 WAV 转换为 OGG OPUS 格式以供 TG 发送"""
         ogg_path = wav_path.replace(".wav", ".ogg")
         print(f"[TelegramAudio] 正在转换格式: WAV -> OGG (OPUS)")
@@ -112,10 +113,18 @@ class TelegramAudioHandler:
                 "ffmpeg", "-y", "-i", wav_path,
                 "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", ogg_path
             ]
-            subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await process.communicate()
+            if process.returncode != 0:
+                print(f"[TelegramAudio] ffmpeg 转换失败，退出码: {process.returncode}")
+                return None
             return ogg_path
         except Exception as e:
-            print(f"[TelegramAudio] ffmpeg 转换失败: {e}")
+            print(f"[TelegramAudio] ffmpeg 转换异常: {e}")
             return None
             
     async def _send_voice_file(self, chat_id: str, ogg_path: str) -> bool:

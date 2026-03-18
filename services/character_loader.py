@@ -170,3 +170,174 @@ class CharacterLoader:
 
         print(f"[CharacterLoader] ✅ {char_name} 画像初始化完成，写入 {len(profiles)} 条")
         return True
+
+    # ==================== 世界书提炼 ====================
+
+    async def init_worldbook_profiles(self, char_name: str, card_data: dict, worldbook_entries: list) -> bool:
+        """
+        从前端拿到的角色卡数据和世界书条目中，使用 LLM 提炼结构化人设并保存
+        """
+        from database import DatabaseManager
+        import httpx
+        import json
+        import re
+
+        # 获取 LLM 配置
+        settings = load_json(SETTINGS_FILE)
+        tg_config = settings.get("telegram", {})
+        llm_config = tg_config.get("llm", {})
+
+        api_url = llm_config.get("api_url", "")
+        api_key = llm_config.get("api_key", "")
+        model = llm_config.get("model", "")
+
+        if not api_url or not api_key:
+            print("[CharacterLoader] LLM 未配置，无法提炼世界书")
+            return False
+
+        api_url = api_url.strip()
+        if '/chat/completions' not in api_url:
+            api_url = api_url.rstrip('/') + '/chat/completions'
+
+        # 1. 拼接文本
+        text_parts = []
+        
+        # 1.1 角色卡数据
+        if card_data:
+            text_parts.append("### 基础设定")
+            if "description" in card_data and card_data["description"]:
+                text_parts.append(f"描述:\n{card_data['description']}")
+            if "personality" in card_data and card_data["personality"]:
+                text_parts.append(f"性格:\n{card_data['personality']}")
+            if "scenario" in card_data and card_data["scenario"]:
+                text_parts.append(f"场景/世界观:\n{card_data['scenario']}")
+        
+        # 1.2 世界书数据
+        if worldbook_entries:
+            text_parts.append("### 补充设定 (世界书)")
+            for i, entry in enumerate(worldbook_entries):
+                comment = entry.get("comment", f"条目{i+1}")
+                content = entry.get("content", "")
+                if content.strip():
+                    text_parts.append(f"[{comment}]\n{content}")
+                    
+        source_text = "\n\n".join(text_parts)
+        
+        if len(source_text) < 20:
+            print(f"[CharacterLoader] {char_name} 的提炼源文本太短，无法提取")
+            return False
+            
+        print(f"[CharacterLoader] 准备提炼 {char_name} 画像，提供文本长度 {len(source_text)} 字")
+
+        # 2. 构建 Prompt
+        prompt = f"""你是一个专业的小说角色和世界观人设提炼助手。
+请仔细阅读以下关于角色「{char_name}」的原始设定资料（包含角色基础设定和世界书扩展设定），从中提取并总结出结构化的人物画像和世界观。
+
+## 原始设定资料：
+{source_text}
+
+## 输出要求：
+请输出严格的 JSON 格式（不要包含 markdown 代码块标识），包含以下字段：
+{{
+  "人物画像": {{
+    "外貌特征": "角色的外表、穿着等客观描述（如没有则填空字符串）",
+    "性格特点": "角色的内在性格、脾气（如果资料中有，尽量详细）",
+    "语言风格": "角色说话的口吻、惯用语（如没有则填空字符串）",
+    "身份背景": "角色的身世、职业、过往经历等",
+    "核心关系": "与其他人物或派系的关键关系"
+  }},
+  "世界观": "角色所处的时代背景、特殊规则、势力分布等（综合提取，如没有则填空字符串）"
+}}
+
+注意：
+- JSON 必须可被工具解析，不要有语法错误。
+- 提取的内容应尽量客观准确，没有在资料中提及的内容宁可留空，也不要自行编造。
+"""
+
+        # 3. 调用 LLM
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "你是一个人设提炼助手，只输出符合格式的 JSON。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.3, # 降低随机性
+                    "max_tokens": 1500,
+                    "stream": False
+                }
+
+                resp = await client.post(api_url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                
+            content = ""
+            if data.get("choices") and len(data["choices"]) > 0:
+                content = data["choices"][0].get("message", {}).get("content", "")
+                
+            if not content:
+                print("[CharacterLoader] LLM 返回内容为空")
+                return False
+                
+            # 4. 解析 JSON
+            content = content.strip()
+            if content.startswith("```"):
+                content = re.sub(r'^```(?:json)?\s*', '', content)
+                content = re.sub(r'\s*```$', '', content)
+                
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError:
+                # 尝试用正则找
+                match = re.search(r'\{[\s\S]*\}', content)
+                if match:
+                    try:
+                        result = json.loads(match.group(0))
+                    except json.JSONDecodeError:
+                        print(f"[CharacterLoader] JSON 格式解析严重错误: {content[:200]}")
+                        return False
+                else:
+                    print(f"[CharacterLoader] 未找到 JSON 结构: {content[:200]}")
+                    return False
+                    
+            print(f"[CharacterLoader] 成功提炼结构化画像")
+            
+            # 5. 写入数据库
+            db = DatabaseManager()
+            
+            # 5.1 人物画像部分
+            profile_dict = result.get("人物画像", {})
+            key_mapping = {
+                "外貌特征": "worldbook_appearance",
+                "性格特点": "worldbook_personality",
+                "语言风格": "worldbook_speech_style",
+                "身份背景": "worldbook_background",
+                "核心关系": "worldbook_relationships"
+            }
+            
+            save_count = 0
+            for zh_key, db_key in key_mapping.items():
+                val = profile_dict.get(zh_key, "")
+                if val and isinstance(val, str) and val.strip():
+                    db.upsert_memory_profile(char_name, db_key, val.strip(), source="worldbook")
+                    save_count += 1
+                    
+            # 5.2 世界观部分
+            world_setting = result.get("世界观", "")
+            if world_setting and isinstance(world_setting, str) and world_setting.strip():
+                db.upsert_memory_profile(char_name, "worldbook_world_setting", world_setting.strip(), source="worldbook")
+                save_count += 1
+                
+            print(f"[CharacterLoader] ✅ 写入 {save_count} 条条目到 memory_profiles")
+            return save_count > 0
+            
+        except Exception as e:
+            print(f"[CharacterLoader] 世界书提炼过程出错: {e}")
+            import traceback
+            traceback.print_exc()
+            return False

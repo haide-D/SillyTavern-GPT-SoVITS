@@ -283,5 +283,50 @@ export const TTS_API = {
         });
         if (!res.ok) throw new Error("Get auto call history by fingerprints failed");
         return await res.json();
+    },
+
+    // ===========================================
+    // 【新增】世界书初始化 API
+    // ===========================================
+
+    /**
+     * 检查角色是否已初始化世界书
+     */
+    async checkWorldBookInit(charName) {
+        try {
+            const res = await fetch(this._url(`/api/admin/worldbook/status/${encodeURIComponent(charName)}`));
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const data = await res.json();
+            return data.initialized === true;
+        } catch (error) {
+            console.error('[API] 检查世界书初始化状态失败:', error);
+            // 失败时默认已初始化，避免反复弹窗
+            return true;
+        }
+    },
+
+    /**
+     * 初始化角色世界书画像
+     * payload 格式: { char_name, card_data, worldbook_entries }
+     */
+    async initWorldBook(payload) {
+        const res = await fetch(this._url('/api/admin/worldbook/init'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) {
+            let errorMsg = `世界书初始化失败 (${res.status})`;
+            try {
+                const errorData = await res.json();
+                if (errorData.detail) errorMsg = errorData.detail;
+            } catch (e) {
+                console.warn("无法解析错误响应:", e);
+            }
+            throw new Error(errorMsg);
+        }
+        
+        return await res.json();
     }
 };

@@ -53,7 +53,7 @@ async def proxy_set_gpt_weights(weights_path: str):
     from services.model_weight_service import model_weight_service
     
     async with model_weight_service.acquire_lock("set_gpt_weights"):
-        result = model_weight_service.set_gpt_weights(weights_path, skip_if_same=False)
+        result = await model_weight_service.set_gpt_weights(weights_path, skip_if_same=False)
     
     if not result["success"]:
         if "不存在" in result["message"]:
@@ -75,7 +75,7 @@ async def proxy_set_sovits_weights(weights_path: str):
     from services.model_weight_service import model_weight_service
     
     async with model_weight_service.acquire_lock("set_sovits_weights"):
-        result = model_weight_service.set_sovits_weights(weights_path, skip_if_same=False)
+        result = await model_weight_service.set_sovits_weights(weights_path, skip_if_same=False)
     
     if not result["success"]:
         if "不存在" in result["message"]:

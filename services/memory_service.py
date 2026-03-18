@@ -85,8 +85,10 @@ class MemoryService:
                 fingerprints, limit=max_snapshots
             )
         elif tg_chat_id:
-            # TG 侧：按最新时间取
+            # TG 侧：按最新时间取，严格隔离 chat_id
             snapshots = self.db.get_memory_snapshots_latest(
+                source="telegram", 
+                source_id=str(tg_chat_id),
                 limit=max_snapshots
             )
 
@@ -210,7 +212,7 @@ class MemoryService:
 - plot_summary 必须有
 - character_profiles 为每个说话人都写一条
 - key_events 数组 0~3 个，没有就空数组 []
-- 只输出纯 JSON"""
+- 别附加任何其他文字，必须确保包含最外阶完整的闭合大括号 }} 以保证这是一个合法合规的严格 JSON。"""
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -225,7 +227,7 @@ class MemoryService:
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 1000,
+                    "max_tokens": llm_config.get("max_tokens", 5000),
                     "stream": False
                 }
 

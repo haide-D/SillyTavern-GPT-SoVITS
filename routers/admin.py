@@ -3,12 +3,16 @@ from fastapi.responses import JSONResponse, FileResponse
 from typing import Optional
 import os
 import shutil
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 
 from config import init_settings, save_json, SETTINGS_FILE
 
 from utils_admin.service_manager import ServiceManager
 from utils_admin.model_manager import ModelManager
 from utils_admin.version_manager import VersionManager
+from database import DatabaseManager
+from services.character_loader import CharacterLoader
 
 router = APIRouter()
 
@@ -18,6 +22,54 @@ router = APIRouter()
 async def get_system_status():
     """获取系统整体状态"""
     return ServiceManager.get_system_status()
+
+# ==================== 世界书画像初始化 ====================
+
+class WorldBookInitRequest(BaseModel):
+    char_name: str
+    card_data: Optional[Dict[str, Any]] = None
+    worldbook_entries: List[Dict[str, Any]] = []
+
+@router.get("/worldbook/status/{char_name}")
+async def check_worldbook_status(char_name: str):
+    """检查角色的世界书画像是否已初始化"""
+    db = DatabaseManager()
+    profiles = db.get_memory_profiles(char_name)
+    
+    # 检查是否有 source="worldbook" 或 worldbook_ 开头的 profile_key
+    is_initialized = False
+    if profiles:
+        # get_memory_profiles 现返回 Dict[key, val]
+        for key in profiles.keys():
+            if key.startswith("worldbook_"):
+                is_initialized = True
+                break
+                
+    return {"initialized": is_initialized}
+
+@router.post("/worldbook/init")
+async def init_worldbook(request: WorldBookInitRequest):
+    """接收世界书条目和角色卡数据，调用 LLM 提炼画像并存储"""
+    if not request.char_name:
+        raise HTTPException(status_code=400, detail="缺少角色名称")
+        
+    try:
+        loader = CharacterLoader()
+        success = await loader.init_worldbook_profiles(
+            char_name=request.char_name,
+            card_data=request.card_data or {},
+            worldbook_entries=request.worldbook_entries
+        )
+        
+        if success:
+            return {"success": True, "message": "世界书画像提取成功"}
+        else:
+            raise HTTPException(status_code=500, detail="世界书画像提取未成功或无内容")
+            
+    except Exception as e:
+        print(f"[Admin Router] 世界书初始化出错: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ==================== 模型管理 ====================
 

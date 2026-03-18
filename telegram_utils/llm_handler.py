@@ -66,14 +66,8 @@ class TelegramLLMHandler:
         # 3. 组装 system prompt
         base_prompt = llm_config.get("system_prompt", "你是一个聊天助理。")
         
-        if memory_context:
-            system_prompt = f"""{base_prompt}
-
-以下是你的记忆和人设信息，请在回复时参考：
-
-{memory_context}"""
-        else:
-            system_prompt = base_prompt
+        from telegram_utils.prompt_builder import PromptBuilder
+        system_prompt = PromptBuilder.build_system_prompt(base_prompt, memory_context)
         
         # 4. 组装最终 messages
         messages = [{"role": "system", "content": system_prompt}]
@@ -87,9 +81,22 @@ class TelegramLLMHandler:
             "stream": False
         }
         
-        print(f"[TelegramLLM] 请求 LLM: URL={api_url}, 模型={model}")
+        print("\n" + "="*60)
+        print("【Telegram LLM 请求调试信息】")
+        print(f"🔗 URL: {api_url} | 🤖 Model: {model}")
         if memory_context:
-            print(f"[TelegramLLM] 📚 注入了 {len(memory_context)} 字符的记忆上下文")
+            print(f"📚 记忆上下文: 已注入 {len(memory_context)} 字符")
+        print("-" * 60)
+        print("【System Prompt】\n")
+        print(system_prompt)
+        print("\n" + "-" * 60)
+        print("【聊天历史 (Chat History)】\n")
+        for msg in messages[1:]:
+            role = msg.get("role", "unknown").upper()
+            text = msg.get("content", "")
+            # 为了防止内容过长单行挤在一起，打印时自动带上换行
+            print(f"[{role}]: {text}\n")
+        print("="*60 + "\n")
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             headers = {
@@ -120,8 +127,13 @@ class TelegramLLMHandler:
         if not char_name:
             return
             
+        # 更新并获取该 chat_id 的历史总轮次计数
+        self._round_counter[chat_id] = self._round_counter.get(chat_id, 0) + 1
+        current_round = self._round_counter[chat_id]
+        
         history = self.memory.get_messages(chat_id)
-        if len(history) > 0 and len(history) % 10 == 0:
+        # 每确切的第 10 轮触发一次
+        if current_round > 0 and current_round % 10 == 0:
             try:
                 from services.memory_service import MemoryService
                 from database import DatabaseManager
@@ -129,9 +141,9 @@ class TelegramLLMHandler:
                 mem_svc = MemoryService()
                 db = DatabaseManager()
                 
-                # 取最近 10 条消息
-                recent = history[-10:]
-                round_num = len(history) // 10
+                # 取最近 10 条消息作为分析切片
+                recent = history[-10:] if len(history) >= 10 else history
+                round_num = current_round // 10
                 
                 # 生成 TG 专用指纹
                 fingerprint = f"tg_{chat_id}_{round_num}"
@@ -139,7 +151,7 @@ class TelegramLLMHandler:
                 # 查找最新的酒馆指纹作为 parent
                 parent_fp = db.get_latest_tavern_fingerprint()
                 
-                print(f"[TelegramLLM] 🧠 触发记忆处理 (第 {len(history)} 轮, parent_fp={parent_fp})")
+                print(f"[TelegramLLM] 🧠 触发记忆处理 (累积第 {current_round} 轮, parent_fp={parent_fp})")
                 
                 await mem_svc.process_conversation(
                     source="telegram",
