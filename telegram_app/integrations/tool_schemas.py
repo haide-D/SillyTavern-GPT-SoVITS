@@ -1,42 +1,46 @@
-def get_chat_tools(emotions_str: str) -> list[dict]:
-    """返回供大模型使用的 Function Calling (Tools) 结构化定义。"""
+from typing import Iterable
+
+
+def get_chat_tools(character_names: Iterable[str], allow_voice: bool) -> list[dict]:
+    character_text = "、".join(character_names)
+    delivery_enum = ["text", "voice"] if allow_voice else ["text"]
+    delivery_desc = (
+        "发送方式，可选 text 或 voice" if allow_voice else "发送方式，固定为 text"
+    )
+
     return [
         {
             "type": "function",
             "function": {
-                "name": "send_text_message",
-                "description": "发送一条纯文本消息。当你不需要语音播报或当前文字只适合作为附加说明时使用此工具。",
+                "name": "emit_bot_message",
+                "description": "安排一个角色对应的 Telegram Bot 发送一条消息。可重复调用以形成多人对话。",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "character_name": {
+                            "type": "string",
+                            "description": f"必须从当前可用角色中选择：{character_text}",
+                        },
                         "text": {
                             "type": "string",
-                            "description": "要发送的具体文本内容。",
-                        }
-                    },
-                    "required": ["text"],
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "send_voice_message",
-                "description": "发送一条带情感表现的语音消息。这是你的主要发声方式。为了模拟真实的语音聊天体验，你可以多次调用此工具拆分短句陆续发出。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "text": {
+                            "description": "消息正文，必须像真实聊天消息一样自然简短。",
+                        },
+                        "delivery": {
                             "type": "string",
-                            "description": "将要合成语音的文本内容。",
+                            "enum": delivery_enum,
+                            "description": delivery_desc,
                         },
                         "emotion": {
                             "type": "string",
-                            "description": f"说话时的情绪状态。请务必优先选择具体的、带感情的标签。可用情绪={emotions_str}",
+                            "description": "语音情绪标签；如果 delivery=text 可填 default。",
+                        },
+                        "reply_to_trigger": {
+                            "type": "boolean",
+                            "description": "是否对本轮触发消息进行引用回复。通常只有第一条回复需要 true。",
                         },
                     },
-                    "required": ["text", "emotion"],
+                    "required": ["character_name", "text", "delivery"],
                 },
             },
-        },
+        }
     ]

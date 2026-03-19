@@ -7,6 +7,7 @@
 - character_profiles: 每个说话人的性格/状态 (JSON)
 - key_events: 关键事件列表 (JSON)
 """
+
 import json
 import time
 import httpx
@@ -31,16 +32,17 @@ class MemoryService:
             return
         self.db = DatabaseManager()
         self._initialized = True
-        print("[MemoryService] ✅ 初始化完成")
+        print("[MemoryService] Initialized")
 
     # ==================== 读取接口 ====================
 
     def get_context_for_prompt(
         self,
         char_name: str,
-        fingerprints: List[str] = None,
-        tg_chat_id: str = None,
-        max_snapshots: int = 5
+        fingerprints: Optional[List[str]] = None,
+        tg_chat_id: Optional[str] = None,
+        namespace_key: Optional[str] = None,
+        max_snapshots: int = 5,
     ) -> str:
         """
         为 LLM Prompt 组装记忆上下文字符串。
@@ -67,8 +69,14 @@ class MemoryService:
             if "personality" in profiles:
                 profile_lines.append(f"性格: {profiles['personality']}")
 
-            skip_keys = {"world_setting", "description", "personality",
-                         "first_message", "dialogue_examples", "system_prompt"}
+            skip_keys = {
+                "world_setting",
+                "description",
+                "personality",
+                "first_message",
+                "dialogue_examples",
+                "system_prompt",
+            }
             for key, val in profiles.items():
                 if key not in skip_keys:
                     display = self._profile_key_display(key)
@@ -84,12 +92,15 @@ class MemoryService:
             snapshots = self.db.get_memory_snapshots_by_fingerprints(
                 fingerprints, limit=max_snapshots
             )
+        elif namespace_key:
+            snapshots = self.db.get_memory_snapshots_latest(
+                namespace_key=namespace_key,
+                limit=max_snapshots,
+            )
         elif tg_chat_id:
             # TG 侧：按最新时间取，严格隔离 chat_id
             snapshots = self.db.get_memory_snapshots_latest(
-                source="telegram", 
-                source_id=str(tg_chat_id),
-                limit=max_snapshots
+                source="telegram", source_id=str(tg_chat_id), limit=max_snapshots
             )
 
         if snapshots:
@@ -122,7 +133,9 @@ class MemoryService:
                     if desc and desc not in [e.get("description") for e in all_events]:
                         all_events.append({"tag": tag, "description": desc})
             if all_events:
-                event_lines = [f"- [{e['tag']}] {e['description']}" for e in all_events[:10]]
+                event_lines = [
+                    f"- [{e['tag']}] {e['description']}" for e in all_events[:10]
+                ]
                 sections.append("## 关键记忆\n" + "\n".join(event_lines))
 
         if not sections:
@@ -138,9 +151,12 @@ class MemoryService:
         source_id: str,
         context_fingerprint: str,
         messages: List[Dict],
-        speakers: List[str] = None,
-        parent_fingerprint: str = None,
-        floor: int = None
+        speakers: Optional[List[str]] = None,
+        parent_fingerprint: Optional[str] = None,
+        floor: Optional[int] = None,
+        namespace_key: Optional[str] = None,
+        mode: Optional[str] = None,
+        story_id: Optional[str] = None,
     ) -> Dict:
         """
         核心方法：对一段对话执行 LLM 分析，产出一条记忆快照。
@@ -174,8 +190,8 @@ class MemoryService:
             return {"success": False, "error": "LLM 未配置"}
 
         api_url = api_url.strip()
-        if '/chat/completions' not in api_url:
-            api_url = api_url.rstrip('/') + '/chat/completions'
+        if "/chat/completions" not in api_url:
+            api_url = api_url.rstrip("/") + "/chat/completions"
 
         # 格式化对话
         conversation_text = self._format_messages(messages)
@@ -218,17 +234,20 @@ class MemoryService:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 headers = {
                     "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 }
                 payload = {
                     "model": model,
                     "messages": [
-                        {"role": "system", "content": "你是一个记忆提取助手，只输出 JSON。"},
-                        {"role": "user", "content": prompt}
+                        {
+                            "role": "system",
+                            "content": "你是一个记忆提取助手，只输出 JSON。",
+                        },
+                        {"role": "user", "content": prompt},
                     ],
                     "temperature": 0.3,
                     "max_tokens": llm_config.get("max_tokens", 8000),
-                    "stream": False
+                    "stream": False,
                 }
 
                 resp = await client.post(api_url, json=payload, headers=headers)
@@ -253,22 +272,30 @@ class MemoryService:
                 source=source,
                 source_id=source_id,
                 floor=floor,
+                namespace_key=namespace_key,
+                mode=mode,
+                story_id=story_id,
                 plot_summary=result.get("plot_summary", ""),
                 character_profiles=result.get("character_profiles", {}),
                 key_events=result.get("key_events", []),
-                speakers=speakers
+                speakers=speakers,
             )
 
             if snapshot_id:
-                print(f"[MemoryService] ✅ 快照已保存 (id={snapshot_id}, fp={context_fingerprint[:20]}...)")
+                print(
+                    f"[MemoryService] Snapshot saved (id={snapshot_id}, fp={context_fingerprint[:20]}...)"
+                )
             else:
-                print(f"[MemoryService] ⚠️ 指纹已存在，跳过: {context_fingerprint[:20]}...")
+                print(
+                    f"[MemoryService] Snapshot already exists, skip: {context_fingerprint[:20]}..."
+                )
 
             return {"success": True, "snapshot_id": snapshot_id, **result}
 
         except Exception as e:
-            print(f"[MemoryService] ❌ 记忆处理失败: {e}")
+            print(f"[MemoryService] Memory processing failed: {e}")
             import traceback
+
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
@@ -289,14 +316,15 @@ class MemoryService:
 
     def _parse_memory_json(self, text: str) -> Optional[Dict]:
         import re
+
         text = text.strip()
         if text.startswith("```"):
-            text = re.sub(r'^```(?:json)?\s*', '', text)
-            text = re.sub(r'\s*```$', '', text)
+            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"\s*```$", "", text)
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            match = re.search(r'\{[\s\S]*\}', text)
+            match = re.search(r"\{[\s\S]*\}", text)
             if match:
                 try:
                     return json.loads(match.group(0))

@@ -1,40 +1,52 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from telegram_app.settings import get_telegram_settings
+from database import DatabaseManager
 
 
 class SessionHistoryRepository:
-    """短期会话历史缓存 (chat_id -> messages)。"""
+    """Namespace-aware Telegram history backed by SQLite."""
 
-    def __init__(self, settings_provider=get_telegram_settings):
-        self._settings_provider = settings_provider
-        self._history: Dict[str, List[Dict[str, str]]] = {}
+    def __init__(self):
+        self._db = DatabaseManager()
 
-    def clear_history(self, chat_id: str):
-        self._history[chat_id] = []
+    def clear_history(self, namespace_key: str):
+        self._db.clear_telegram_messages(namespace_key)
 
     def add_message(
         self,
+        namespace_key: str,
         chat_id: str,
         role: str,
         content: str,
-        speaker_name: str = None,
-        speaker_id: str = None,
+        speaker_type: str,
+        source_bot_id: Optional[str] = None,
+        source_bot_username: Optional[str] = None,
+        sender_user_id: Optional[str] = None,
+        sender_display_name: Optional[str] = None,
+        character_id: Optional[str] = None,
+        character_name: Optional[str] = None,
+        delivery: str = "text",
+        emotion: Optional[str] = None,
+        telegram_message_id: Optional[int] = None,
+        reply_to_message_id: Optional[int] = None,
     ):
-        if chat_id not in self._history:
-            self._history[chat_id] = []
+        self._db.add_telegram_message(
+            namespace_key=namespace_key,
+            chat_id=chat_id,
+            speaker_type=speaker_type,
+            role=role,
+            content=content,
+            source_bot_id=source_bot_id,
+            source_bot_username=source_bot_username,
+            sender_user_id=sender_user_id,
+            sender_display_name=sender_display_name,
+            character_id=character_id,
+            character_name=character_name,
+            delivery=delivery,
+            emotion=emotion,
+            telegram_message_id=telegram_message_id,
+            reply_to_message_id=reply_to_message_id,
+        )
 
-        msg_record = {"role": role, "content": content}
-        if speaker_name:
-            msg_record["speaker_name"] = speaker_name
-        if speaker_id:
-            msg_record["speaker_id"] = speaker_id
-
-        self._history[chat_id].append(msg_record)
-
-        max_history = self._settings_provider().max_history
-        if len(self._history[chat_id]) > max_history:
-            self._history[chat_id] = self._history[chat_id][-max_history:]
-
-    def get_messages(self, chat_id: str) -> List[Dict[str, str]]:
-        return [dict(m) for m in self._history.get(chat_id, [])]
+    def get_messages(self, namespace_key: str, limit: int = 50) -> List[Dict[str, str]]:
+        return self._db.get_telegram_messages(namespace_key, limit=limit)

@@ -1,20 +1,22 @@
 class TelegramMemoryBridge:
     def __init__(self):
-        self._char_initialized = False
+        self._initialized_characters: set[str] = set()
 
     def ensure_character_initialized(self, char_name: str):
-        if self._char_initialized or not char_name:
+        if not char_name or char_name in self._initialized_characters:
             return
         try:
             from services.character_loader import CharacterLoader
 
             loader = CharacterLoader()
             loader.init_profiles(char_name)
-            self._char_initialized = True
+            self._initialized_characters.add(char_name)
         except Exception as e:
             print(f"[TelegramLLM] 角色初始化失败: {e}")
 
-    def get_memory_context(self, char_name: str, chat_id: str) -> str:
+    def get_memory_context(
+        self, char_name: str, namespace_key: str, max_snapshots: int
+    ) -> str:
         if not char_name:
             return ""
         try:
@@ -22,7 +24,10 @@ class TelegramMemoryBridge:
 
             mem_svc = MemoryService()
             return mem_svc.get_context_for_prompt(
-                char_name=char_name, tg_chat_id=str(chat_id)
+                char_name=char_name,
+                tg_chat_id=None,
+                namespace_key=namespace_key,
+                max_snapshots=max_snapshots,
             )
         except Exception as e:
             print(f"[TelegramLLM] 获取记忆上下文失败: {e}")
@@ -30,34 +35,35 @@ class TelegramMemoryBridge:
 
     async def process_conversation_snapshot(
         self,
-        chat_id: str,
-        char_name: str,
+        namespace_key: str,
+        mode: str,
+        story_id: str,
+        primary_character: str,
         messages: list,
         round_count: int,
     ):
         try:
             from services.memory_service import MemoryService
-            from database import DatabaseManager
 
             mem_svc = MemoryService()
-            db = DatabaseManager()
-
             recent = messages[-10:] if len(messages) >= 10 else messages
-            round_num = round_count // 10
-            fingerprint = f"tg_{chat_id}_{round_num}"
-            parent_fp = db.get_latest_tavern_fingerprint()
+            round_num = max(1, round_count)
+            fingerprint = f"{namespace_key}:{round_num}"
 
             print(
-                f"[TelegramLLM] 🧠 触发记忆处理 (累积第 {round_count} 轮, parent_fp={parent_fp})"
+                f"[TelegramLLM] Trigger memory snapshot namespace={namespace_key} round={round_count}"
             )
 
             await mem_svc.process_conversation(
                 source="telegram",
-                source_id=str(chat_id),
+                source_id=namespace_key,
                 context_fingerprint=fingerprint,
                 messages=recent,
-                speakers=[char_name],
-                parent_fingerprint=parent_fp,
+                speakers=[primary_character],
+                parent_fingerprint=None,
+                namespace_key=namespace_key,
+                mode=mode,
+                story_id=story_id,
             )
         except Exception as e:
             print(f"[TelegramLLM] 记忆处理失败: {e}")

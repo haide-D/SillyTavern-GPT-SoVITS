@@ -3,7 +3,7 @@ class VoiceSender:
         self.bot_app = bot_app
 
     async def send_voice_file(
-        self, chat_id: str, ogg_path: str, reply_to_message_id: int = None
+        self, chat_id: str, ogg_path: str, reply_to_message_id=None
     ) -> bool:
         try:
             if not self.bot_app:
