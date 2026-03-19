@@ -83,13 +83,24 @@ class TelegramBotService:
     def _get_settings(self):
         return get_telegram_settings()
 
-    def _is_message_processed(self, chat_id: str, message_id: Optional[int]) -> bool:
-        if message_id is None:
+    def _is_message_processed(self, update: Update) -> bool:
+        if not update.effective_message or not update.effective_chat:
             return False
-        key = (chat_id, message_id)
+            
+        chat_id = str(update.effective_chat.id)
+        user_id = str(update.effective_user.id) if update.effective_user else ""
+        text = update.effective_message.text or ""
+        date = int(update.effective_message.date.timestamp()) if update.effective_message.date else 0
+        
+        # 在 Basic Group 中，每个 Bot 发送给后端的 message_id 是孤立且不同的！
+        # 必须通过 聊天群组ID + 用户ID + 文本 + 时间戳 来实现跨 Bot 精准备重
+        key = f"{chat_id}_{user_id}_{text}_{date}"
+        
         if key in self._processed_messages:
             return True
+            
         self._processed_messages.add(key)
+        print(f"[TelegramBot] 首次捕获并拦截消息: (chat={chat_id}, user={user_id}, text={text[:10]}...)")
         if len(self._processed_messages) > 5000:
             self._processed_messages = set(list(self._processed_messages)[-2500:])
         return False
@@ -195,7 +206,7 @@ class TelegramBotService:
 
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             await update.effective_message.reply_text(
@@ -207,7 +218,7 @@ class TelegramBotService:
 
     async def _cmd_clear(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             return
@@ -216,7 +227,7 @@ class TelegramBotService:
 
     async def _cmd_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             return
@@ -228,7 +239,7 @@ class TelegramBotService:
 
     async def _cmd_story(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             return
@@ -240,7 +251,7 @@ class TelegramBotService:
 
     async def _cmd_pack(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             return
@@ -252,7 +263,7 @@ class TelegramBotService:
 
     async def _cmd_setpersona(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             return
@@ -271,7 +282,7 @@ class TelegramBotService:
 
     async def _cmd_whoami(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         if not self._is_allowed_for_any_bot(chat_id):
             return
@@ -289,18 +300,16 @@ class TelegramBotService:
 
         chat_id = str(update.effective_chat.id)
         message_id = update.effective_message.message_id
-        if self._is_message_processed(chat_id, message_id):
-            return
+
         if not self._is_allowed_for_any_bot(chat_id):
             return
 
         user = update.effective_user
         user_text = update.effective_message.text or ""
         chat_type = update.effective_chat.type
-        display_name = self.user_repo.get_user_display_name(user)
-        user_id = str(user.id) if user else "Unknown"
-        self.user_repo.update_user_activity(user, chat_id)
 
+        # ⚡ 关键修复：先判断群聊策略，再去占坑（dedup）
+        # 否则看不到 reply 上下文的 Bot 会抢先占坑后放弃，导致能看到的 Bot 被拦截
         managed_usernames = self._managed_usernames()
         replied_user = (
             update.effective_message.reply_to_message.from_user
@@ -315,6 +324,14 @@ class TelegramBotService:
 
         if is_group_chat(chat_type) and not should_reply_in_group(is_reply, is_mention):
             return
+
+        # ⚡ 通过了群聊策略检查后，才去占坑去重
+        if self._is_message_processed(update):
+            return
+
+        display_name = self.user_repo.get_user_display_name(user)
+        user_id = str(user.id) if user else "Unknown"
+        self.user_repo.update_user_activity(user, chat_id)
 
         for username in managed_usernames:
             user_text = user_text.replace(f"@{username}", "").strip()
@@ -355,7 +372,7 @@ class TelegramBotService:
         if not update.effective_message or not update.effective_chat:
             return
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(chat_id, update.effective_message.message_id):
+        if self._is_message_processed(update):
             return
         await update.effective_message.reply_text(
             "[系统提示] 多 Bot 模式下的语音输入还未接通，请先发送文字。"
@@ -420,6 +437,14 @@ class TelegramBotService:
                 print(f"[TelegramBot] 未找到角色对应 runtime: {msg.character_id}")
                 continue
 
+            # ===== 私聊发送路径 =====
+            if msg.is_private:
+                await self._send_private_message(
+                    runtime, chat_id, msg.target_user_display_name, msg.text
+                )
+                continue
+
+            # ===== 群发路径 =====
             reply_target = (
                 reply_to_message_id if (i == 0 or msg.reply_to_trigger) else None
             )
@@ -439,20 +464,78 @@ class TelegramBotService:
                             ogg_path,
                             reply_to_message_id=reply_target,
                         )
+                    except Exception as e:
+                        if "reply" in str(e).lower() or "not found" in str(e).lower():
+                            print(f"[TelegramAudio] 发送语音失败(回复对象未找到)，尝试无引用发送...")
+                            try:
+                                success = await VoiceSender(runtime.app).send_voice_file(
+                                    chat_id,
+                                    ogg_path,
+                                    reply_to_message_id=None,
+                                )
+                            except Exception as e2:
+                                print(f"[TelegramAudio] 无引用发送语音也失败: {e2}")
+                        else:
+                            print(f"[TelegramAudio] 发送语音发生异常: {e}")
                     finally:
                         if os.path.exists(ogg_path):
                             os.remove(ogg_path)
 
             if not success:
-                await runtime.app.bot.send_message(
-                    chat_id=chat_id,
-                    text=msg.text,
-                    reply_to_message_id=reply_target,
-                )
+                try:
+                    await runtime.app.bot.send_message(
+                        chat_id=chat_id,
+                        text=msg.text,
+                        reply_to_message_id=reply_target,
+                    )
+                except Exception as e:
+                    if "reply" in str(e).lower() or "not found" in str(e).lower():
+                        print(f"[TelegramBot] Bot @{runtime.username} 无法回复消息。降级直接群发...")
+                        await runtime.app.bot.send_message(
+                            chat_id=chat_id,
+                            text=msg.text,
+                            reply_to_message_id=None,
+                        )
+                    else:
+                        raise
 
             if i < len(messages) - 1:
-                await runtime.app.bot.send_chat_action(chat_id=chat_id, action="typing")
+                try:
+                    await runtime.app.bot.send_chat_action(chat_id=chat_id, action="typing")
+                except Exception:
+                    pass
                 await asyncio.sleep(random.uniform(1.0, 2.5))
+
+    async def _send_private_message(
+        self, runtime: BotRuntime, group_chat_id: str, target_name: str, text: str
+    ):
+        """通过 Bot 私聊向指定玩家发送秘密消息"""
+        user_id = self.user_repo.find_user_id_by_display_name(target_name)
+        if not user_id:
+            print(f"[TelegramBot] 私聊发送失败: 找不到用户 '{target_name}'")
+            await runtime.app.bot.send_message(
+                chat_id=group_chat_id,
+                text=f"[系统提示] 无法向 {target_name} 发送私聊，未找到该用户记录。",
+            )
+            return
+
+        try:
+            await runtime.app.bot.send_message(chat_id=int(user_id), text=text)
+            print(f"[TelegramBot] ✅ 私聊已发送给 {target_name} (uid={user_id})")
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "forbidden" in error_msg or "initiate" in error_msg or "blocked" in error_msg:
+                print(f"[TelegramBot] 私聊失败(用户未 /start): {target_name}")
+                await runtime.app.bot.send_message(
+                    chat_id=group_chat_id,
+                    text=f"📩 @{target_name}，请先私聊 @{runtime.username} 发送 /start，然后我才能给你发送秘密信息哦~",
+                )
+            else:
+                print(f"[TelegramBot] 私聊发送异常: {e}")
+                await runtime.app.bot.send_message(
+                    chat_id=group_chat_id,
+                    text=f"[系统提示] 向 {target_name} 发送私聊失败: {e}",
+                )
 
 
 telegram_service = TelegramBotService()

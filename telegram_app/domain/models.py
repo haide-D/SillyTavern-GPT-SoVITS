@@ -51,8 +51,13 @@ class OutboundMessage:
     delivery: str = "text"
     emotion: str = "default"
     reply_to_trigger: bool = False
+    target_user_display_name: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def use_tts(self) -> bool:
         return self.delivery == "voice"
+
+    @property
+    def is_private(self) -> bool:
+        return bool(self.target_user_display_name)

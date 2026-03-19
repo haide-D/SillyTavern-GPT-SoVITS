@@ -19,6 +19,7 @@ class PromptBuilder:
         recent_messages: List[dict],
         mode_config: TelegramModeConfig,
         allow_voice: bool,
+        clue_text: str = "",
     ) -> str:
         parts: List[str] = []
 
@@ -91,6 +92,10 @@ class PromptBuilder:
             if state_json:
                 parts.append(f"structured_state={state_json}")
 
+        if clue_text:
+            parts.append("============== 【已发现的线索】 ==============")
+            parts.append(clue_text)
+
         if memory_context:
             parts.append("============== 【记忆摘要】 ==============")
             parts.append(memory_context.strip())
@@ -99,9 +104,12 @@ class PromptBuilder:
         parts.append(f"- 本轮最多让 {mode_config.max_speakers_per_turn} 个角色发言。")
         parts.append("- 优先回应刚刚触发你的用户，不要让所有角色轮流刷屏。")
         parts.append("- 每条回复都必须通过工具 `emit_bot_message` 发出。")
+        parts.append("- ⚠️【身份卡/秘密信息 禁止群发】发放身份卡、独家线索等秘密内容时，必须用 `emit_private_message` 私聊发送给对应玩家。严禁在群聊中泄露任何玩家的身份卡内容！")
+        parts.append("- ⚠️【Bot 角色身份卡】可用角色列表中的 Bot（如萧炎等）也是游戏参与者，也必须有身份卡。发放身份卡时，用 `save_clue(visibility=private, related_character=角色名)` 为每个Bot角色保存其秘密身份，这样你后续扮演该角色时能记住身份设定。")
+        parts.append("- 当剧情出现重要发现、线索、转折时，使用 `save_clue` 工具记录下来，确保后续对话能持续引用。")
         parts.append("- 严禁输出旁白、解释、系统说明或未通过工具的文本。")
         parts.append("- 文本必须像即时聊天，不写小说段落。")
-        parts.append("- 只有在角色本身支持且确实适合时，才使用 voice。")
+        parts.append('- 🎙️【语音优先】标记为"可语音"的角色，delivery 应优先填 voice 而非 text，并根据角色当前情绪填写准确的 emotion 标签。只有在内容不适合朗读（如大段说明文字）时才用 text。')
 
         if recent_messages:
             parts.append("============== 【近期对话提示】 ==============")

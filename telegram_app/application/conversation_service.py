@@ -132,6 +132,14 @@ class TelegramConversationService:
         )
 
         allow_voice = any(bot.voice_enabled for bot in resolved_bots)
+
+        # 读取已有线索
+        from telegram_app.integrations.clue_store import read_all_clues
+        clue_text = read_all_clues(session.namespace_key)
+
+        # 提取活跃用户昵称列表（供 emit_private_message 工具引用）
+        active_user_names = list(active_personas.keys()) if active_personas else []
+
         system_prompt = PromptBuilder.build_system_prompt(
             base_prompt=llm.system_prompt,
             session=session,
@@ -144,6 +152,7 @@ class TelegramConversationService:
             recent_messages=recent_messages,
             mode_config=mode_config,
             allow_voice=allow_voice,
+            clue_text=clue_text,
         )
 
         payload = {
@@ -159,6 +168,8 @@ class TelegramConversationService:
                     for bot in resolved_bots[: mode_config.max_active_characters]
                 ],
                 allow_voice=allow_voice,
+                active_user_names=active_user_names,
+                bots=resolved_bots[: mode_config.max_active_characters],
             ),
             "tool_choice": "auto",
         }
@@ -183,9 +194,35 @@ class TelegramConversationService:
             print(str(data))
         print("=" * 60 + "\n")
 
-        parsed_messages = self._parser.parse(data, resolved_bots)
+        parsed_messages, parsed_clues = self._parser.parse(data, resolved_bots)
+
+        # 保存线索
+        from telegram_app.integrations.clue_store import append_clue
+
+        if parsed_clues:
+            for clue in parsed_clues:
+                append_clue(
+                    namespace_key=session.namespace_key,
+                    clue_text=clue.clue_text,
+                    visibility=clue.visibility,
+                    related_character=clue.related_character,
+                )
+
+        # 🔑 私聊消息（身份卡等）自动存为线索，防止 LLM 遗忘
+        for message in parsed_messages:
+            if message.is_private:
+                append_clue(
+                    namespace_key=session.namespace_key,
+                    clue_text=f"[已私聊发给{message.target_user_display_name}] {message.text}",
+                    visibility="private",
+                    related_character=message.target_user_display_name,
+                )
+
         if parsed_messages:
             for message in parsed_messages:
+                # 私聊消息不存入群聊历史（已存入线索文件），防止身份卡泄露到对话提示中
+                if message.is_private:
+                    continue
                 self._history.add_message(
                     namespace_key=session.namespace_key,
                     chat_id=inbound.chat_id,

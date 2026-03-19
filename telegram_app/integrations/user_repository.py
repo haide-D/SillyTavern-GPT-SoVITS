@@ -81,3 +81,13 @@ class TelegramUserRepository:
             logger.error(f"[UserManager] 获取群内人设失败: {e}")
 
         return personas
+
+    def find_user_id_by_display_name(self, display_name: str) -> Optional[str]:
+        """根据显示名查找 Telegram 用户 ID（用于私聊发送）"""
+        try:
+            user = self.db.find_telegram_user_by_name(display_name)
+            if user:
+                return user.get("user_id")
+        except Exception as e:
+            logger.error(f"[UserManager] 按名称查找用户失败: {e}")
+        return None

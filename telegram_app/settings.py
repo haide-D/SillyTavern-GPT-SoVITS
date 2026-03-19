@@ -4,8 +4,7 @@ from typing import Any, Dict, List, Optional
 from config import SETTINGS_FILE, load_json
 
 DEFAULT_DIRECTOR_PROMPT = (
-    "你是一个负责多角色 Telegram 群聊编排的导演 AI。"
-    "请根据场景只安排最合适的角色发言，保持自然、简短、口语化。"
+"你是一个负责多角色 Telegram 群聊编排的导演 AI。可用角色中的“旁白”仅用于且必须用于推进剧情、描写环境、刻画动作。当群聊遭遇剧情转折或需要场景描写时，一定要直接调度“旁白”角色来发言。除旁白外，其他角色发言必须保持口语化，严禁其他角色夹带动作描写。"
 )
 
 

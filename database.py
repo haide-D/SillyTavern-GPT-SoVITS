@@ -1918,3 +1918,18 @@ class DatabaseManager:
             return [dict(row) for row in rows]
         finally:
             conn.close()
+
+    def find_telegram_user_by_name(self, display_name: str) -> Optional[Dict[str, Any]]:
+        """根据显示名或用户名查找 Telegram 用户（用于私聊发送）"""
+        conn = self._get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT * FROM telegram_users WHERE first_name = ? OR username = ? LIMIT 1",
+                (display_name, display_name),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()

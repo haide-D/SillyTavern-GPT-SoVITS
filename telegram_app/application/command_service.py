@@ -33,7 +33,9 @@ class TelegramCommandService:
     def handle_clear(self, chat_id: str, settings: TelegramSettings) -> str:
         session = self._sessions.ensure_active_session(chat_id, settings)
         self._history.clear_history(session.namespace_key)
-        return f"已清空当前会话命名空间历史: {session.namespace_key}"
+        from telegram_app.integrations.clue_store import clear_clues
+        clear_clues(session.namespace_key)
+        return f"已清空当前会话历史与线索: {session.namespace_key}"
 
     def handle_mode(
         self, chat_id: str, settings: TelegramSettings, mode: Optional[str]
