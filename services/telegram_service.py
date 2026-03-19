@@ -18,6 +18,7 @@ from telegram.ext import (
 from telegram_app.application.command_service import TelegramCommandService
 from telegram_app.application.conversation_service import TelegramConversationService
 from telegram_app.application.session_service import TelegramSessionService
+from telegram_app.assets.repository import TelegramAssetRepository
 from telegram_app.domain.history import SessionHistoryRepository
 from telegram_app.domain.models import InboundMessage, ReactionEvent
 from telegram_app.domain.policies import is_group_chat, should_reply_in_group
@@ -60,6 +61,7 @@ class TelegramBotService:
         self.llm_client = TelegramLlmClient()
         self.response_parser = LlmResponseParser()
         self.session_service = TelegramSessionService()
+        self.asset_repo = TelegramAssetRepository()
         self.conversation_service = TelegramConversationService(
             history_repo=self.history,
             user_repo=self.user_repo,
@@ -67,11 +69,13 @@ class TelegramBotService:
             llm_client=self.llm_client,
             response_parser=self.response_parser,
             session_service=self.session_service,
+            asset_repo=self.asset_repo,
         )
         self.command_service = TelegramCommandService(
             history_repo=self.history,
             user_repo=self.user_repo,
             session_service=self.session_service,
+            asset_repo=self.asset_repo,
         )
         self.tts_service = TelegramTtsService()
         self.initialized = True
@@ -172,6 +176,7 @@ class TelegramBotService:
         app.add_handler(CommandHandler("start", self._cmd_start))
         app.add_handler(CommandHandler("clear", self._cmd_clear))
         app.add_handler(CommandHandler("mode", self._cmd_mode))
+        app.add_handler(CommandHandler("pack", self._cmd_pack))
         app.add_handler(CommandHandler("story", self._cmd_story))
         app.add_handler(CommandHandler("setpersona", self._cmd_setpersona))
         app.add_handler(CommandHandler("whoami", self._cmd_whoami))
@@ -230,6 +235,18 @@ class TelegramBotService:
         story_id = context.args[0].strip() if context.args else None
         reply_text = self.command_service.handle_story(
             chat_id, self._get_settings(), story_id
+        )
+        await update.effective_message.reply_text(reply_text)
+
+    async def _cmd_pack(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        chat_id = str(update.effective_chat.id)
+        if self._is_message_processed(chat_id, update.effective_message.message_id):
+            return
+        if not self._is_allowed_for_any_bot(chat_id):
+            return
+        pack_id = context.args[0].strip() if context.args else None
+        reply_text = self.command_service.handle_pack(
+            chat_id, self._get_settings(), pack_id
         )
         await update.effective_message.reply_text(reply_text)
 
@@ -390,7 +407,7 @@ class TelegramBotService:
 
     def _runtime_for_character(self, character_id: str) -> Optional[BotRuntime]:
         for runtime in self._runtimes.values():
-            if runtime.config.character_id == character_id:
+            if runtime.config.character_ref == character_id:
                 return runtime
         return None
 

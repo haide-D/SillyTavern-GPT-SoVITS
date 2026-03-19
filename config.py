@@ -9,6 +9,7 @@ PLUGIN_ROOT = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(PLUGIN_ROOT, "system_settings.json")
 MAPPINGS_FILE = os.path.join(PLUGIN_ROOT, "character_mappings.json")
 FRONTEND_DIR = os.path.join(PLUGIN_ROOT, "frontend")
+TELEGRAM_PACKS_DIR = os.path.join(PLUGIN_ROOT, "assets", "telegram_packs")
 
 # 默认值
 DEFAULT_BASE_DIR = os.path.join(PLUGIN_ROOT, "MyCharacters")
@@ -213,6 +214,7 @@ def init_settings():
             "https": "http://127.0.0.1:7890",
         },
         "default_mode": "free_chat",
+        "default_asset_pack_id": "",
         "bots": [],
         "shared_llm": {
             "api_url": "",
@@ -220,7 +222,7 @@ def init_settings():
             "model": "gemini-2.5-flash",
             "temperature": 0.8,
             "max_tokens": 2000,
-            "system_prompt": "你是一个负责多角色 Telegram 群聊编排的导演 AI。请只安排自然、简短、口语化的角色发言。",
+            "system_prompt": "",
         },
         "modes": {
             "free_chat": {
@@ -303,6 +305,8 @@ def init_settings():
         os.makedirs(cache_dir, exist_ok=True)
     if not os.path.exists(base_dir):
         os.makedirs(base_dir, exist_ok=True)
+    if not os.path.exists(TELEGRAM_PACKS_DIR):
+        os.makedirs(TELEGRAM_PACKS_DIR, exist_ok=True)
 
     return settings
 

@@ -38,6 +38,7 @@ class TelegramSessionState:
     chat_id: str
     mode: str
     story_id: Optional[str] = None
+    asset_pack_id: Optional[str] = None
     title: Optional[str] = None
     summary: Optional[str] = None
 

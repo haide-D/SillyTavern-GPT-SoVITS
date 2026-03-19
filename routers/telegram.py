@@ -5,8 +5,10 @@ from pydantic import BaseModel, Field
 
 from config import SETTINGS_FILE, load_json, save_json
 from services.telegram_service import telegram_service
+from telegram_app.assets.repository import TelegramAssetRepository
 
 router = APIRouter(prefix="/api/telegram", tags=["Telegram Bot"])
+asset_repo = TelegramAssetRepository()
 
 
 class TelegramConfigUpdate(BaseModel):
@@ -57,3 +59,8 @@ async def update_config(data: TelegramConfigUpdate):
     settings["telegram"] = telegram_cfg
     save_json(SETTINGS_FILE, settings)
     return {"status": "success", "message": "Telegram 配置更新成功"}
+
+
+@router.get("/packs")
+async def list_packs():
+    return {"packs": asset_repo.list_packs()}

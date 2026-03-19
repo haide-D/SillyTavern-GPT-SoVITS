@@ -1,20 +1,22 @@
 import json
 from typing import Dict, List
 
+from telegram_app.assets.models import ResolvedTelegramCharacter
 from telegram_app.domain.models import OutboundMessage
-from telegram_app.settings import TelegramBotConfig
 
 
 class LlmResponseParser:
-    def parse(self, data: dict, bots: List[TelegramBotConfig]) -> List[OutboundMessage]:
+    def parse(
+        self, data: dict, bots: List[ResolvedTelegramCharacter]
+    ) -> List[OutboundMessage]:
         if not data.get("choices"):
             return []
 
-        bot_by_name: Dict[str, TelegramBotConfig] = {
+        bot_by_name: Dict[str, ResolvedTelegramCharacter] = {
             bot.character_name: bot for bot in bots
         }
-        bot_by_id: Dict[str, TelegramBotConfig] = {
-            bot.character_id: bot for bot in bots
+        bot_by_ref: Dict[str, ResolvedTelegramCharacter] = {
+            bot.character_ref: bot for bot in bots
         }
 
         message = data["choices"][0].get("message", {})
@@ -25,6 +27,7 @@ class LlmResponseParser:
             func_name = tc.get("function", {}).get("name")
             if func_name != "emit_bot_message":
                 continue
+
             args_str = tc.get("function", {}).get("arguments", "{}")
             try:
                 args = json.loads(args_str)
@@ -33,14 +36,14 @@ class LlmResponseParser:
                 continue
 
             character_name = (args.get("character_name") or "").strip()
-            bot = bot_by_name.get(character_name) or bot_by_id.get(character_name)
+            bot = bot_by_name.get(character_name) or bot_by_ref.get(character_name)
             if not bot:
                 print(f"[TelegramLLM] 未找到角色对应 bot: {character_name}")
                 continue
 
             parsed.append(
                 OutboundMessage(
-                    character_id=bot.character_id,
+                    character_id=bot.character_ref,
                     character_name=bot.character_name,
                     text=(args.get("text") or "").strip(),
                     delivery=(args.get("delivery") or "text").strip() or "text",

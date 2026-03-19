@@ -1,8 +1,10 @@
 import json
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from database import DatabaseManager
 from telegram_app.application.session_service import TelegramSessionService
+from telegram_app.assets.models import AssetPack, ResolvedTelegramCharacter, StoryAsset
+from telegram_app.assets.repository import TelegramAssetRepository
 from telegram_app.domain.history import SessionHistoryRepository
 from telegram_app.domain.models import InboundMessage, OutboundMessage, ReactionEvent
 from telegram_app.domain.policies import RoundCounter, should_trigger_memory
@@ -24,6 +26,7 @@ class TelegramConversationService:
         llm_client: TelegramLlmClient,
         response_parser: LlmResponseParser,
         session_service: TelegramSessionService,
+        asset_repo: Optional[TelegramAssetRepository] = None,
         round_counter: Optional[RoundCounter] = None,
         settings_provider=get_telegram_settings,
     ):
@@ -33,6 +36,7 @@ class TelegramConversationService:
         self._llm_client = llm_client
         self._parser = response_parser
         self._sessions = session_service
+        self._asset_repo = asset_repo or TelegramAssetRepository()
         self._round_counter = round_counter or RoundCounter()
         self._settings_provider = settings_provider
         self._db = DatabaseManager()
@@ -40,7 +44,6 @@ class TelegramConversationService:
     async def handle_text(self, inbound: InboundMessage) -> List[OutboundMessage]:
         settings = self._settings_provider()
         llm = settings.shared_llm
-
         if not llm.api_url or not llm.api_key:
             raise ValueError("Telegram 的共享 LLM 未配置 (api_url, api_key 缺失)")
 
@@ -61,11 +64,19 @@ class TelegramConversationService:
         if not active_bots:
             raise ValueError("Telegram 未找到可用 bot 配置")
 
-        for bot in active_bots:
+        asset_pack = self._asset_repo.get_pack(
+            session.asset_pack_id or settings.default_asset_pack_id
+        )
+        resolved_bots = self._resolve_bots(active_bots, asset_pack)
+        if not resolved_bots:
+            raise ValueError("没有可用的角色绑定；请检查 character_ref 与 asset pack")
+        story_asset = asset_pack.get_story(session.story_id) if asset_pack else None
+
+        for bot in resolved_bots:
             self._memory.ensure_character_initialized(bot.character_name)
             self._db.upsert_telegram_bot(
                 bot_id=bot.bot_id,
-                character_id=bot.character_id,
+                character_id=bot.character_ref,
                 character_name=bot.character_name,
                 bot_token=bot.bot_token,
                 tts_character=bot.tts_character,
@@ -87,18 +98,27 @@ class TelegramConversationService:
             telegram_message_id=inbound.message_id,
         )
 
-        primary_bot = active_bots[0]
+        primary_bot = resolved_bots[0]
         memory_context = self._memory.get_memory_context(
             primary_bot.character_name,
             session.namespace_key,
             max_snapshots=mode_config.max_snapshots,
         )
         history_messages = self._history.get_messages(
-            session.namespace_key,
-            limit=mode_config.max_history,
+            session.namespace_key, limit=mode_config.max_history
         )
         recent_messages = history_messages[-mode_config.recent_messages :]
         story_state = self._db.get_telegram_story_state(session.namespace_key)
+        if not story_state and story_asset and story_asset.initial_state:
+            self._db.upsert_telegram_story_state(
+                namespace_key=session.namespace_key,
+                mode=session.mode,
+                story_id=session.story_id,
+                chapter_id=str(story_asset.initial_state.get("chapter") or "") or None,
+                summary=story_asset.opening or None,
+                state_json=story_asset.initial_state,
+            )
+            story_state = self._db.get_telegram_story_state(session.namespace_key)
 
         active_uids = list(
             {
@@ -111,11 +131,13 @@ class TelegramConversationService:
             inbound.chat_id, active_uids
         )
 
-        allow_voice = any(bot.voice_enabled for bot in active_bots)
+        allow_voice = any(bot.voice_enabled for bot in resolved_bots)
         system_prompt = PromptBuilder.build_system_prompt(
             base_prompt=llm.system_prompt,
             session=session,
-            bots=active_bots[: mode_config.max_active_characters],
+            bots=resolved_bots[: mode_config.max_active_characters],
+            asset_pack=asset_pack,
+            story_asset=story_asset,
             memory_context=memory_context,
             story_state=story_state,
             active_personas=active_personas,
@@ -124,19 +146,17 @@ class TelegramConversationService:
             allow_voice=allow_voice,
         )
 
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(self._format_history_for_llm(recent_messages))
-
         payload = {
             "model": llm.model,
-            "messages": messages,
+            "messages": [{"role": "system", "content": system_prompt}]
+            + self._format_history_for_llm(recent_messages),
             "temperature": llm.temperature,
             "max_tokens": llm.max_tokens,
             "stream": False,
             "tools": get_chat_tools(
                 [
                     bot.character_name
-                    for bot in active_bots[: mode_config.max_active_characters]
+                    for bot in resolved_bots[: mode_config.max_active_characters]
                 ],
                 allow_voice=allow_voice,
             ),
@@ -145,7 +165,9 @@ class TelegramConversationService:
 
         print("\n" + "=" * 60)
         print("【Telegram Director 请求调试信息】")
-        print(f"URL: {llm.api_url} | Model: {llm.model} | ns={session.namespace_key}")
+        print(
+            f"URL: {llm.api_url} | Model: {llm.model} | ns={session.namespace_key} | pack={session.asset_pack_id or '-'}"
+        )
         print(system_prompt)
         print("=" * 60 + "\n")
 
@@ -161,7 +183,7 @@ class TelegramConversationService:
             print(str(data))
         print("=" * 60 + "\n")
 
-        parsed_messages = self._parser.parse(data, active_bots)
+        parsed_messages = self._parser.parse(data, resolved_bots)
         if parsed_messages:
             for message in parsed_messages:
                 self._history.add_message(
@@ -213,7 +235,7 @@ class TelegramConversationService:
     def _select_active_bots(
         bots: List[TelegramBotConfig], chat_id: str
     ) -> List[TelegramBotConfig]:
-        selected = []
+        selected: List[TelegramBotConfig] = []
         for bot in bots:
             if bot.allowed_chat_ids and str(chat_id) not in bot.allowed_chat_ids:
                 continue
@@ -221,8 +243,40 @@ class TelegramConversationService:
         return selected
 
     @staticmethod
+    def _resolve_bots(
+        bots: List[TelegramBotConfig], asset_pack: Optional[AssetPack]
+    ) -> List[ResolvedTelegramCharacter]:
+        resolved: List[ResolvedTelegramCharacter] = []
+        for bot in bots:
+            asset = asset_pack.get_character(bot.character_ref) if asset_pack else None
+            character_name = bot.character_name or (
+                asset.name if asset else bot.character_ref
+            )
+            resolved.append(
+                ResolvedTelegramCharacter(
+                    bot_id=bot.bot_id,
+                    bot_token=bot.bot_token,
+                    character_ref=bot.character_ref,
+                    character_id=bot.character_ref,
+                    character_name=character_name,
+                    tts_character=bot.tts_character or character_name,
+                    voice_enabled=bot.voice_enabled,
+                    allowed_chat_ids=bot.allowed_chat_ids,
+                    enabled=bot.enabled,
+                    description=asset.description if asset else "",
+                    personality=asset.personality if asset else "",
+                    system_prompt_fragment=asset.system_prompt_fragment
+                    if asset
+                    else "",
+                    first_message=asset.first_message if asset else "",
+                    dialogue_examples=asset.dialogue_examples if asset else [],
+                )
+            )
+        return resolved
+
+    @staticmethod
     def _format_history_for_llm(history_messages: List[dict]) -> List[dict]:
-        messages = []
+        messages: List[dict] = []
         for item in history_messages:
             if item.get("speaker_type") == "human":
                 speaker = (
@@ -230,8 +284,12 @@ class TelegramConversationService:
                     or item.get("sender_user_id")
                     or "用户"
                 )
-                content = f"[{speaker}] {item.get('content', '')}"
-                messages.append({"role": "user", "content": content})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"[{speaker}] {item.get('content', '')}",
+                    }
+                )
             else:
                 speaker = (
                     item.get("character_name")
@@ -239,6 +297,10 @@ class TelegramConversationService:
                     or "角色"
                 )
                 delivery = item.get("delivery", "text")
-                content = f"[{speaker}][{delivery}] {item.get('content', '')}"
-                messages.append({"role": "assistant", "content": content})
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f"[{speaker}][{delivery}] {item.get('content', '')}",
+                    }
+                )
         return messages

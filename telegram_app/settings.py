@@ -3,14 +3,18 @@ from typing import Any, Dict, List, Optional
 
 from config import SETTINGS_FILE, load_json
 
+DEFAULT_DIRECTOR_PROMPT = (
+    "你是一个负责多角色 Telegram 群聊编排的导演 AI。"
+    "请根据场景只安排最合适的角色发言，保持自然、简短、口语化。"
+)
+
 
 @dataclass
 class TelegramBotConfig:
     bot_id: str
     bot_token: str
-    character_id: str
-    character_name: str
-    persona: str = ""
+    character_ref: str
+    character_name: str = ""
     tts_character: str = ""
     voice_enabled: bool = False
     allowed_chat_ids: List[str] = field(default_factory=list)
@@ -45,6 +49,7 @@ class TelegramSettings:
     proxy_http: str
     bots: List[TelegramBotConfig]
     default_mode: str
+    default_asset_pack_id: str
     shared_llm: TelegramSharedLlmConfig
     modes: Dict[str, TelegramModeConfig]
 
@@ -63,20 +68,22 @@ class TelegramSettings:
 
 
 def _normalize_bot(raw: Dict[str, Any], index: int) -> TelegramBotConfig:
-    character_id = (
-        raw.get("character_id") or raw.get("character_name") or f"bot_{index}"
+    character_ref = (
+        raw.get("character_ref")
+        or raw.get("character_id")
+        or raw.get("character_name")
+        or f"bot_{index}"
     ).strip()
-    character_name = (
-        raw.get("character_name") or character_id or f"Bot {index}"
-    ).strip()
-    bot_id = (raw.get("bot_id") or character_id or f"bot_{index}").strip()
+    bot_id = (raw.get("bot_id") or character_ref or f"bot_{index}").strip()
+    character_name = (raw.get("character_name") or "").strip()
     return TelegramBotConfig(
         bot_id=bot_id,
         bot_token=(raw.get("bot_token") or "").strip(),
-        character_id=character_id,
+        character_ref=character_ref,
         character_name=character_name,
-        persona=(raw.get("persona") or "").strip(),
-        tts_character=(raw.get("tts_character") or character_name).strip(),
+        tts_character=(
+            raw.get("tts_character") or character_name or character_ref
+        ).strip(),
         voice_enabled=bool(raw.get("voice_enabled", False)),
         allowed_chat_ids=[str(cid) for cid in raw.get("allowed_chat_ids", [])],
         enabled=bool(raw.get("enabled", True)),
@@ -140,24 +147,23 @@ def get_telegram_settings() -> TelegramSettings:
     proxy_config = (
         config.get("proxy", {}) if isinstance(config.get("proxy"), dict) else {}
     )
-    llm_config = (
-        config.get("shared_llm", config.get("llm", {}))
-        if isinstance(config.get("shared_llm", config.get("llm", {})), dict)
-        else {}
-    )
+    llm_config = config.get("shared_llm", config.get("llm", {}))
+    if not isinstance(llm_config, dict):
+        llm_config = {}
 
     bots_raw = config.get("bots", [])
     if not isinstance(bots_raw, list):
         bots_raw = []
 
     if not bots_raw and config.get("bot_token"):
+        legacy_name = str(config.get("character") or "legacy").strip() or "legacy"
         bots_raw = [
             {
                 "bot_id": "legacy",
                 "bot_token": config.get("bot_token", ""),
-                "character_id": config.get("character", "legacy"),
-                "character_name": config.get("character", "legacy"),
-                "tts_character": config.get("character", "legacy"),
+                "character_ref": legacy_name,
+                "character_name": legacy_name,
+                "tts_character": legacy_name,
                 "voice_enabled": bool(config.get("voice_reply", False)),
                 "allowed_chat_ids": config.get("allowed_chat_ids", []),
                 "enabled": bool(config.get("enabled", False)),
@@ -176,6 +182,7 @@ def get_telegram_settings() -> TelegramSettings:
         proxy_http=(proxy_config.get("http") or "").strip(),
         bots=bots,
         default_mode=default_mode,
+        default_asset_pack_id=(config.get("default_asset_pack_id") or "").strip(),
         shared_llm=TelegramSharedLlmConfig(
             api_url=(llm_config.get("api_url") or "").strip(),
             api_key=(llm_config.get("api_key") or "").strip(),
@@ -183,8 +190,7 @@ def get_telegram_settings() -> TelegramSettings:
             temperature=float(llm_config.get("temperature", 0.8)),
             max_tokens=int(llm_config.get("max_tokens", 2000)),
             system_prompt=(
-                llm_config.get("system_prompt")
-                or "你是一个负责多角色 Telegram 群聊编排的导演 AI。"
+                llm_config.get("system_prompt") or DEFAULT_DIRECTOR_PROMPT
             ).strip(),
         ),
         modes=modes,

@@ -317,12 +317,20 @@ class DatabaseManager:
                 chat_id         TEXT NOT NULL,
                 mode            TEXT NOT NULL,
                 story_id        TEXT,
+                asset_pack_id   TEXT,
                 is_active       INTEGER DEFAULT 1,
                 title           TEXT,
                 summary         TEXT,
                 updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        try:
+            cursor.execute(
+                "ALTER TABLE telegram_sessions ADD COLUMN asset_pack_id TEXT"
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_tg_sessions_chat
             ON telegram_sessions(chat_id, is_active)
@@ -1544,9 +1552,10 @@ class DatabaseManager:
         chat_id: str,
         namespace_key: str,
         mode: str,
-        story_id: str = None,
-        title: str = None,
-        summary: str = None,
+        story_id: Optional[str] = None,
+        asset_pack_id: Optional[str] = None,
+        title: Optional[str] = None,
+        summary: Optional[str] = None,
     ):
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -1558,18 +1567,33 @@ class DatabaseManager:
             cursor.execute(
                 """
                 INSERT INTO telegram_sessions (
-                    namespace_key, chat_id, mode, story_id, is_active, title, summary
-                ) VALUES (?, ?, ?, ?, 1, ?, ?)
+                    namespace_key, chat_id, mode, story_id, asset_pack_id, is_active, title, summary
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(namespace_key) DO UPDATE SET
                     chat_id = excluded.chat_id,
                     mode = excluded.mode,
                     story_id = excluded.story_id,
+                    asset_pack_id = COALESCE(excluded.asset_pack_id, telegram_sessions.asset_pack_id),
                     is_active = 1,
                     title = COALESCE(excluded.title, telegram_sessions.title),
                     summary = COALESCE(excluded.summary, telegram_sessions.summary),
                     updated_at = CURRENT_TIMESTAMP
             """,
-                (namespace_key, chat_id, mode, story_id, title, summary),
+                (namespace_key, chat_id, mode, story_id, asset_pack_id, title, summary),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def update_telegram_session_asset_pack(
+        self, namespace_key: str, asset_pack_id: Optional[str]
+    ):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE telegram_sessions SET asset_pack_id = ?, updated_at = CURRENT_TIMESTAMP WHERE namespace_key = ?",
+                (asset_pack_id, namespace_key),
             )
             conn.commit()
         finally:
