@@ -328,5 +328,62 @@ export const TTS_API = {
         }
         
         return await res.json();
+    },
+
+    async previewTelegramImport(payload) {
+        const res = await fetch(this._url('/api/telegram/import/preview'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || `Telegram 导入预览失败 (${res.status})`);
+        }
+        return await res.json();
+    },
+
+    async commitTelegramImport(pack) {
+        const res = await fetch(this._url('/api/telegram/import/commit'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pack })
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || `Telegram 导入保存失败 (${res.status})`);
+        }
+        return await res.json();
+    },
+
+    async listTelegramPacks() {
+        const res = await fetch(this._url('/api/telegram/packs'));
+        if (!res.ok) throw new Error(`获取 Telegram 资产包失败 (${res.status})`);
+        return await res.json();
+    },
+
+    async listTelegramPackCharacters(packId) {
+        const res = await fetch(this._url(`/api/telegram/packs/${encodeURIComponent(packId)}/characters`));
+        if (!res.ok) throw new Error(`获取资产包角色失败 (${res.status})`);
+        return await res.json();
+    },
+
+    async listTelegramBots() {
+        const res = await fetch(this._url('/api/telegram/bots'));
+        if (!res.ok) throw new Error(`获取 Telegram bots 失败 (${res.status})`);
+        return await res.json();
+    },
+
+    async bindTelegramBot(botId, characterRef) {
+        const res = await fetch(this._url(`/api/telegram/bots/${encodeURIComponent(botId)}/binding`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_ref: characterRef })
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || `绑定 Telegram bot 失败 (${res.status})`);
+        }
+        return await res.json();
     }
 };

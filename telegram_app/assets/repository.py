@@ -1,4 +1,5 @@
 import os
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 from config import TELEGRAM_PACKS_DIR, load_json
@@ -53,6 +54,16 @@ class TelegramAssetRepository:
         if not data:
             return None
         return self._normalize_pack(data, default_pack_id=pack_id)
+
+    def save_pack(self, pack: AssetPack) -> str:
+        os.makedirs(self._base_dir, exist_ok=True)
+        file_path = os.path.join(self._base_dir, f"{pack.pack_id}.json")
+        payload = asdict(pack)
+        with open(file_path, "w", encoding="utf-8") as f:
+            import json
+
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return file_path
 
     def _normalize_pack(self, raw: Dict[str, Any], default_pack_id: str) -> AssetPack:
         world_raw = raw.get("world") if isinstance(raw.get("world"), dict) else {}
