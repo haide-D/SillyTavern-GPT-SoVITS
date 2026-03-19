@@ -18,6 +18,7 @@ import { SpeakerManager } from './frontend/js/speaker_manager.js';
 
 import { TTS_UI } from './frontend/js/ui_main.js';
 import './frontend/js/ui_dashboard.js';  // 导入 ui_dashboard.js 以加载事件绑定函数
+import './frontend/js/telegram_import_ui.js';
 import { LLM_Client } from './frontend/js/llm_client.js';
 import { TTS_Mobile } from './frontend/js/mobile_ui.js';
 import { WebSocketManager } from './frontend/js/websocket_manager.js';

@@ -321,7 +321,7 @@ export class ContextDataCollector {
                 for (const entry of entryList) {
                     if (entry && !entry.disable) {
                         entries.push({
-                            uid: entry.uid || entry.id || Math.random().toString(36).substr(2, 9),
+                            uid: String(entry.uid || entry.id || Math.random().toString(36).substr(2, 9)),
                             comment: entry.comment || '无标题条目',
                             content: entry.content || '',
                             constant: !!entry.constant,
@@ -345,7 +345,7 @@ export class ContextDataCollector {
                      const isDuplicate = entries.some(e => e.content === entry.content);
                      if (!isDuplicate) {
                          entries.push({
-                            uid: entry.uid || entry.id || Math.random().toString(36).substr(2, 9),
+                            uid: String(entry.uid || entry.id || Math.random().toString(36).substr(2, 9)),
                             comment: entry.comment || '无标题条目',
                             content: entry.content || '',
                             constant: !!entry.constant,

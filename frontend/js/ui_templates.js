@@ -111,6 +111,19 @@ export function getDashboardHTML(data) {
                             <div id="tts-mapping-list" class="tts-list-container" style="border:none; background:transparent;"></div>
                         </div>
                     </div>
+
+                    <div class="tts-card">
+                        <div class="tts-card-title">🤖 Telegram 资产导入</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                            <button id="tts-open-telegram-import" class="btn-primary">从酒馆导入 Telegram 资产</button>
+                            <button id="tts-refresh-telegram-assets" class="btn-secondary">刷新资产/绑定</button>
+                        </div>
+                        <div style="font-size:12px; color:#aaa; margin-bottom:10px; line-height:1.5;">
+                            先导入角色/世界/剧本资产，再单独把 Telegram bot 绑定到生成的角色引用。
+                        </div>
+                        <div id="tts-telegram-pack-summary" class="tts-empty" style="margin-bottom:12px;">正在加载 Telegram 资产...</div>
+                        <div id="tts-telegram-bot-bindings"></div>
+                    </div>
                 </div>
             </div>
         </div>`;

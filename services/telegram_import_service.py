@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from telegram_app.assets.import_models import TelegramImportRequest
 from telegram_app.assets.import_tools import (
@@ -22,7 +22,10 @@ class TelegramImportService:
         self._llm = llm_client or TelegramLlmClient()
         self._assets = asset_repo or TelegramAssetRepository()
 
-    async def preview_import(self, request: TelegramImportRequest) -> Dict[str, Any]:
+    async def preview_import(
+        self, request: Union[TelegramImportRequest, Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        request = self._normalize_request(request)
         settings = get_telegram_settings()
         llm = settings.shared_llm
         if not llm.api_url or not llm.api_key:
@@ -60,7 +63,8 @@ class TelegramImportService:
         data = await self._llm.chat_completions(llm.api_url, llm.api_key, payload)
         parsed = parse_import_tool_response(data)
         if not parsed:
-            raise ValueError("导入 LLM 未返回有效 asset pack 结构")
+            print("========== LLM 返回数据 ==========\n", data)
+            raise ValueError(f"导入 LLM 未返回有效 asset pack 结构。完整回复已打印到控制台。")
 
         parsed["pack_id"] = self._sanitize_pack_id(parsed.get("pack_id") or pack_id)
         parsed["name"] = (parsed.get("name") or pack_name).strip() or pack_name
@@ -98,6 +102,86 @@ class TelegramImportService:
         value = re.sub(r"[^a-zA-Z0-9_-]+", "_", (text or "").strip())
         value = re.sub(r"_+", "_", value).strip("_")
         return value.lower() or "telegram_pack"
+
+    @staticmethod
+    def _normalize_request(
+        request: Union[TelegramImportRequest, Dict[str, Any]],
+    ) -> TelegramImportRequest:
+        if isinstance(request, TelegramImportRequest):
+            return request
+        if not isinstance(request, dict):
+            return TelegramImportRequest()
+
+        source = (
+            request.get("source") if isinstance(request.get("source"), dict) else {}
+        )
+        materials = (
+            request.get("materials")
+            if isinstance(request.get("materials"), dict)
+            else {}
+        )
+        options = (
+            request.get("options") if isinstance(request.get("options"), dict) else {}
+        )
+
+        normalized = {
+            "source": {
+                "char_name": str(
+                    source.get("char_name") or source.get("charName") or ""
+                ),
+                "chat_branch": str(
+                    source.get("chat_branch") or source.get("chatBranch") or ""
+                ),
+            },
+            "materials": {
+                "card_data": materials.get("card_data")
+                if isinstance(materials.get("card_data"), dict)
+                else None,
+                "worldbook_entries": materials.get("worldbook_entries")
+                if isinstance(materials.get("worldbook_entries"), list)
+                else [],
+                "example_messages": materials.get("example_messages")
+                if isinstance(materials.get("example_messages"), list)
+                else [],
+                "context_notes": str(
+                    materials.get("context_notes")
+                    or materials.get("contextNotes")
+                    or ""
+                ),
+            },
+            "options": {
+                "pack_id": str(options.get("pack_id") or options.get("packId") or ""),
+                "pack_name": str(
+                    options.get("pack_name") or options.get("packName") or ""
+                ),
+                "target_mode": str(
+                    options.get("target_mode")
+                    or options.get("targetMode")
+                    or "free_chat"
+                ),
+                "generation_goal": str(
+                    options.get("generation_goal")
+                    or options.get("generationGoal")
+                    or ""
+                ),
+                "include_story": bool(
+                    options.get("include_story")
+                    if options.get("include_story") is not None
+                    else options.get("includeStory", False)
+                ),
+                "include_director_rules": bool(
+                    options.get("include_director_rules")
+                    if options.get("include_director_rules") is not None
+                    else options.get("includeDirectorRules", True)
+                ),
+                "output_style": str(
+                    options.get("output_style")
+                    or options.get("outputStyle")
+                    or "standard"
+                ),
+            },
+        }
+        return TelegramImportRequest(**normalized)
 
     @staticmethod
     def _build_system_prompt() -> str:

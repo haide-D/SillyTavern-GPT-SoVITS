@@ -1,4 +1,4 @@
-﻿// 文件: ui_dashboard.js
+// 文件: ui_dashboard.js
 if (!window.TTS_UI) {
     window.TTS_UI = {};
 }
@@ -105,6 +105,28 @@ export const TTS_UI = window.TTS_UI;
             } catch (e) {
                 console.error(e);
                 alert("绑定失败,请检查后端日志");
+            }
+        });
+
+        $('#tts-open-telegram-import').off('click').on('click', async function () {
+            if (scope.openTelegramImportWizard) {
+                await scope.openTelegramImportWizard();
+            }
+        });
+
+        $('#tts-refresh-telegram-assets').off('click').on('click', async function () {
+            if (scope.renderTelegramManager) {
+                await scope.renderTelegramManager();
+            }
+        });
+
+        $(document).off('click.telegramBinding').on('click.telegramBinding', '.tts-save-telegram-binding', async function () {
+            const botId = $(this).attr('data-bot-id');
+            const handler = scope.saveTelegramBotBinding || window.TTS_UI.saveTelegramBotBinding;
+            if (botId && handler) {
+                await handler(botId);
+            } else {
+                alert(`绑定失败: botId=${botId}, handlerFound=${!!handler}`);
             }
         });
 

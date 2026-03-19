@@ -7,7 +7,7 @@ class TelegramLlmClient:
         if "/chat/completions" not in api_url:
             api_url = api_url.rstrip("/") + "/chat/completions"
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",

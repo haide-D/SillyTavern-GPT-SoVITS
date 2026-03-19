@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -6,10 +6,6 @@ from pydantic import BaseModel, Field
 from config import SETTINGS_FILE, load_json, save_json
 from services.telegram_import_service import TelegramImportService
 from services.telegram_service import telegram_service
-from telegram_app.assets.import_models import (
-    TelegramCommitRequest,
-    TelegramImportRequest,
-)
 from telegram_app.assets.repository import TelegramAssetRepository
 
 router = APIRouter(prefix="/api/telegram", tags=["Telegram Bot"])
@@ -114,17 +110,22 @@ async def get_pack_characters(pack_id: str):
 
 
 @router.post("/import/preview")
-async def preview_import(req: TelegramImportRequest):
+async def preview_import(req: Dict[str, Any]):
     try:
         return await import_service.preview_import(req)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {str(exc)}")
 
 
 @router.post("/import/commit")
-async def commit_import(req: TelegramCommitRequest):
+async def commit_import(req: Dict[str, Any]):
     try:
-        return import_service.commit_import(req.pack)
+        pack = req.get("pack") if isinstance(req.get("pack"), dict) else req
+        if not isinstance(pack, dict):
+            raise ValueError("导入保存失败：pack 必须是对象")
+        return import_service.commit_import(pack)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
