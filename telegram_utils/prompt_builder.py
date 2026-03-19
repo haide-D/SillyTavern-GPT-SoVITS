@@ -5,7 +5,7 @@ class PromptBuilder:
     """
 
     @staticmethod
-    def build_system_prompt(base_prompt: str, memory_context: str) -> str:
+    def build_system_prompt(base_prompt: str, memory_context: str, emotions_str: str = "default") -> str:
         parts = []
 
         if memory_context:
@@ -17,5 +17,13 @@ class PromptBuilder:
         # 把严格的规则放在最下面，通常大模型对末尾的指令遵循度更高
         parts.append("============== 【核心行事准则（最高优先级）】 ==============")
         parts.append(base_prompt.strip())
+        
+        tool_instruction = f"""
+请使用提供的工具 `send_text_message` (仅发送纯文本) 或 `send_voice_message` (发送带情感表现的语音) 来回复用户。
+为了模拟真实的聊天软件体验，你应该将长回复拆分成多段短消息，连续多次调用工具发出。
+【⚠️强烈要求】：当使用 `send_voice_message` 时，请务必细致体会当前语境和人物性格，优先选择具体的、带情感的情绪标签！展现出你丰富的情感波动！
+【当前可用情绪列表参考】: {emotions_str}
+"""
+        parts.append(tool_instruction.strip())
 
         return "\n\n".join(parts)

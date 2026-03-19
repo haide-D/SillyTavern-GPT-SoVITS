@@ -234,17 +234,52 @@ class TelegramBotService:
                 return
                 
             config = self._get_config()
+            import random
             
-            # 如果没开语音，或者生成语音失败，降级回文字发送
-            if not config.get("voice_reply", True):
-                await update.effective_message.reply_text(llm_response)
-            else:
-                # 尝试生成音频
-                success = await self.audio_handler.reply_voice(chat_id, llm_response)
-                # 兜底：如果没发出去语音，依然发文字
-                if not success:
-                    await update.effective_message.reply_text(f"(语音发送失败)\n{llm_response}")
+            for i, msg in enumerate(llm_response):
+                if not isinstance(msg, dict):
+                    continue
+                    
+                text = msg.get("text", "")
+                if not text:
+                    continue
+                    
+                use_tts = msg.get("use_tts", True)
+                emotion = msg.get("emotion", "default")
                 
+                if not config.get("voice_reply", True):
+                    use_tts = False
+                    
+                success = False
+                if use_tts:
+                    # 尝试生成音频
+                    success = await self.audio_handler.reply_voice(
+                        chat_id, text, emotion=emotion,
+                        reply_to_message_id=update.effective_message.message_id
+                    )
+                
+                if i == 0:
+                    # 首条消息进行 reply 引用（如果是文字的话）
+                    if success:
+                        pass # 语音内部用的直接发送
+                    else:
+                        if use_tts and config.get("voice_reply", True):
+                            await update.effective_message.reply_text(f"(语音发送失败)\n{text}")
+                        else:
+                            await update.effective_message.reply_text(text)
+                else:
+                    # 后续消息直接 send_message 避免多条引用看起来烦杂
+                    if not success:
+                        await context.bot.send_message(
+                            chat_id=chat_id, text=text,
+                            reply_to_message_id=update.effective_message.message_id if i == 0 else None
+                        )
+                        
+                # 如果不是最后一条，假装手速延时，增添拟真度
+                if i < len(llm_response) - 1:
+                    await context.bot.send_chat_action(chat_id=chat_id, action='typing')
+                    await asyncio.sleep(random.uniform(1.5, 3.5))
+
         except Exception as e:
             print(f"[TelegramBot] 处理文字消息失败: {e}")
             await update.effective_message.reply_text(f"[系统错误] 处理消息失败: {e}")
@@ -298,13 +333,40 @@ class TelegramBotService:
             
             if llm_response:
                 config = self._get_config()
-                if not config.get("voice_reply", True):
-                    await context.bot.send_message(chat_id=reaction.chat.id, text=llm_response)
-                else:
-                    success = await self.audio_handler.reply_voice(chat_id, llm_response)
-                    if not success:
-                        await context.bot.send_message(chat_id=reaction.chat.id, text=f"(语音发送失败)\n{llm_response}")
+                import random
+                
+                for i, msg in enumerate(llm_response):
+                    if not isinstance(msg, dict):
+                        continue
                         
+                    text = msg.get("text", "")
+                    if not text:
+                        continue
+                        
+                    use_tts = msg.get("use_tts", True)
+                    emotion = msg.get("emotion", "default")
+                    
+                    if not config.get("voice_reply", True):
+                        use_tts = False
+                        
+                    success = False
+                    if use_tts:
+                        success = await self.audio_handler.reply_voice(
+                            chat_id, text, emotion=emotion,
+                            reply_to_message_id=reaction.message_id
+                        )
+                        
+                    if not success:
+                        await context.bot.send_message(
+                            chat_id=reaction.chat.id, text=text,
+                            reply_to_message_id=reaction.message_id
+                        )
+                        
+                    # 拟真延时
+                    if i < len(llm_response) - 1:
+                        await context.bot.send_chat_action(chat_id=chat_id, action='typing')
+                        await asyncio.sleep(random.uniform(1.5, 3.5))
+
         except Exception as e:
             print(f"[TelegramBot] 处理 Reaction 失败: {e}")
 

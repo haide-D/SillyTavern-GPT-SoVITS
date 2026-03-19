@@ -15,7 +15,7 @@ class TelegramAudioHandler:
         settings = load_json(SETTINGS_FILE)
         return settings.get("telegram", {})
         
-    async def reply_voice(self, chat_id: str, text: str) -> bool:
+    async def reply_voice(self, chat_id: str, text: str, emotion: str = "default", reply_to_message_id: int = None) -> bool:
         config = self._get_config()
         if not config.get("voice_reply", True):
             return False
@@ -38,8 +38,7 @@ class TelegramAudioHandler:
             model_folder = mappings[char_name]
             base_dir, _ = get_current_dirs()
             
-            # 使用默认的情绪寻找参考音频
-            emotion = "default"
+            # 依据传入的情绪寻找参考音频
             ref_dir = os.path.join(base_dir, model_folder, "reference_audios", "Chinese", "emotions")
             
             if not os.path.exists(ref_dir):
@@ -90,7 +89,7 @@ class TelegramAudioHandler:
                 
                 ogg_path = await self._convert_to_ogg(temp_wav)
                 if ogg_path:
-                    success = await self._send_voice_file(chat_id, ogg_path)
+                    success = await self._send_voice_file(chat_id, ogg_path, reply_to_message_id=reply_to_message_id)
                     os.remove(ogg_path)
                     return success
                 return False
@@ -127,7 +126,7 @@ class TelegramAudioHandler:
             print(f"[TelegramAudio] ffmpeg 转换异常: {e}")
             return None
             
-    async def _send_voice_file(self, chat_id: str, ogg_path: str) -> bool:
+    async def _send_voice_file(self, chat_id: str, ogg_path: str, reply_to_message_id: int = None) -> bool:
         """发送 OGG 文件到 TG"""
         try:
             if not self.bot_app:
@@ -135,7 +134,7 @@ class TelegramAudioHandler:
                 return False
             print(f"[TelegramAudio] 发送语音给 {chat_id}")
             with open(ogg_path, "rb") as f:
-                await self.bot_app.bot.send_voice(chat_id=chat_id, voice=f)
+                await self.bot_app.bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
             return True
         except Exception as e:
             print(f"[TelegramAudio] 发送语音失败: {e}")

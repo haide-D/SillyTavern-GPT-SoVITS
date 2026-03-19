@@ -268,7 +268,7 @@ class CharacterLoader:
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.3, # 降低随机性
-                    "max_tokens": 1500,
+                    "max_tokens": 5000,
                     "stream": False
                 }
 

@@ -30,7 +30,7 @@ class TelegramLLMHandler:
         
     async def generate_reply(self, chat_id: str, user_text: str, 
                              speaker_name: str = None, speaker_id: str = None, 
-                             chat_type: str = "private") -> str:
+                             chat_type: str = "private") -> List[Dict]:
         config = self._get_config()
         llm_config = config.get("llm", {})
         
@@ -73,8 +73,17 @@ class TelegramLLMHandler:
         # 3. 组装 system prompt
         base_prompt = llm_config.get("system_prompt", "你是一个聊天助理。")
         
+        available_emotions = []
+        try:
+            from services.emotion_service import EmotionService
+            available_emotions = EmotionService.get_available_emotions(char_name)
+        except Exception as e:
+            print(f"[TelegramLLM] 获取情绪列表失败: {e}")
+            
+        emotions_str = "、".join(available_emotions) if available_emotions else "default"
+        
         from telegram_utils.prompt_builder import PromptBuilder
-        system_prompt = PromptBuilder.build_system_prompt(base_prompt, memory_context)
+        system_prompt = PromptBuilder.build_system_prompt(base_prompt, memory_context, emotions_str)
         
         # 3.5 动态拼接多用户与环境系统设定
         from telegram_utils.user_manager import user_manager
@@ -120,12 +129,17 @@ class TelegramLLMHandler:
                 
         messages.extend(clean_history)
         
+        from telegram_utils.tool_schemas import get_chat_tools
+        tools = get_chat_tools(emotions_str)
+        
         payload = {
             "model": model,
             "messages": messages,
             "temperature": llm_config.get("temperature", 0.8),
             "max_tokens": llm_config.get("max_tokens", 2000),
-            "stream": False
+            "stream": False,
+            "tools": tools,
+            "tool_choice": "auto"
         }
         
         print("\n" + "="*60)
@@ -156,18 +170,84 @@ class TelegramLLMHandler:
             data = response.json()
             content = ""
             
+            import json
+            print("\n" + "="*60)
+            print("【LLM 原始全量返回参数 (Raw Response)】")
+            try:
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            except Exception:
+                print(str(data))
+            print("="*60 + "\n")
+            
             if data.get("choices") and len(data["choices"]) > 0:
                 message = data["choices"][0].get("message", {})
-                content = message.get("content", "").strip()
                 
-            if content:
-                self.memory.add_message(chat_id, "assistant", content)
+                import json
+                parsed_messages = []
                 
-                # 5. 检查是否需要触发记忆处理（每 10 轮）
-                await self._check_memory_trigger(chat_id, char_name)
+                tool_calls = message.get("tool_calls", [])
                 
-                return content
-            return ""
+                # 1. 优先解析工具调用
+                if tool_calls:
+                    print("\n" + "="*60)
+                    print("【LLM 触发 Function Calling 工具调用】")
+                    for tc in tool_calls:
+                        func_name = tc.get("function", {}).get("name")
+                        args_str = tc.get("function", {}).get("arguments", "{}")
+                        print(f"调用工具: {func_name} | 参数: {args_str}")
+                        try:
+                            args = json.loads(args_str)
+                            if func_name == "send_text_message":
+                                parsed_messages.append({
+                                    "text": args.get("text", ""),
+                                    "use_tts": False,
+                                    "emotion": "default"
+                                })
+                            elif func_name == "send_voice_message":
+                                parsed_messages.append({
+                                    "text": args.get("text", ""),
+                                    "use_tts": True,
+                                    "emotion": args.get("emotion", "default")
+                                })
+                        except Exception as e:
+                            print(f"[TelegramLLM] 工具参数解析失败: {e}\n参数: {args_str}")
+                    print("="*60 + "\n")
+                
+                # 2. 如果没有正常调用工具而是输出了文本，执行降级兼容逻辑
+                raw_content = message.get("content", "")
+                if not parsed_messages and raw_content:
+                    print("\n" + "="*60)
+                    print("【LLM 降维输出纯一段文本】")
+                    print(raw_content)
+                    print("="*60 + "\n")
+                    
+                    try:
+                        import re
+                        clean_content = raw_content.strip()
+                        if clean_content.startswith("```"):
+                            clean_content = re.sub(r"^```(?:json)?\s*", "", clean_content)
+                            clean_content = re.sub(r"\s*```$", "", clean_content)
+                            
+                        parsed_json = json.loads(clean_content)
+                        if isinstance(parsed_json, list):
+                            parsed_messages = parsed_json
+                        else:
+                            parsed_messages = [{"text": raw_content, "use_tts": True, "emotion": "default"}]
+                    except Exception:
+                        parsed_messages = [{"text": raw_content, "use_tts": True, "emotion": "default"}]
+                
+                # 提取所有文本拼接以便存入历史记忆，维持回合计算正确
+                if parsed_messages:
+                    combined_text = "\n".join([m.get("text", "") for m in parsed_messages if isinstance(m, dict) and m.get("text")])
+                    if combined_text.strip():
+                        self.memory.add_message(chat_id, "assistant", combined_text.strip())
+                    
+                    # 5. 检查是否需要触发记忆处理（每 10 轮）
+                    await self._check_memory_trigger(chat_id, char_name)
+                    
+                    return parsed_messages
+                
+            return []
     
     async def _check_memory_trigger(self, chat_id: str, char_name: str):
         """检查是否需要触发记忆快照（每 10 轮对话）"""
