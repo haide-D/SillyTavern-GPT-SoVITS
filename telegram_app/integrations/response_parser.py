@@ -13,6 +13,36 @@ class ClueRecord:
     related_character: str = ""
 
 
+import re
+
+def _split_message_text(text: str, max_chunk_len: int = 50) -> List[str]:
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    chunks = []
+    for line in lines:
+        if len(line) <= max_chunk_len:
+            chunks.append(line)
+            continue
+        sub_chunks = re.split(r'([。！？…~]+)', line)
+        current = ""
+        for i in range(0, len(sub_chunks) - 1, 2):
+            piece = sub_chunks[i] + sub_chunks[i+1]
+            if len(current) + len(piece) > max_chunk_len and current:
+                chunks.append(current.strip())
+                current = piece
+            else:
+                current += piece
+        if len(sub_chunks) % 2 != 0:
+            last_piece = sub_chunks[-1]
+            if len(current) + len(last_piece) > max_chunk_len and current:
+                chunks.append(current.strip())
+                current = last_piece
+            else:
+                current += last_piece
+        if current:
+            chunks.append(current.strip())
+    return [c for c in chunks if c]
+
+
 class LlmResponseParser:
     def parse(
         self, data: dict, bots: List[ResolvedTelegramCharacter]
@@ -32,6 +62,8 @@ class LlmResponseParser:
         parsed: List[OutboundMessage] = []
         clues: List[ClueRecord] = []
 
+        is_first_reply = True
+
         for tc in tool_calls:
             func_name = tc.get("function", {}).get("name")
             args_str = tc.get("function", {}).get("arguments", "{}")
@@ -48,21 +80,24 @@ class LlmResponseParser:
                     print(f"[TelegramLLM] 未找到角色对应 bot: {character_name}")
                     continue
 
-                parsed.append(
-                    OutboundMessage(
-                        character_id=bot.character_ref,
-                        character_name=bot.character_name,
-                        text=(args.get("text") or "").strip(),
-                        delivery=(args.get("delivery") or "text").strip() or "text",
-                        emotion=(args.get("emotion") or "default").strip() or "default",
-                        reply_to_trigger=bool(args.get("reply_to_trigger", False)),
-                        target_user_display_name=(
-                            (args.get("target_user_display_name") or "").strip() or None
+                raw_text = (args.get("text") or "").strip()
+                for chunk in _split_message_text(raw_text):
+                    parsed.append(
+                        OutboundMessage(
+                            character_id=bot.character_ref,
+                            character_name=bot.character_name,
+                            text=chunk,
+                            delivery=(args.get("delivery") or "text").strip() or "text",
+                            emotion=(args.get("emotion") or "default").strip() or "default",
+                            reply_to_trigger=bool(args.get("reply_to_trigger", False)) and is_first_reply,
+                            target_user_display_name=(
+                                (args.get("target_user_display_name") or "").strip() or None
+                            )
+                            if func_name == "emit_private_message"
+                            else None,
                         )
-                        if func_name == "emit_private_message"
-                        else None,
                     )
-                )
+                    is_first_reply = False
 
             elif func_name == "save_clue":
                 clue_text = (args.get("clue_text") or "").strip()

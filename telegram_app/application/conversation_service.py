@@ -41,6 +41,29 @@ class TelegramConversationService:
         self._settings_provider = settings_provider
         self._db = DatabaseManager()
 
+    async def save_passive_message(self, inbound: InboundMessage) -> None:
+        """静默保存用户消息到历史记录，不触发 LLM 回复"""
+        settings = self._settings_provider()
+        session = self._sessions.ensure_active_session(
+            inbound.chat_id,
+            settings,
+            mode=inbound.mode,
+            story_id=inbound.story_id,
+        )
+        self._history.add_message(
+            namespace_key=session.namespace_key,
+            chat_id=inbound.chat_id,
+            role="user",
+            content=inbound.text,
+            speaker_type="human",
+            source_bot_id=inbound.source_bot_id,
+            source_bot_username=inbound.source_bot_username,
+            sender_user_id=inbound.user_id,
+            sender_display_name=inbound.user_display_name,
+            telegram_message_id=inbound.message_id,
+            reply_to_message_id=inbound.reply_to_message_id,
+        )
+
     async def handle_text(self, inbound: InboundMessage) -> List[OutboundMessage]:
         settings = self._settings_provider()
         llm = settings.shared_llm
@@ -96,6 +119,7 @@ class TelegramConversationService:
             sender_user_id=inbound.user_id,
             sender_display_name=inbound.user_display_name,
             telegram_message_id=inbound.message_id,
+            reply_to_message_id=inbound.reply_to_message_id,
         )
 
         primary_bot = resolved_bots[0]
@@ -182,8 +206,9 @@ class TelegramConversationService:
         print(system_prompt)
         print("=" * 60 + "\n")
 
+        proxy = settings.proxy_http if settings.proxy_enabled else None
         data = await self._llm_client.chat_completions(
-            llm.api_url, llm.api_key, payload
+            llm.api_url, llm.api_key, payload, proxy=proxy
         )
 
         print("\n" + "=" * 60)
@@ -314,7 +339,26 @@ class TelegramConversationService:
     @staticmethod
     def _format_history_for_llm(history_messages: List[dict]) -> List[dict]:
         messages: List[dict] = []
+        msg_map = {m.get("telegram_message_id"): m for m in history_messages if m.get("telegram_message_id")}
+
         for item in history_messages:
+            content = item.get("content", "")
+            reply_to_id = item.get("reply_to_message_id")
+
+            # 提取回复上下文并拼装前缀
+            if reply_to_id and reply_to_id in msg_map:
+                replied_msg = msg_map[reply_to_id]
+                replied_speaker = (
+                    replied_msg.get("sender_display_name")
+                    or replied_msg.get("character_name")
+                    or "某人"
+                )
+                replied_content = replied_msg.get("content", "")
+                if len(replied_content) > 30:
+                    replied_content = replied_content[:30] + "..."
+                quote_prefix = f"[回复 {replied_speaker}: \"{replied_content}\"]\n"
+                content = quote_prefix + content
+
             if item.get("speaker_type") == "human":
                 speaker = (
                     item.get("sender_display_name")
@@ -324,7 +368,7 @@ class TelegramConversationService:
                 messages.append(
                     {
                         "role": "user",
-                        "content": f"[{speaker}] {item.get('content', '')}",
+                        "content": f"[{speaker}] {content}",
                     }
                 )
             else:
@@ -337,7 +381,7 @@ class TelegramConversationService:
                 messages.append(
                     {
                         "role": "assistant",
-                        "content": f"[{speaker}][{delivery}] {item.get('content', '')}",
+                        "content": f"[{speaker}][{delivery}] {content}",
                     }
                 )
         return messages

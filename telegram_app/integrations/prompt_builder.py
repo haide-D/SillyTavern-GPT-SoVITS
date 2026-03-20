@@ -26,7 +26,7 @@ class PromptBuilder:
         parts.append("============== 【导演职责】 ==============")
         parts.append(base_prompt.strip())
         parts.append(
-            "你正在导演多个 Telegram Bot 扮演不同角色。根据场景，选择最合适的 1~2 个角色发言。"
+            "你正在导演多个 Telegram Bot 扮演不同角色。根据场景，选择合适的1-3个角色发言。不要让无关的人物一直发言"
         )
 
         parts.append("============== 【当前会话】 ==============")
@@ -101,19 +101,22 @@ class PromptBuilder:
             parts.append(memory_context.strip())
 
         parts.append("============== 【输出规则】 ==============")
-        parts.append(f"- 本轮最多让 {mode_config.max_speakers_per_turn} 个角色发言。")
-        parts.append("- 优先回应刚刚触发你的用户，不要让所有角色轮流刷屏。")
+        parts.append(f"- 本轮最多让 {mode_config.max_speakers_per_turn} 个角色发言。考虑角色间的关系以及性格，不适合开口的人物坚决不能硬插话")
+        parts.append("- 优先回应刚刚触发你的用户，不要让所有角色轮流刷屏。主持人除了被直接对话外，不得主动发言")
+        parts.append("- ⚠️【点名回应】如果近期对话中有人使用 `[对某某说]` 明确点名了某个角色，**必须优先让被点名的角色出面回应**。其他角色除非有极强的剧情需要，否则保持沉默。")
         parts.append("- 每条回复都必须通过工具 `emit_bot_message` 发出。")
         parts.append("- ⚠️【身份卡/秘密信息 禁止群发】发放身份卡、独家线索等秘密内容时，必须用 `emit_private_message` 私聊发送给对应玩家。严禁在群聊中泄露任何玩家的身份卡内容！")
         parts.append("- ⚠️【Bot 角色身份卡】可用角色列表中的 Bot（如萧炎等）也是游戏参与者，也必须有身份卡。发放身份卡时，用 `save_clue(visibility=private, related_character=角色名)` 为每个Bot角色保存其秘密身份，这样你后续扮演该角色时能记住身份设定。")
         parts.append("- 当剧情出现重要发现、线索、转折时，使用 `save_clue` 工具记录下来，确保后续对话能持续引用。")
-        parts.append("- 严禁输出旁白、解释、系统说明或未通过工具的文本。")
-        parts.append("- 文本必须像即时聊天，不写小说段落。")
+        parts.append("- 严禁输出对人物动作神态描写的括号或星号，必须完全是说出来的话。")
+        parts.append("- ⚠️【畅所欲言与争吵】如果此刻适合激烈争吵或深入推理，请角色们务必畅所欲言！**系统在底层会自动将你们的长篇大论切割成连续的一条条短消息进行发送（模拟真实群聊刷屏效果）**。所以你不需要刻意压抑字数，觉得该说多少就说多少！")
+        parts.append("- ⚠️【高频互动】在一轮回复中，你可以调用多次 `emit_bot_message` 让不同角色交替发言，形成激烈的互相抢话、打断、接梗的多人对话场景！让对话看起来就像一群活生生的人在实时吵架！")
+        parts.append("- ⚠️【除了旁白】只有“旁白”角色可以做环境、动作、气氛的客观描写。其他普通角色的发言框里，绝对不允许出现任何动作描写。")
         parts.append('- 🎙️【语音优先】标记为"可语音"的角色，delivery 应优先填 voice 而非 text，并根据角色当前情绪填写准确的 emotion 标签。只有在内容不适合朗读（如大段说明文字）时才用 text。')
 
         if recent_messages:
             parts.append("============== 【近期对话提示】 ==============")
-            for msg in recent_messages[-6:]:
+            for msg in recent_messages[-20:]:
                 speaker = (
                     msg.get("sender_display_name")
                     or msg.get("character_name")

@@ -12,6 +12,7 @@ class InboundMessage:
     source_bot_id: str
     source_bot_username: str
     message_id: Optional[int] = None
+    reply_to_message_id: Optional[int] = None
     is_group: bool = False
     is_reply_to_bot: bool = False
     is_mention: bool = False

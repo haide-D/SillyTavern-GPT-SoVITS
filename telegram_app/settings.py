@@ -26,9 +26,9 @@ class TelegramModeConfig:
     memory_interval: int = 10
     max_snapshots: int = 3
     prompt_token_budget: int = 1800
-    recent_messages: int = 12
-    max_active_characters: int = 3
-    max_speakers_per_turn: int = 2
+    recent_messages: int = 30
+    max_active_characters: int = 20
+    max_speakers_per_turn: int = 3
 
 
 @dataclass
@@ -95,9 +95,9 @@ def _normalize_modes(raw_modes: Dict[str, Any]) -> Dict[str, TelegramModeConfig]
         "scripted_story": TelegramModeConfig(
             max_history=28,
             memory_interval=6,
-            max_snapshots=5,
+            max_snapshots=20,
             prompt_token_budget=2400,
-            recent_messages=14,
+            recent_messages=40,
             max_active_characters=4,
             max_speakers_per_turn=2,
         ),

@@ -2,7 +2,7 @@ import asyncio
 import os
 import random
 from dataclasses import dataclass
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, Optional, Set
 
 from telegram import Update
 from telegram.constants import UpdateType
@@ -36,6 +36,7 @@ class BotRuntime:
     config: TelegramBotConfig
     app: Application
     username: str = ""
+    bot_id: int = 0
 
 
 class TelegramBotService:
@@ -53,7 +54,7 @@ class TelegramBotService:
 
         self.is_running = False
         self._runtimes: Dict[str, BotRuntime] = {}
-        self._processed_messages: Set[Tuple[str, int]] = set()
+        self._director_runtime: Optional[BotRuntime] = None
 
         self.history = SessionHistoryRepository()
         self.user_repo = TelegramUserRepository()
@@ -83,27 +84,14 @@ class TelegramBotService:
     def _get_settings(self):
         return get_telegram_settings()
 
-    def _is_message_processed(self, update: Update) -> bool:
-        if not update.effective_message or not update.effective_chat:
-            return False
-            
-        chat_id = str(update.effective_chat.id)
-        user_id = str(update.effective_user.id) if update.effective_user else ""
-        text = update.effective_message.text or ""
-        date = int(update.effective_message.date.timestamp()) if update.effective_message.date else 0
-        
-        # 在 Basic Group 中，每个 Bot 发送给后端的 message_id 是孤立且不同的！
-        # 必须通过 聊天群组ID + 用户ID + 文本 + 时间戳 来实现跨 Bot 精准备重
-        key = f"{chat_id}_{user_id}_{text}_{date}"
-        
-        if key in self._processed_messages:
-            return True
-            
-        self._processed_messages.add(key)
-        print(f"[TelegramBot] 首次捕获并拦截消息: (chat={chat_id}, user={user_id}, text={text[:10]}...)")
-        if len(self._processed_messages) > 5000:
-            self._processed_messages = set(list(self._processed_messages)[-2500:])
-        return False
+    def _is_director(self, bot) -> bool:
+        """判断当前 Bot 是否为主持人（唯一负责接收群聊消息的 Bot）"""
+        return self._director_runtime is not None and bot.id == self._director_runtime.bot_id
+
+    def _managed_user_ids(self) -> Set[int]:
+        return {
+            runtime.bot_id for runtime in self._runtimes.values() if runtime.bot_id
+        }
 
     def _managed_usernames(self) -> Set[str]:
         return {
@@ -126,6 +114,7 @@ class TelegramBotService:
 
         try:
             runtimes: Dict[str, BotRuntime] = {}
+            is_first = True
             for bot_cfg in bots:
                 builder = Application.builder().token(bot_cfg.bot_token)
                 if settings.proxy_enabled and settings.proxy_http:
@@ -139,25 +128,40 @@ class TelegramBotService:
 
                 app = builder.build()
                 runtime = BotRuntime(config=bot_cfg, app=app)
-                self._register_handlers(runtime)
+
+                if is_first:
+                    # 主持人 Bot：注册全部 Handler，负责接收所有群聊消息
+                    self._register_director_handlers(runtime)
+                else:
+                    # 演员 Bot：只注册私聊 /start（供用户开启私聊通道）
+                    self._register_actor_handlers(runtime)
+
                 await app.initialize()
                 await app.start()
                 me = await app.bot.get_me()
                 runtime.username = me.username or ""
+                runtime.bot_id = me.id
                 runtimes[bot_cfg.bot_id] = runtime
 
-            for runtime in runtimes.values():
+                if is_first:
+                    self._director_runtime = runtime
+                    is_first = False
+
+            # 只有主持人 Bot 需要长轮询接收消息
+            director = self._director_runtime
+            if director:
                 print(
-                    f"[TelegramBot] 开始长轮询: {runtime.config.bot_id} @{runtime.username}"
+                    f"[TelegramBot] 🎬 主持人 Bot 开始长轮询: {director.config.bot_id} @{director.username}"
                 )
-                await runtime.app.updater.start_polling(
+                await director.app.updater.start_polling(
                     drop_pending_updates=True,
                     allowed_updates=[UpdateType.MESSAGE, UpdateType.MESSAGE_REACTION],
                 )
 
             self._runtimes = runtimes
             self.is_running = True
-            print(f"[TelegramBot] Startup complete. bots={list(self._runtimes.keys())}")
+            actor_ids = [k for k in runtimes if k != director.config.bot_id] if director else []
+            print(f"[TelegramBot] Startup complete. 主持人={director.config.bot_id if director else '-'}, 演员={actor_ids}")
             return True
         except Exception as e:
             print(f"[TelegramBot] Startup failed: {e}")
@@ -171,18 +175,26 @@ class TelegramBotService:
         if not self._runtimes:
             self.is_running = False
             return
+        # 先停主持人的轮询
+        if self._director_runtime:
+            try:
+                await self._director_runtime.app.updater.stop()
+            except Exception as e:
+                print(f"[TelegramBot] 停止主持人轮询时出错: {e}")
+        # 停止所有 Bot 的 Application
         for runtime in self._runtimes.values():
             try:
-                await runtime.app.updater.stop()
                 await runtime.app.stop()
                 await runtime.app.shutdown()
             except Exception as e:
                 print(f"[TelegramBot] 停止 {runtime.config.bot_id} 时出错: {e}")
         self._runtimes = {}
+        self._director_runtime = None
         self.is_running = False
         print("[TelegramBot] Stopped.")
 
-    def _register_handlers(self, runtime: BotRuntime):
+    def _register_director_handlers(self, runtime: BotRuntime):
+        """主持人 Bot：注册全部 Handler（命令 + 文字 + 语音 + 表情反应）"""
         app = runtime.app
         app.add_handler(CommandHandler("start", self._cmd_start))
         app.add_handler(CommandHandler("clear", self._cmd_clear))
@@ -197,6 +209,11 @@ class TelegramBotService:
         )
         app.add_handler(MessageHandler(filters.VOICE, self._handle_voice))
 
+    def _register_actor_handlers(self, runtime: BotRuntime):
+        """演员 Bot：只注册私聊 /start，用于建立私聊通道"""
+        app = runtime.app
+        app.add_handler(CommandHandler("start", self._cmd_start))
+
     def _is_allowed_for_any_bot(self, chat_id: str) -> bool:
         settings = self._get_settings()
         for bot in settings.get_enabled_bots():
@@ -206,8 +223,6 @@ class TelegramBotService:
 
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             await update.effective_message.reply_text(
                 "抱歉，您没有使用此 Bot 集群的权限。"
@@ -218,8 +233,6 @@ class TelegramBotService:
 
     async def _cmd_clear(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             return
         reply_text = self.command_service.handle_clear(chat_id, self._get_settings())
@@ -227,8 +240,6 @@ class TelegramBotService:
 
     async def _cmd_mode(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             return
         mode = context.args[0].strip() if context.args else None
@@ -239,8 +250,6 @@ class TelegramBotService:
 
     async def _cmd_story(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             return
         story_id = context.args[0].strip() if context.args else None
@@ -251,8 +260,6 @@ class TelegramBotService:
 
     async def _cmd_pack(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             return
         pack_id = context.args[0].strip() if context.args else None
@@ -263,8 +270,6 @@ class TelegramBotService:
 
     async def _cmd_setpersona(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             return
         user = update.effective_user
@@ -282,8 +287,6 @@ class TelegramBotService:
 
     async def _cmd_whoami(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
-            return
         if not self._is_allowed_for_any_bot(chat_id):
             return
         user = update.effective_user
@@ -293,6 +296,7 @@ class TelegramBotService:
         await update.effective_message.reply_text(reply_text)
 
     async def _handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """由主持人 Bot 统一处理所有群聊文字消息"""
         if not update.effective_message or not update.effective_chat:
             return
         if update.effective_user and update.effective_user.is_bot:
@@ -308,71 +312,87 @@ class TelegramBotService:
         user_text = update.effective_message.text or ""
         chat_type = update.effective_chat.type
 
-        # ⚡ 关键修复：先判断群聊策略，再去占坑（dedup）
-        # 否则看不到 reply 上下文的 Bot 会抢先占坑后放弃，导致能看到的 Bot 被拦截
+        # 解析 Telegram 回复上下文
         managed_usernames = self._managed_usernames()
-        replied_user = (
-            update.effective_message.reply_to_message.from_user
-            if update.effective_message.reply_to_message
-            else None
-        )
-        replied_username = replied_user.username if replied_user else ""
-        is_reply = bool(replied_username and replied_username in managed_usernames)
+        managed_user_ids = self._managed_user_ids()
+        replied_msg = update.effective_message.reply_to_message
+        replied_user = replied_msg.from_user if replied_msg else None
+
+        is_reply = False
+        if replied_user:
+            if replied_user.id in managed_user_ids:
+                is_reply = True
+            elif replied_user.username and replied_user.username in managed_usernames:
+                is_reply = True
+
+        reply_to_message_id = replied_msg.message_id if replied_msg else None
         is_mention = any(
             f"@{username}" in user_text for username in managed_usernames if username
         )
 
-        if is_group_chat(chat_type) and not should_reply_in_group(is_reply, is_mention):
-            return
-
-        # ⚡ 通过了群聊策略检查后，才去占坑去重
-        if self._is_message_processed(update):
-            return
+        # 触发条件：私聊，或者群聊被回复/艾特
+        is_trigger = not is_group_chat(chat_type) or should_reply_in_group(is_reply, is_mention)
 
         display_name = self.user_repo.get_user_display_name(user)
         user_id = str(user.id) if user else "Unknown"
         self.user_repo.update_user_activity(user, chat_id)
 
-        for username in managed_usernames:
-            user_text = user_text.replace(f"@{username}", "").strip()
+        # 替换 @bot_username 为 [对角色名说]，回复功能也自动加点名标记
+        for runtime in self._runtimes.values():
+            target_name = runtime.config.character_name or runtime.config.character_ref
 
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id, action="typing"
-        )
+            if runtime.username and f"@{runtime.username}" in user_text:
+                user_text = user_text.replace(f"@{runtime.username}", f"[对{target_name}说]")
+
+            if is_reply and replied_user:
+                if replied_user.id == runtime.bot_id or (
+                    runtime.username and replied_user.username == runtime.username
+                ):
+                    mention_text = f"[对{target_name}说]"
+                    if mention_text not in user_text:
+                        user_text = f"{mention_text} {user_text}"
+
+        user_text = user_text.strip()
+        print(f"[TelegramBot] 主持人收到消息: (chat={chat_id}, user={display_name}, reply={is_reply}, trigger={is_trigger}, text={user_text[:30]}...)")
+
+        if is_trigger:
+            await context.bot.send_chat_action(
+                chat_id=update.effective_chat.id, action="typing"
+            )
 
         try:
-            source_runtime = self._runtime_for_username(context.bot.username)
+            director = self._director_runtime
             inbound = InboundMessage(
                 chat_id=chat_id,
                 chat_type=chat_type,
                 text=user_text,
                 user_id=user_id,
                 user_display_name=display_name,
-                source_bot_id=source_runtime.config.bot_id
-                if source_runtime
-                else "unknown",
-                source_bot_username=context.bot.username or "",
+                source_bot_id=director.config.bot_id if director else "unknown",
+                source_bot_username=director.username if director else "",
                 message_id=message_id,
+                reply_to_message_id=reply_to_message_id,
                 is_group=is_group_chat(chat_type),
                 is_reply_to_bot=is_reply,
                 is_mention=is_mention,
             )
+
+            if not is_trigger:
+                await self.conversation_service.save_passive_message(inbound)
+                return
+
             llm_response = await self.conversation_service.handle_text(inbound)
             if not llm_response:
-                await update.effective_message.reply_text(
-                    "[系统] 导演模型未返回有效响应，请检查配置。"
-                )
+                print(f"[TelegramBot] 导演模型未产生任何 Bot 回复，静默处理 (chat={chat_id})")
                 return
             await self._dispatch_messages(chat_id, message_id, llm_response)
         except Exception as e:
             print(f"[TelegramBot] 处理文字消息失败: {e}")
-            await update.effective_message.reply_text(f"[系统错误] 处理消息失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def _handle_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not update.effective_message or not update.effective_chat:
-            return
-        chat_id = str(update.effective_chat.id)
-        if self._is_message_processed(update):
             return
         await update.effective_message.reply_text(
             "[系统提示] 多 Bot 模式下的语音输入还未接通，请先发送文字。"
