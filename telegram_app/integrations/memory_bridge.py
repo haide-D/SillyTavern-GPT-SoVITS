@@ -1,3 +1,6 @@
+import asyncio
+
+
 class TelegramMemoryBridge:
     def __init__(self):
         self._initialized_characters: set[str] = set()
@@ -41,29 +44,62 @@ class TelegramMemoryBridge:
         primary_character: str,
         messages: list,
         round_count: int,
+        memory_interval: int = 10,
     ):
-        try:
-            from services.memory_service import MemoryService
+        """后台执行记忆总结，带重试机制。"""
+        # 动态计算消息窗口：memory_interval × 4，下限 20、上限 80
+        window = max(20, min(80, memory_interval * 4))
+        recent = messages[-window:] if len(messages) >= window else messages
 
-            mem_svc = MemoryService()
-            recent = messages[-10:] if len(messages) >= 10 else messages
-            round_num = max(1, round_count)
-            fingerprint = f"{namespace_key}:{round_num}"
+        # 从消息中提取所有说话人
+        speakers = list(
+            {
+                m.get("character_name") or m.get("sender_display_name") or ""
+                for m in recent
+                if (m.get("character_name") or m.get("sender_display_name"))
+            }
+        )
+        if not speakers:
+            speakers = [primary_character]
 
-            print(
-                f"[TelegramLLM] Trigger memory snapshot namespace={namespace_key} round={round_count}"
-            )
+        round_num = max(1, round_count)
+        fingerprint = f"{namespace_key}:{round_num}"
 
-            await mem_svc.process_conversation(
-                source="telegram",
-                source_id=namespace_key,
-                context_fingerprint=fingerprint,
-                messages=recent,
-                speakers=[primary_character],
-                parent_fingerprint=None,
-                namespace_key=namespace_key,
-                mode=mode,
-                story_id=story_id,
-            )
-        except Exception as e:
-            print(f"[TelegramLLM] 记忆处理失败: {e}")
+        print(
+            f"[TelegramLLM] Trigger memory snapshot namespace={namespace_key} "
+            f"round={round_count} window={len(recent)}"
+        )
+
+        max_retries = 2
+        for attempt in range(1, max_retries + 1):
+            try:
+                from services.memory_service import MemoryService
+
+                mem_svc = MemoryService()
+                result = await mem_svc.process_conversation(
+                    source="telegram",
+                    source_id=namespace_key,
+                    context_fingerprint=fingerprint,
+                    messages=recent,
+                    speakers=speakers,
+                    parent_fingerprint=None,
+                    namespace_key=namespace_key,
+                    mode=mode,
+                    story_id=story_id,
+                )
+                if result.get("success"):
+                    return  # 成功，退出
+                # LLM 返回但解析失败等情况
+                error = result.get("error", "unknown")
+                print(
+                    f"[TelegramLLM] 记忆总结未成功 (attempt {attempt}/{max_retries}): {error}"
+                )
+            except Exception as e:
+                print(
+                    f"[TelegramLLM] 记忆总结异常 (attempt {attempt}/{max_retries}): {e}"
+                )
+
+            if attempt < max_retries:
+                await asyncio.sleep(3)
+
+        print(f"[TelegramLLM] 记忆总结最终失败，已耗尽 {max_retries} 次重试")

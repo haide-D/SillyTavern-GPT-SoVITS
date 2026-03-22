@@ -71,6 +71,7 @@ class ResolvedTelegramCharacter:
     voice_enabled: bool
     allowed_chat_ids: List[str]
     enabled: bool
+    voice_lang: str = "zh"
     description: str = ""
     personality: str = ""
     system_prompt_fragment: str = ""

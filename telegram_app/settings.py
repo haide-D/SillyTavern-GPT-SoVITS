@@ -16,17 +16,18 @@ class TelegramBotConfig:
     character_name: str = ""
     tts_character: str = ""
     voice_enabled: bool = False
+    voice_lang: str = "zh"
     allowed_chat_ids: List[str] = field(default_factory=list)
     enabled: bool = True
 
 
 @dataclass
 class TelegramModeConfig:
-    max_history: int = 20
+    max_history: int = 60
     memory_interval: int = 10
     max_snapshots: int = 3
     prompt_token_budget: int = 1800
-    recent_messages: int = 30
+    recent_messages: int = 50
     max_active_characters: int = 20
     max_speakers_per_turn: int = 3
 
@@ -84,6 +85,7 @@ def _normalize_bot(raw: Dict[str, Any], index: int) -> TelegramBotConfig:
             raw.get("tts_character") or character_name or character_ref
         ).strip(),
         voice_enabled=bool(raw.get("voice_enabled", False)),
+        voice_lang=(raw.get("voice_lang") or "zh").strip() or "zh",
         allowed_chat_ids=[str(cid) for cid in raw.get("allowed_chat_ids", [])],
         enabled=bool(raw.get("enabled", True)),
     )
@@ -93,20 +95,20 @@ def _normalize_modes(raw_modes: Dict[str, Any]) -> Dict[str, TelegramModeConfig]
     defaults = {
         "free_chat": TelegramModeConfig(),
         "scripted_story": TelegramModeConfig(
-            max_history=28,
+            max_history=70,
             memory_interval=6,
             max_snapshots=20,
             prompt_token_budget=2400,
-            recent_messages=40,
+            recent_messages=60,
             max_active_characters=4,
             max_speakers_per_turn=2,
         ),
         "murder_mystery": TelegramModeConfig(
-            max_history=24,
+            max_history=40,
             memory_interval=4,
             max_snapshots=6,
             prompt_token_budget=2600,
-            recent_messages=12,
+            recent_messages=30,
             max_active_characters=4,
             max_speakers_per_turn=2,
         ),

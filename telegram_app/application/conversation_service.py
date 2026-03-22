@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import List, Optional, Tuple
 
@@ -132,6 +133,7 @@ class TelegramConversationService:
             session.namespace_key, limit=mode_config.max_history
         )
         recent_messages = history_messages[-mode_config.recent_messages :]
+        print(f"[DEBUG] max_history={mode_config.max_history}, DB返回={len(history_messages)}, recent_messages切片={len(recent_messages)} (配置值={mode_config.recent_messages})")
         story_state = self._db.get_telegram_story_state(session.namespace_key)
         if not story_state and story_asset and story_asset.initial_state:
             self._db.upsert_telegram_story_state(
@@ -261,16 +263,20 @@ class TelegramConversationService:
                 )
 
             current_round = self._round_counter.increment(session.namespace_key)
+            print(f"[DEBUG] 轮次计数: round={current_round}, memory_interval={mode_config.memory_interval}, 触发={current_round % mode_config.memory_interval == 0}")
             if should_trigger_memory(current_round, mode_config.memory_interval):
-                await self._memory.process_conversation_snapshot(
-                    namespace_key=session.namespace_key,
-                    mode=session.mode,
-                    story_id=session.story_id or "",
-                    primary_character=primary_bot.character_name,
-                    messages=self._history.get_messages(
-                        session.namespace_key, limit=mode_config.max_history
-                    ),
-                    round_count=current_round,
+                asyncio.create_task(
+                    self._memory.process_conversation_snapshot(
+                        namespace_key=session.namespace_key,
+                        mode=session.mode,
+                        story_id=session.story_id or "",
+                        primary_character=primary_bot.character_name,
+                        messages=self._history.get_messages(
+                            session.namespace_key, limit=mode_config.max_history
+                        ),
+                        round_count=current_round,
+                        memory_interval=mode_config.memory_interval,
+                    )
                 )
 
         return parsed_messages
@@ -323,6 +329,7 @@ class TelegramConversationService:
                     character_name=character_name,
                     tts_character=bot.tts_character or character_name,
                     voice_enabled=bot.voice_enabled,
+                    voice_lang=bot.voice_lang,
                     allowed_chat_ids=bot.allowed_chat_ids,
                     enabled=bot.enabled,
                     description=asset.description if asset else "",
@@ -338,14 +345,14 @@ class TelegramConversationService:
 
     @staticmethod
     def _format_history_for_llm(history_messages: List[dict]) -> List[dict]:
-        messages: List[dict] = []
         msg_map = {m.get("telegram_message_id"): m for m in history_messages if m.get("telegram_message_id")}
 
+        # 第一步：构建带说话人标记的原始列表
+        raw_items: List[dict] = []
         for item in history_messages:
             content = item.get("content", "")
             reply_to_id = item.get("reply_to_message_id")
 
-            # 提取回复上下文并拼装前缀
             if reply_to_id and reply_to_id in msg_map:
                 replied_msg = msg_map[reply_to_id]
                 replied_speaker = (
@@ -356,8 +363,7 @@ class TelegramConversationService:
                 replied_content = replied_msg.get("content", "")
                 if len(replied_content) > 30:
                     replied_content = replied_content[:30] + "..."
-                quote_prefix = f"[回复 {replied_speaker}: \"{replied_content}\"]\n"
-                content = quote_prefix + content
+                content = f"[回复 {replied_speaker}: \"{replied_content}\"]\n{content}"
 
             if item.get("speaker_type") == "human":
                 speaker = (
@@ -365,12 +371,7 @@ class TelegramConversationService:
                     or item.get("sender_user_id")
                     or "用户"
                 )
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": f"[{speaker}] {content}",
-                    }
-                )
+                raw_items.append({"role": "user", "speaker": speaker, "content": content})
             else:
                 speaker = (
                     item.get("character_name")
@@ -378,10 +379,33 @@ class TelegramConversationService:
                     or "角色"
                 )
                 delivery = item.get("delivery", "text")
-                messages.append(
-                    {
+                raw_items.append({"role": "assistant", "speaker": speaker, "content": content, "delivery": delivery})
+
+        # 第二步：合并同一说话人连续的消息
+        messages: List[dict] = []
+        for entry in raw_items:
+            if (
+                messages
+                and messages[-1]["role"] == entry["role"]
+                and messages[-1].get("_speaker") == entry["speaker"]
+            ):
+                messages[-1]["content"] += "\n" + entry["content"]
+            else:
+                if entry["role"] == "user":
+                    messages.append({
+                        "role": "user",
+                        "content": f"[{entry['speaker']}] {entry['content']}",
+                        "_speaker": entry["speaker"],
+                    })
+                else:
+                    messages.append({
                         "role": "assistant",
-                        "content": f"[{speaker}][{delivery}] {content}",
-                    }
-                )
+                        "content": f"[{entry['speaker']}][{entry.get('delivery', 'text')}] {entry['content']}",
+                        "_speaker": entry["speaker"],
+                    })
+
+        # 清理内部标记
+        for m in messages:
+            m.pop("_speaker", None)
         return messages
+

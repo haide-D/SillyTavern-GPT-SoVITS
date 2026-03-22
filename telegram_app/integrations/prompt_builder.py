@@ -62,7 +62,9 @@ class PromptBuilder:
         parts.append("============== 【可用角色】 ==============")
         for bot in bots:
             voice_mode = "可语音" if allow_voice and bot.voice_enabled else "纯文本"
-            parts.append(f"- {bot.character_name} ({bot.character_ref}, {voice_mode})")
+            lang_label = {"zh": "中文", "ja": "日语", "en": "英语"}.get(getattr(bot, "voice_lang", "zh"), "中文")
+            voice_tag = f"{voice_mode}/{lang_label}" if bot.voice_enabled else voice_mode
+            parts.append(f"- {bot.character_name} ({bot.character_ref}, {voice_tag})")
             if bot.description:
                 parts.append(f"  角色描述: {bot.description}")
             if bot.personality:
@@ -112,16 +114,25 @@ class PromptBuilder:
         parts.append("- ⚠️【畅所欲言与争吵】如果此刻适合激烈争吵或深入推理，请角色们务必畅所欲言！**系统在底层会自动将你们的长篇大论切割成连续的一条条短消息进行发送（模拟真实群聊刷屏效果）**。所以你不需要刻意压抑字数，觉得该说多少就说多少！")
         parts.append("- ⚠️【高频互动】在一轮回复中，你可以调用多次 `emit_bot_message` 让不同角色交替发言，形成激烈的互相抢话、打断、接梗的多人对话场景！让对话看起来就像一群活生生的人在实时吵架！")
         parts.append("- ⚠️【除了旁白】只有“旁白”角色可以做环境、动作、气氛的客观描写。其他普通角色的发言框里，绝对不允许出现任何动作描写。")
-        parts.append('- 🎙️【语音优先】标记为"可语音"的角色，delivery 应优先填 voice 而非 text，并根据角色当前情绪填写准确的 emotion 标签。只有在内容不适合朗读（如大段说明文字）时才用 text。')
+        parts.append('- ⚠️【强制语音】标注为"可语音"的角色，delivery 必须、必定、绝对只能填 `voice`！只有旁白或没有语音标签的角色才能填 `text`。')
+        parts.append('- 🌐【多语种语音】如果角色标记的语音语言不是中文（如"可语音/日语"），则 `voice_text` 必须填写该语言的原文台词（如日语），而 `text` 填写对应的中文翻译。对话记录只保留 text（中文）；voice_text 仅用于语音合成。语音语言为中文的角色无需填 voice_text。')
 
         if recent_messages:
             parts.append("============== 【近期对话提示】 ==============")
-            for msg in recent_messages[-20:]:
+            print(f"[DEBUG] prompt_builder 收到 recent_messages={len(recent_messages)} 条")
+            merged: list = []
+            for msg in recent_messages:
                 speaker = (
                     msg.get("sender_display_name")
                     or msg.get("character_name")
                     or msg.get("role")
                 )
-                parts.append(f"- {speaker}: {msg.get('content', '')}")
+                content = msg.get("content", "")
+                if merged and merged[-1][0] == speaker:
+                    merged[-1] = (speaker, merged[-1][1] + "\n" + content)
+                else:
+                    merged.append((speaker, content))
+            for speaker, content in merged:
+                parts.append(f"- {speaker}: {content}")
 
         return "\n".join(parts)

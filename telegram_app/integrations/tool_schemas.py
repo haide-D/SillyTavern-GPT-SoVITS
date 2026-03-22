@@ -16,7 +16,11 @@ def _get_character_emotions(bots: List[ResolvedTelegramCharacter]) -> Dict[str, 
             print(f"[ToolSchema] 检查角色 {bot.character_name}: 候选名={candidates}")
             for name in candidates:
                 try:
-                    emotions = EmotionService.get_available_emotions(name)
+                    voice_lang = getattr(bot, "voice_lang", "zh")
+                    emotions = EmotionService.get_available_emotions(name, voice_lang=voice_lang)
+                    if not emotions:
+                        # 如果指定语言没找到，回退找默认全量
+                        emotions = EmotionService.get_available_emotions(name)
                     if emotions:
                         print(f"[ToolSchema] ✅ {bot.character_name} (via '{name}') 可用情绪: {emotions}")
                         result[bot.character_name] = emotions
@@ -39,7 +43,7 @@ def get_chat_tools(
     character_text = "、".join(character_names)
     delivery_enum = ["text", "voice"] if allow_voice else ["text"]
     delivery_desc = (
-        "发送方式。支持语音的角色应优先使用 voice 以增强沉浸感，仅在内容不适合朗读时才用 text"
+        "发送方式。如果该角色标签中包含'可语音'，此项必定、绝对只能填 'voice'，严禁填 'text'！"
         if allow_voice
         else "发送方式，固定为 text"
     )
@@ -87,6 +91,10 @@ def get_chat_tools(
                         "reply_to_trigger": {
                             "type": "boolean",
                             "description": "是否对本轮触发消息进行引用回复。通常只有第一条回复需要 true。",
+                        },
+                        "voice_text": {
+                            "type": "string",
+                            "description": "仅当角色语音语言非中文时必填。填写该语言的原文台词（如日语/英语），用于语音合成。text 字段仍填中文翻译。",
                         },
                     },
                     "required": ["character_name", "text", "delivery", "emotion"],

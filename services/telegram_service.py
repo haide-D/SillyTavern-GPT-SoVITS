@@ -470,12 +470,14 @@ class TelegramBotService:
             )
             success = False
             if msg.use_tts and runtime.config.voice_enabled:
+                tts_text = msg.voice_text or msg.text
                 ogg_path = await self.tts_service.generate_ogg_file(
                     chat_id,
-                    msg.text,
+                    tts_text,
                     emotion=msg.emotion,
                     char_name=runtime.config.tts_character
                     or runtime.config.character_name,
+                    voice_lang=runtime.config.voice_lang,
                 )
                 if ogg_path:
                     try:
@@ -484,22 +486,28 @@ class TelegramBotService:
                             ogg_path,
                             reply_to_message_id=reply_target,
                         )
+                        if not success and reply_target:
+                            print(f"[TelegramAudio] 发送语音失败(可能是回复对象未找到)，尝试无引用发送...")
+                            success = await VoiceSender(runtime.app).send_voice_file(
+                                chat_id,
+                                ogg_path,
+                                reply_to_message_id=None,
+                            )
                     except Exception as e:
-                        if "reply" in str(e).lower() or "not found" in str(e).lower():
-                            print(f"[TelegramAudio] 发送语音失败(回复对象未找到)，尝试无引用发送...")
-                            try:
-                                success = await VoiceSender(runtime.app).send_voice_file(
-                                    chat_id,
-                                    ogg_path,
-                                    reply_to_message_id=None,
-                                )
-                            except Exception as e2:
-                                print(f"[TelegramAudio] 无引用发送语音也失败: {e2}")
-                        else:
-                            print(f"[TelegramAudio] 发送语音发生异常: {e}")
+                        print(f"[TelegramAudio] 发送语音发生异常: {e}")
                     finally:
                         if os.path.exists(ogg_path):
                             os.remove(ogg_path)
+                            
+                if success and msg.voice_text:
+                    try:
+                        await runtime.app.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"{msg.text}",
+                            reply_to_message_id=reply_target,
+                        )
+                    except Exception as e:
+                        print(f"[TelegramBot] 发送翻译文本失败: {e}")
 
             if not success:
                 try:

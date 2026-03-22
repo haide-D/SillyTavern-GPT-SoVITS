@@ -51,6 +51,7 @@ class OutboundMessage:
     text: str
     delivery: str = "text"
     emotion: str = "default"
+    voice_text: str = ""
     reply_to_trigger: bool = False
     target_user_display_name: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)

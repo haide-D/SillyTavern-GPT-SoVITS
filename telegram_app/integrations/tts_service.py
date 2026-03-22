@@ -8,7 +8,8 @@ from config import get_character_mappings, get_current_dirs, get_sovits_host
 
 class TelegramTtsService:
     async def generate_ogg_file(
-        self, chat_id: str, text: str, emotion: str, char_name: str
+        self, chat_id: str, text: str, emotion: str, char_name: str,
+        voice_lang: str = "zh",
     ) -> Optional[str]:
         try:
             from phone_call_utils.tts_service import TTSService
@@ -24,8 +25,17 @@ class TelegramTtsService:
 
             model_folder = mappings[char_name]
             base_dir, _ = get_current_dirs()
+            
+            # 根据 voice_lang 决定参考音频目录
+            lang_map = {
+                "zh": "Chinese",
+                "en": "English",
+                "ja": "Japanese"
+            }
+            lang_dir = lang_map.get(voice_lang, "Chinese")
+            
             ref_dir = os.path.join(
-                base_dir, model_folder, "reference_audios", "Chinese", "emotions"
+                base_dir, model_folder, "reference_audios", lang_dir, "emotions"
             )
             if not os.path.exists(ref_dir):
                 print(
@@ -46,7 +56,7 @@ class TelegramTtsService:
             ref_audio = {"path": selected_ref["path"], "text": selected_ref["text"]}
 
             tts_config = {
-                "text_lang": "zh",
+                "text_lang": voice_lang,
                 "prompt_lang": "zh",
                 "text_split_method": "cut0",
                 "use_aux_ref_audio": False,
