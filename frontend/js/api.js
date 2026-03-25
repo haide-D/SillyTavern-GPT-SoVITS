@@ -283,5 +283,107 @@ export const TTS_API = {
         });
         if (!res.ok) throw new Error("Get auto call history by fingerprints failed");
         return await res.json();
+    },
+
+    // ===========================================
+    // 【新增】世界书初始化 API
+    // ===========================================
+
+    /**
+     * 检查角色是否已初始化世界书
+     */
+    async checkWorldBookInit(charName) {
+        try {
+            const res = await fetch(this._url(`/api/admin/worldbook/status/${encodeURIComponent(charName)}`));
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const data = await res.json();
+            return data.initialized === true;
+        } catch (error) {
+            console.error('[API] 检查世界书初始化状态失败:', error);
+            // 失败时默认已初始化，避免反复弹窗
+            return true;
+        }
+    },
+
+    /**
+     * 初始化角色世界书画像
+     * payload 格式: { char_name, card_data, worldbook_entries }
+     */
+    async initWorldBook(payload) {
+        const res = await fetch(this._url('/api/admin/worldbook/init'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!res.ok) {
+            let errorMsg = `世界书初始化失败 (${res.status})`;
+            try {
+                const errorData = await res.json();
+                if (errorData.detail) errorMsg = errorData.detail;
+            } catch (e) {
+                console.warn("无法解析错误响应:", e);
+            }
+            throw new Error(errorMsg);
+        }
+        
+        return await res.json();
+    },
+
+    async previewTelegramImport(payload) {
+        const res = await fetch(this._url('/api/telegram/import/preview'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || `Telegram 导入预览失败 (${res.status})`);
+        }
+        return await res.json();
+    },
+
+    async commitTelegramImport(pack) {
+        const res = await fetch(this._url('/api/telegram/import/commit'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pack })
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || `Telegram 导入保存失败 (${res.status})`);
+        }
+        return await res.json();
+    },
+
+    async listTelegramPacks() {
+        const res = await fetch(this._url('/api/telegram/packs'));
+        if (!res.ok) throw new Error(`获取 Telegram 资产包失败 (${res.status})`);
+        return await res.json();
+    },
+
+    async listTelegramPackCharacters(packId) {
+        const res = await fetch(this._url(`/api/telegram/packs/${encodeURIComponent(packId)}/characters`));
+        if (!res.ok) throw new Error(`获取资产包角色失败 (${res.status})`);
+        return await res.json();
+    },
+
+    async listTelegramBots() {
+        const res = await fetch(this._url('/api/telegram/bots'));
+        if (!res.ok) throw new Error(`获取 Telegram bots 失败 (${res.status})`);
+        return await res.json();
+    },
+
+    async bindTelegramBot(botId, characterRef) {
+        const res = await fetch(this._url(`/api/telegram/bots/${encodeURIComponent(botId)}/binding`), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_ref: characterRef })
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.detail || `绑定 Telegram bot 失败 (${res.status})`);
+        }
+        return await res.json();
     }
 };

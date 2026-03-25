@@ -1,0 +1,28 @@
+{
+  "pack_id": "demo_pack",
+  "name": "Demo Pack",
+  "source": "sillytavern_import",
+  "source_ref": "",
+  "version": "1",
+  "director_prompt": "",
+  "world": {
+    "title": "W",
+    "summary": "S",
+    "rules": [],
+    "lore": []
+  },
+  "characters": [
+    {
+      "character_ref": "alice",
+      "name": "Alice",
+      "description": "desc",
+      "personality": "",
+      "system_prompt_fragment": "",
+      "first_message": "",
+      "dialogue_examples": [],
+      "tags": [],
+      "metadata": {}
+    }
+  ],
+  "stories": []
+}

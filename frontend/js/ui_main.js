@@ -76,6 +76,9 @@ export const TTS_UI = window.TTS_UI;
         scope.renderDashboardList();
         scope.renderModelOptions();
         scope.bindDashboardEvents();
+        if (scope.renderTelegramManager) {
+            scope.renderTelegramManager();
+        }
     };
 
     /**

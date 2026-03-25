@@ -30,7 +30,7 @@ class ContinuousAnalysisCompleteRequest(BaseModel):
     speakers: List[str]
     context: Optional[List[Dict]] = None  # ✅ 新增: 对话上下文，用于 eavesdrop prompt 构建
     user_name: Optional[str] = None  # 用户名，用于 Prompt 构建
-    char_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
+    char_card_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
     error: Optional[str] = None  # ✅ 新增: 前端 LLM 调用错误信息
     raw_response: Optional[str] = None  # ✅ 新增: 前端 LLM 原始响应（用于调试）
 
@@ -80,7 +80,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         print(f"  - 分支: {req.chat_branch}")
         print(f"  - 说话人: {req.speakers}")
         print(f"  - 用户名: {req.user_name}")
-        print(f"  - 角色名: {req.char_name}")
+        print(f"  - 角色名: {req.char_card_name}")
         print(f"  - 上下文指纹: {req.context_fingerprint}")
         print(f"  - LLM 响应长度: {len(req.llm_response) if req.llm_response else 0}")
         
@@ -95,7 +95,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
             print(f"    context_fingerprint: {req.context_fingerprint}")
             print(f"    speakers: {req.speakers}")
             print(f"    user_name: {req.user_name}")
-            print(f"    char_name: {req.char_name}")
+            print(f"    char_name: {req.char_card_name}")
             print(f"    llm_response: {req.llm_response}")
             print(f"    error: {req.error}")
             # ✅ 打印 LLM 原始响应
@@ -126,6 +126,38 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                 "message": result.get("error", "分析记录保存失败")
             }
         
+        # ✅ 异步写入统一记忆层（打通酒馆 ↔ TG 记忆）
+        if req.context and req.speakers:
+            try:
+                from services.memory_service import MemoryService
+                import asyncio
+                mem_svc = MemoryService()
+                # 将酒馆对话上下文转为 MemoryService 格式
+                messages = []
+                for msg in req.context[-10:]:
+                    name = msg.get("name", "")
+                    content = msg.get("mes", "")
+                    is_user = msg.get("is_user", False)
+                    messages.append({
+                        "role": "user" if is_user else "assistant",
+                        "content": f"{name}: {content}" if not is_user else content
+                    })
+                
+                if messages:
+                    # 一次调用，一条快照，所有说话人信息打包在 character_profiles 里
+                    non_user_speakers = [s for s in req.speakers if s != req.user_name]
+                    asyncio.create_task(mem_svc.process_conversation(
+                        source="tavern",
+                        source_id=req.chat_branch,
+                        context_fingerprint=req.context_fingerprint,
+                        messages=messages,
+                        speakers=non_user_speakers,
+                        floor=req.floor
+                    ))
+                    print(f"[ContinuousAnalysis] 🧠 已触发记忆处理 (fp={req.context_fingerprint[:16]}...)")
+            except Exception as e:
+                print(f"[ContinuousAnalysis] ⚠️ 记忆处理触发失败: {e}")
+        
         # 提取触发信息
         suggested_action = result.get("suggested_action", "none")
         caller = result.get("caller")  # 新格式：打电话的角色
@@ -142,7 +174,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
         
         if suggested_action == "phone_call" and caller:
                 # 触发主动电话
-                print(f"[ContinuousAnalysis] 📞 触发主动电话: caller={caller}, ws_target={req.char_name}")
+                print(f"[ContinuousAnalysis] 📞 触发主动电话: caller={caller}, ws_target={req.char_card_name}")
                 scheduler = AutoCallScheduler()
                 call_id = await scheduler.schedule_auto_call(
                     chat_branch=req.chat_branch,
@@ -151,7 +183,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                     context=[],  # 上下文由 PhoneCallService 根据 chat_branch 提取
                     context_fingerprint=req.context_fingerprint,
                     user_name=req.user_name,
-                    char_name=req.char_name,  # ✅ 修复: 使用主角色卡名称进行 WebSocket 路由
+                    char_name=req.char_card_name,  # ✅ 修复: 使用主角色卡名称进行 WebSocket 路由
                     call_reason=call_reason,  # 传递电话原因
                     call_tone=call_tone  # 传递通话氛围
                 )
@@ -203,7 +235,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                     context=req.context or [],  # ✅ 修复: 使用前端传递的对话上下文
                     context_fingerprint=req.context_fingerprint,
                     user_name=req.user_name,
-                    char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由
+                    char_name=req.char_card_name,  # 使用主角色卡名称进行 WebSocket 路由
                     scene_description=trigger_reason,
                     eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
                 )
@@ -213,7 +245,7 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                 }
         
         # 通知前端分析完成 (使用主角色卡名称作为 WebSocket 路由目标)
-        ws_target = req.char_name if req.char_name else (req.speakers[0] if req.speakers else "unknown")
+        ws_target = req.char_card_name if req.char_card_name else (req.speakers[0] if req.speakers else "unknown")
         await NotificationService.broadcast_to_char(
             char_name=ws_target,
             message={

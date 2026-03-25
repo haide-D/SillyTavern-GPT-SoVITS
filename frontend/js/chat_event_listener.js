@@ -265,6 +265,9 @@ export const ChatEventListener = {
 
             console.log(`[ChatEventListener] ✅ 聊天切换完成 - 角色: ${charName}, 分支: ${chatBranch}`);
 
+            // 检查并触发世界书初始化
+            await this.checkAndInitWorldBook(charName);
+
         } catch (error) {
             console.error('[ChatEventListener] ❌ 处理聊天切换时出错:', error);
         }
@@ -295,6 +298,123 @@ export const ChatEventListener = {
 
         } catch (error) {
             console.error('[ChatEventListener] ❌ 处理角色消息时出错:', error);
+        }
+    },
+
+    /**
+     * 检查并提供世界书初始化 UI
+     */
+    async checkAndInitWorldBook(charName) {
+        try {
+            // 1. 检查是否已初始化
+            const isInit = await window.TTS_API.checkWorldBookInit(charName);
+            if (isInit) {
+                console.log(`[ChatEventListener] ℹ️ 角色 ${charName} 已在后端初始化画像，跳过`);
+                return;
+            }
+
+            // 2. 收集数据
+            const worldBookEntries = ContextDataCollector.collectWorldBookEntries();
+            const cardData = ContextDataCollector.collectCharacterCardData();
+
+            if (!cardData && worldBookEntries.length === 0) {
+                console.log(`[ChatEventListener] ℹ️ 角色 ${charName} 无角色卡和世界书数据，跳过`);
+                return;
+            }
+
+            if (worldBookEntries.length === 0) {
+                 // 只有角色卡数据，没有世界书，直接静默初始化（无需弹窗选条目）
+                 console.log(`[ChatEventListener] ℹ️ 角色 ${charName} 无世界书，仅提交角色卡数据进行初始化`);
+                 await window.TTS_API.initWorldBook({
+                     char_name: charName,
+                     card_data: cardData,
+                     worldbook_entries: []
+                 });
+                 if (typeof toastr !== 'undefined') toastr.success(`角色 ${charName} 画像初始化完成`);
+                 return;
+            }
+
+            // 3. 构建选择弹窗 UI
+            // 使用全局变量来同步选取状态，因为 popup resovle 时 DOM 可能已经被销毁
+            window.__st_dt_wbState = window.__st_dt_wbState || new Set();
+            window.__st_dt_wbState.clear();
+
+            const entriesHtml = worldBookEntries.map((entry, index) => {
+                const checked = entry.constant ? 'checked' : '';
+                if (entry.constant) {
+                    window.__st_dt_wbState.add(index);
+                }
+                return `
+                    <div style="margin-bottom: 10px; padding: 10px; border: 1px solid rgba(255,255,255,0.1); border-radius: 5px;">
+                        <label style="display: flex; align-items: flex-start; cursor: pointer;">
+                            <input type="checkbox" onchange="if(this.checked) window.__st_dt_wbState.add(${index}); else window.__st_dt_wbState.delete(${index});" class="wb_entry_checkbox" data-index="${index}" ${checked} style="margin-top: 4px; margin-right: 10px;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: bold; margin-bottom: 5px;">
+                                    ${entry.comment || '未命名'} ${entry.constant ? '<span style="color: #ffaa00; font-size: 0.8em;">(Constant)</span>' : ''}
+                                </div>
+                                <div style="font-size: 0.9em; opacity: 0.8; max-height: 80px; overflow-y: auto;">
+                                    ${entry.content}
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                `;
+            }).join('');
+
+            const contentHtml = `
+                <div style="flex: 1; overflow-y: auto; overflow-x: hidden;">
+                    <h3 style="margin-top: 0;">为 <strong>${charName}</strong> 提炼画像</h3>
+                    <p style="opacity: 0.8; font-size: 0.9em;">选择要与角色卡一并发送给 LLM 进行结构化提炼的世界书条目。<br>已默认勾选 Constant 全局条目。</p>
+                    <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 5px; max-height: 40vh; overflow-y: auto; padding-right: 10px;">
+                        ${entriesHtml}
+                    </div>
+                </div>
+            `;
+
+            // 4. 弹窗
+            const stContext = window.SillyTavern.getContext();
+            const popupResult = await stContext.callGenericPopup(contentHtml, stContext.POPUP_TYPE.CONFIRM, '', { 
+                okButton: "开始提炼画像", 
+                cancelButton: "跳过",
+                wider: true
+            });
+
+            if (!popupResult) {
+                console.log(`[ChatEventListener] ℹ️ 用户跳过了世界书初始化`);
+                return;
+            }
+
+            // 5. 收集勾选的条目 (从状态集里取, 避免 DOM 销毁后 querySelectorAll 返回空)
+            const selectedEntries = [];
+            window.__st_dt_wbState.forEach(idx => {
+                selectedEntries.push(worldBookEntries[idx]);
+            });
+
+            if (typeof toastr !== 'undefined') toastr.info(`正在为 ${charName} 调用 LLM 提炼画像，请耐心等待...`, "进行中", { timeOut: 0 });
+
+            // 6. 提交到后端
+            try {
+                const result = await window.TTS_API.initWorldBook({
+                    char_name: charName,
+                    card_data: cardData,
+                    worldbook_entries: selectedEntries
+                });
+                
+                if (typeof toastr !== 'undefined') {
+                    toastr.clear();
+                    toastr.success(`角色画像提取成功！`, "成功");
+                }
+                console.log(`[ChatEventListener] ✅ 画像提取成功:`, result);
+            } catch (initErr) {
+                if (typeof toastr !== 'undefined') {
+                    toastr.clear();
+                    toastr.error(`画像提取失败: ${initErr.message}`);
+                }
+                console.error(`[ChatEventListener] ❌ 画像提取出错:`, initErr);
+            }
+
+        } catch (error) {
+            console.error('[ChatEventListener] ❌ 检查/初始化世界书时出错:', error);
         }
     }
 

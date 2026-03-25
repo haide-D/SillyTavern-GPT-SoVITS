@@ -10,16 +10,17 @@ class EmotionService:
     """情绪管理服务"""
     
     @staticmethod
-    def get_available_emotions(char_name: str) -> List[str]:
+    def get_available_emotions(char_name: str, voice_lang: str = None) -> List[str]:
         """
         获取角色可用情绪列表
         
-        使用与 _select_ref_audio 一致的逻辑：
-        - 读取 tts_config.prompt_lang 配置
+        - 优先使用传入的 voice_lang
+        - 否则读取 tts_config.prompt_lang 配置
         - 扫描对应语言目录下的 emotions 文件夹
         
         Args:
             char_name: 角色名称
+            voice_lang: 优先使用的语言 (zh/ja/en)
             
         Returns:
             情绪列表 (已排序)
@@ -32,10 +33,11 @@ class EmotionService:
         model_folder = mappings[char_name]
         base_dir, _ = get_current_dirs()
         
-        # 从 tts_config.prompt_lang 读取语言设置并转换为目录名
-        # 与 _select_ref_audio 保持一致
-        settings = load_json(SETTINGS_FILE)
-        prompt_lang = settings.get("phone_call", {}).get("tts_config", {}).get("prompt_lang", "zh")
+        if voice_lang:
+            prompt_lang = voice_lang
+        else:
+            settings = load_json(SETTINGS_FILE)
+            prompt_lang = settings.get("phone_call", {}).get("tts_config", {}).get("prompt_lang", "zh")
         
         # 语言代码转目录名映射
         lang_map = {

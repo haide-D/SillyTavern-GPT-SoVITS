@@ -2,7 +2,7 @@ import os
 import glob
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
-from config import init_settings, load_json, save_json, get_current_dirs, MAPPINGS_FILE, SETTINGS_FILE
+from config import init_settings, load_json, save_json, get_current_dirs, MAPPINGS_FILE, SETTINGS_FILE, _safe_load_for_update
 from utils import scan_audio_files
 from schemas import BindRequest, UnbindRequest, CreateModelRequest, StyleRequest
 import json
@@ -92,14 +92,22 @@ def get_data():
 
 @router.post("/bind_character")
 def bind(req: BindRequest):
-    m = load_json(MAPPINGS_FILE)
+    try:
+        m = _safe_load_for_update(MAPPINGS_FILE)
+    except IOError as e:
+        print(f"[Bind] ❌ {e}")
+        return {"status": "error", "msg": "映射文件读取异常，绑定操作已中止以保护数据"}
     m[req.char_name] = req.model_folder
     save_json(MAPPINGS_FILE, m)
     return {"status": "success"}
 
 @router.post("/unbind_character")
 def unbind(req: UnbindRequest):
-    m = load_json(MAPPINGS_FILE)
+    try:
+        m = _safe_load_for_update(MAPPINGS_FILE)
+    except IOError as e:
+        print(f"[Unbind] ❌ {e}")
+        return {"status": "error", "msg": "映射文件读取异常，解绑操作已中止以保护数据"}
     if req.char_name in m:
         del m[req.char_name]
         save_json(MAPPINGS_FILE, m)

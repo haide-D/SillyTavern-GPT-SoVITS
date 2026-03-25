@@ -1,5 +1,6 @@
 import os
 import json
+import tempfile
 
 # ================= 路径配置 =================
 # 获取当前文件所在目录作为插件根目录
@@ -8,6 +9,7 @@ PLUGIN_ROOT = os.path.dirname(os.path.abspath(__file__))
 SETTINGS_FILE = os.path.join(PLUGIN_ROOT, "system_settings.json")
 MAPPINGS_FILE = os.path.join(PLUGIN_ROOT, "character_mappings.json")
 FRONTEND_DIR = os.path.join(PLUGIN_ROOT, "frontend")
+TELEGRAM_PACKS_DIR = os.path.join(PLUGIN_ROOT, "assets", "telegram_packs")
 
 # 默认值
 DEFAULT_BASE_DIR = os.path.join(PLUGIN_ROOT, "MyCharacters")
@@ -15,20 +17,54 @@ DEFAULT_CACHE_DIR = os.path.join(PLUGIN_ROOT, "Cache")
 MAX_CACHE_SIZE_MB = 500
 SOVITS_HOST = "http://127.0.0.1:9880"
 
+
 # ================= 配置加载逻辑 =================
 def load_json(filename):
-    if os.path.exists(filename):
-        try:
-            with open(filename, 'r', encoding='utf-8') as f: return json.load(f)
-        except: return {}
-    return {}
+    """读取 JSON 文件，文件不存在返回空字典，解析失败记录错误并返回空字典"""
+    if not os.path.exists(filename):
+        return {}
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[Config] ⚠️ 读取 {filename} 失败: {e}")
+        return {}
+
+
+def _safe_load_for_update(filename):
+    """写入前的保护性读取：文件存在但读取为空时抛异常，防止覆盖已有数据"""
+    if not os.path.exists(filename):
+        return {}
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        # 文件存在但读不出来 → 拒绝返回空字典，防止调用方用空数据覆盖
+        raise IOError(f"文件 {filename} 存在但读取失败，拒绝覆盖: {e}")
+
 
 def save_json(filename, data):
+    """原子写入 JSON：先写临时文件再 rename，避免写一半崩溃导致文件损坏"""
     try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        dir_name = os.path.dirname(filename)
+        fd, tmp_path = tempfile.mkstemp(suffix=".tmp", dir=dir_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            # Windows 上 rename 目标存在会报错，需要先删除
+            if os.path.exists(filename):
+                os.replace(tmp_path, filename)
+            else:
+                os.rename(tmp_path, filename)
+        except:
+            # 写入失败，清理临时文件
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
     except Exception as e:
-        print(f"Error saving {filename}: {e}")
+        print(f"[Config] ❌ 保存 {filename} 失败: {e}")
+
 
 def init_settings():
     """初始化并读取设置，确保文件和目录存在"""
@@ -44,7 +80,7 @@ def init_settings():
         "default_lang": "Chinese",
         "iframe_mode": False,
         "bubble_style": "default",
-        "sovits_host": SOVITS_HOST
+        "sovits_host": SOVITS_HOST,
     }
 
     for key, val in defaults.items():
@@ -64,7 +100,9 @@ def init_settings():
             if key not in user_config:
                 user_config[key] = default_val
                 modified = True
-            elif isinstance(default_val, dict) and isinstance(user_config.get(key), dict):
+            elif isinstance(default_val, dict) and isinstance(
+                user_config.get(key), dict
+            ):
                 # 递归合并嵌套字典
                 if deep_merge(default_val, user_config[key]):
                     modified = True
@@ -73,10 +111,12 @@ def init_settings():
     # message_processing 配置 - 共享的消息过滤配置
     message_processing_defaults = {
         "extract_tag": "",
-        "filter_tags": "<small>, [statbar]"
+        "filter_tags": "<small>, [statbar]",
     }
     # 类型安全检查：如果值不是字典，用默认值覆盖
-    if "message_processing" not in settings or not isinstance(settings["message_processing"], dict):
+    if "message_processing" not in settings or not isinstance(
+        settings["message_processing"], dict
+    ):
         settings["message_processing"] = message_processing_defaults
         dirty = True
     else:
@@ -86,41 +126,38 @@ def init_settings():
     # phone_call 配置 - 使用深度合并,只补充缺失字段,不覆盖用户设置
     phone_call_defaults = {
         "enabled": True,
-        "trigger": {
-            "type": "message_count",
-            "threshold": 5
-        },
+        "trigger": {"type": "message_count", "threshold": 5},
         "llm": {
             "api_url": "",
             "api_key": "",
             "model": "gemini-2.5-flash",
             "temperature": 0.8,
-            "max_tokens": 5000
+            "max_tokens": 5000,
         },
         "data_extractors": [
             {
                 "name": "summary",
                 "pattern": "<总结>([\\s\\S]*?)</总结>",
                 "scope": "character_only",
-                "description": "提取角色消息中的总结内容"
+                "description": "提取角色消息中的总结内容",
             }
         ],
         "response_parser": {
             "format": "json",
             "fallback_emotion": "default",
             "validate_speed_range": [0.5, 2.0],
-            "validate_pause_range": [0.1, 3.0]
+            "validate_pause_range": [0.1, 3.0],
         },
         "audio_merge": {
             "silence_between_segments": 0.5,
             "normalize_volume": False,
-            "output_format": "wav"
+            "output_format": "wav",
         },
         "tts_config": {
             "text_lang": "zh",
             "prompt_lang": "zh",
             "text_split_method": "cut0",
-            "use_aux_ref_audio": False
+            "use_aux_ref_audio": False,
         },
         "auto_generation": {
             "enabled": True,
@@ -128,8 +165,8 @@ def init_settings():
             "floor_interval": 3,
             "start_floor": 3,
             "max_context_messages": 10,
-            "notification_method": "websocket"
-        }
+            "notification_method": "websocket",
+        },
     }
 
     # 初始化或深度合并 phone_call 配置
@@ -145,27 +182,88 @@ def init_settings():
     # analysis_engine 默认配置 - 分析引擎独立配置
     analysis_engine_defaults = {
         "enabled": True,
-        "analysis_interval": 2,          # 每几楼层分析一次
-        "max_history_records": 100,       # 最大历史记录数
-        "llm_context_limit": 10,          # 发给 LLM 的历史记录数量
-        "trigger_threshold": 60,          # 行动触发阈值 (0-100)
+        "analysis_interval": 2,  # 每几楼层分析一次
+        "max_history_records": 100,  # 最大历史记录数
+        "llm_context_limit": 10,  # 发给 LLM 的历史记录数量
+        "trigger_threshold": 60,  # 行动触发阈值 (0-100)
         "llm": {
             "api_url": "",
             "api_key": "",
             "model": "",
             "temperature": 0.8,
-            "max_tokens": 5000
-        }
+            "max_tokens": 5000,
+        },
     }
-    
+
     # 类型安全检查
-    if "analysis_engine" not in settings or not isinstance(settings["analysis_engine"], dict):
+    if "analysis_engine" not in settings or not isinstance(
+        settings["analysis_engine"], dict
+    ):
         settings["analysis_engine"] = analysis_engine_defaults
         dirty = True
     else:
         if deep_merge(analysis_engine_defaults, settings["analysis_engine"]):
             dirty = True
-    
+
+    # telegram 配置 - 独立的 TG 机器人配置
+    telegram_defaults = {
+        "enabled": False,
+        "proxy": {
+            "enabled": True,
+            "http": "http://127.0.0.1:7890",
+            "https": "http://127.0.0.1:7890",
+        },
+        "default_mode": "free_chat",
+        "default_asset_pack_id": "",
+        "bots": [],
+        "shared_llm": {
+            "api_url": "",
+            "api_key": "",
+            "model": "gemini-2.5-flash",
+            "temperature": 0.8,
+            "max_tokens": 2000,
+            "system_prompt": "",
+        },
+        "modes": {
+            "free_chat": {
+                "max_history": 20,
+                "memory_interval": 10,
+                "max_snapshots": 3,
+                "prompt_token_budget": 1800,
+                "recent_messages": 30,
+                "max_active_characters": 3,
+                "max_speakers_per_turn": 2,
+            },
+            "scripted_story": {
+                "max_history": 28,
+                "memory_interval": 6,
+                "max_snapshots": 5,
+                "prompt_token_budget": 2400,
+                "recent_messages": 14,
+                "max_active_characters": 4,
+                "max_speakers_per_turn": 2,
+            },
+            "murder_mystery": {
+                "max_history": 24,
+                "memory_interval": 4,
+                "max_snapshots": 6,
+                "prompt_token_budget": 2600,
+                "recent_messages": 30,
+                "max_active_characters": 4,
+                "max_speakers_per_turn": 2,
+            },
+        },
+        "world_setting": "",
+    }
+
+    # 类型安全检查
+    if "telegram" not in settings or not isinstance(settings["telegram"], dict):
+        settings["telegram"] = telegram_defaults
+        dirty = True
+    else:
+        if deep_merge(telegram_defaults, settings["telegram"]):
+            dirty = True
+
     # 迁移旧配置（兼容性处理）
     if "analysis_llm" in settings:
         # 如果用户有旧的 analysis_llm 配置，迁移到 analysis_engine.llm
@@ -173,14 +271,20 @@ def init_settings():
         if deep_merge(old_llm, settings["analysis_engine"]["llm"]):
             pass  # 合并旧配置到新位置
         dirty = True
-    
+
     # 迁移 phone_call 中的旧分析配置
     phone_call = settings.get("phone_call", {})
     if "continuous_analysis" in phone_call:
         old_ca = phone_call.pop("continuous_analysis")
-        settings["analysis_engine"]["analysis_interval"] = old_ca.get("analysis_interval", 3)
-        settings["analysis_engine"]["max_history_records"] = old_ca.get("max_history_records", 100)
-        settings["analysis_engine"]["llm_context_limit"] = old_ca.get("llm_context_limit", 10)
+        settings["analysis_engine"]["analysis_interval"] = old_ca.get(
+            "analysis_interval", 3
+        )
+        settings["analysis_engine"]["max_history_records"] = old_ca.get(
+            "max_history_records", 100
+        )
+        settings["analysis_engine"]["llm_context_limit"] = old_ca.get(
+            "llm_context_limit", 10
+        )
         dirty = True
     if "live_character" in phone_call:
         old_lc = phone_call.pop("live_character")
@@ -190,7 +294,6 @@ def init_settings():
         phone_call.pop("smart_trigger")  # 已废弃，直接删除
         dirty = True
 
-
     if dirty:
         save_json(SETTINGS_FILE, settings)
 
@@ -198,15 +301,21 @@ def init_settings():
     base_dir = settings["base_dir"]
     cache_dir = settings["cache_dir"]
 
-    if not os.path.exists(cache_dir): os.makedirs(cache_dir, exist_ok=True)
-    if not os.path.exists(base_dir): os.makedirs(base_dir, exist_ok=True)
+    if not os.path.exists(cache_dir):
+        os.makedirs(cache_dir, exist_ok=True)
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir, exist_ok=True)
+    if not os.path.exists(TELEGRAM_PACKS_DIR):
+        os.makedirs(TELEGRAM_PACKS_DIR, exist_ok=True)
 
     return settings
+
 
 # 获取当前配置的快捷函数
 def get_current_dirs():
     s = init_settings()
     return s["base_dir"], s["cache_dir"]
+
 
 def get_sovits_host():
     """获取配置的 GPT-SoVITS 服务地址"""
@@ -234,18 +343,18 @@ def is_character_bound(char_name: str) -> bool:
 def filter_bound_speakers(speakers: list) -> list:
     """
     过滤说话人列表，只保留已绑定模型的角色
-    
+
     Args:
         speakers: 说话人列表
-        
+
     Returns:
         已绑定模型的说话人列表
     """
     mappings = get_character_mappings()
     bound_speakers = [s for s in speakers if s in mappings]
-    
+
     if len(bound_speakers) < len(speakers):
         unbound = [s for s in speakers if s not in mappings]
         print(f"[Config] ⚠️ 以下角色未绑定模型，已过滤: {unbound}")
-    
+
     return bound_speakers
