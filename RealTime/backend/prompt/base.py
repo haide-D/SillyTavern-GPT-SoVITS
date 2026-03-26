@@ -15,6 +15,9 @@ class PromptContext:
     character_persona: str = ""                        # 角色人设
     scenario: str = ""                                 # 场景描述
     first_message: str = ""                            # 开场白
+    user_name: str = "用户"                            # 用户名
+    examples: str = ""                                 # 对话例句（角色卡 mes_example）
+    author_note: str = ""                              # 作者注
     event_type: Optional[str] = None                   # 触发事件类型
     extra_data: Dict = field(default_factory=dict)     # 扩展数据
 

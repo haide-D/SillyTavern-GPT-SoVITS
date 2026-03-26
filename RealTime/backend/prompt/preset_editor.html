@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>预设编辑器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 16px; color: #a0d2db; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+  select, input, button { font-size: 14px; padding: 6px 12px; border: 1px solid #333; border-radius: 4px; background: #16213e; color: #e0e0e0; }
+  select { min-width: 180px; }
+  input { min-width: 140px; }
+  button { cursor: pointer; background: #0f3460; border-color: #0f3460; }
+  button:hover { background: #1a5276; }
+  button.danger { background: #5c1a1a; border-color: #5c1a1a; }
+  button.danger:hover { background: #7a2222; }
+  button.primary { background: #1b6b3a; border-color: #1b6b3a; }
+  button.primary:hover { background: #238c4e; }
+  button.small { font-size: 12px; padding: 3px 8px; }
+  .status { font-size: 12px; color: #888; margin-left: auto; white-space: nowrap; }
+  .status.ok { color: #3fb950; }
+  .status.err { color: #f85149; }
+  .sep { color: #333; margin: 0 2px; }
+
+  /* 预设元信息 */
+  .meta-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
+  .meta-row label { font-size: 13px; color: #888; }
+  .meta-row input { flex: 1; }
+
+  /* 区块列表 */
+  .block-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .block-card {
+    background: #16213e;
+    border: 1px solid #2a2a4a;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .block-card.disabled { opacity: 0.45; }
+
+  .block-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: #0f1a30;
+    border-bottom: 1px solid #2a2a4a;
+    cursor: grab;
+  }
+  .block-header .drag-handle { color: #555; cursor: grab; user-select: none; }
+  .block-id { font-weight: bold; color: #a0d2db; font-size: 14px; }
+  .block-cond { font-size: 11px; color: #666; background: #0d1117; padding: 1px 6px; border-radius: 3px; }
+  .block-pos { font-size: 11px; color: #8b6914; background: #1a1500; padding: 1px 6px; border-radius: 3px; }
+  .block-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .block-actions label { font-size: 12px; color: #888; cursor: pointer; }
+
+  .block-body { padding: 0; }
+  .block-body textarea {
+    width: 100%; border: none; background: #0d1117; color: #c9d1d9;
+    padding: 10px 12px;
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 13px; line-height: 1.5; resize: vertical;
+    min-height: 60px; tab-size: 2;
+  }
+  .block-body textarea:focus { outline: none; background: #0d1420; }
+
+  .add-block-bar { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+  .add-block-bar input { flex: 1; max-width: 200px; }
+
+  .var-hint { font-size: 11px; color: #555; margin-bottom: 12px; }
+  .var-hint code { background: #16213e; padding: 1px 4px; border-radius: 2px; color: #7aa0b8; }
+
+  /* 原始 YAML 切换 */
+  .raw-toggle { font-size: 12px; color: #666; cursor: pointer; margin-bottom: 8px; text-decoration: underline; }
+  .raw-area { display: none; margin-top: 8px; }
+  .raw-area textarea {
+    width: 100%; height: 400px; background: #0d1117; color: #c9d1d9;
+    border: 1px solid #333; border-radius: 4px; padding: 12px;
+    font-family: "Cascadia Code", monospace; font-size: 13px; line-height: 1.5;
+    resize: vertical; tab-size: 2;
+  }
+</style>
+</head>
+<body>
+<h1>📝 预设编辑器</h1>
+
+<div class="toolbar">
+  <select id="presetSelect" onchange="loadPreset()">
+    <option value="">-- 选择预设 --</option>
+  </select>
+  <button class="primary" onclick="savePreset()">💾 保存 (Ctrl+S)</button>
+  <button onclick="downloadPreset()">⬇ 下载</button>
+  <span class="sep">|</span>
+  <input id="newName" placeholder="新预设名称">
+  <button onclick="createPreset()">➕ 新建</button>
+  <button onclick="importPreset()">📂 导入</button>
+  <input type="file" id="importFile" accept=".yaml,.yml" style="display:none" onchange="handleImport(event)">
+  <span class="sep">|</span>
+  <button class="danger" onclick="deletePreset()">🗑 删除</button>
+  <span class="status" id="status"></span>
+</div>
+
+<div class="var-hint">
+  可用变量：
+  <code>{{char}}</code> <code>{{user}}</code> <code>{{persona}}</code>
+  <code>{{scenario}}</code> <code>{{examples}}</code> <code>{{first_message}}</code>
+  <code>{{author_note}}</code> <code>{{time}}</code> <code>{{turns}}</code>
+</div>
+
+<div id="editorArea" style="display:none;">
+  <!-- 预设名称和描述 -->
+  <div class="meta-row">
+    <label>预设名称</label>
+    <input id="metaName" placeholder="显示名称">
+    <label>描述</label>
+    <input id="metaDesc" placeholder="预设描述（可选）">
+  </div>
+
+  <!-- 区块列表 -->
+  <div class="block-list" id="blockList"></div>
+
+  <!-- 添加区块 -->
+  <div class="add-block-bar">
+    <input id="newBlockId" placeholder="新区块ID（英文）">
+    <button class="small" onclick="addBlock()">➕ 添加区块</button>
+    <span class="sep">|</span>
+    <span class="raw-toggle" onclick="toggleRaw()">查看/编辑原始 YAML ▼</span>
+  </div>
+
+  <div class="raw-area" id="rawArea">
+    <textarea id="rawYaml" spellcheck="false"></textarea>
+    <div style="margin-top:6px;display:flex;gap:8px;">
+      <button class="small" onclick="applyRaw()">应用原始YAML到表单</button>
+      <span style="font-size:11px;color:#666;line-height:28px;">（编辑原始YAML后点此同步到上方表单）</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin + '/api/realtime';
+const sel = document.getElementById('presetSelect');
+const editorArea = document.getElementById('editorArea');
+const blockList = document.getElementById('blockList');
+const statusEl = document.getElementById('status');
+let currentName = '';
+let presetData = null; // { name, description, blocks: [...] }
+
+// Ctrl+S
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === 's') { e.preventDefault(); savePreset(); }
+});
+
+function showStatus(msg, ok = true) {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+  setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
+// ==================== 数据模型 ====================
+
+function parseYaml(yamlText) {
+  // 简易 YAML 解析器不够用，走后端
+  // 这里用正则做轻量解析
+  // 实际交给后端验证，前端用 JS-YAML CDN
+  return null;
+}
+
+function blocksToYaml() {
+  // 从表单状态构建 YAML 文本
+  collectFromForm();
+  if (!presetData) return '';
+
+  let yaml = `# ${presetData.name} 预设\n`;
+  yaml += `name: "${presetData.name}"\n`;
+  yaml += `description: "${presetData.description || ''}"\n\n`;
+  yaml += `blocks:\n`;
+
+  for (const b of presetData.blocks) {
+    yaml += `  - id: ${b.id}\n`;
+    yaml += `    role: ${b.role || 'system'}\n`;
+    if (b.condition) yaml += `    condition: "${b.condition}"\n`;
+    if (b.position && b.position !== 'system') yaml += `    position: ${b.position}\n`;
+    if (b.enabled === false) yaml += `    enabled: false\n`;
+    // content: 多行用 |
+    yaml += `    content: |\n`;
+    const lines = (b.content || '').replace(/\r\n/g, '\n').split('\n');
+    for (const line of lines) {
+      yaml += `      ${line}\n`;
+    }
+    yaml += `\n`;
+  }
+
+  return yaml;
+}
+
+function yamlToBlocks(yamlText) {
+  // 用正则解析 YAML blocks（简易但够用）
+  const data = { name: '', description: '', blocks: [] };
+
+  // name & description
+  const nameMatch = yamlText.match(/^name:\s*"?([^"\n]*)"?\s*$/m);
+  const descMatch = yamlText.match(/^description:\s*"?([^"\n]*)"?\s*$/m);
+  if (nameMatch) data.name = nameMatch[1];
+  if (descMatch) data.description = descMatch[1];
+
+  // 用 "- id:" 分割 blocks
+  const blockPattern = /- id:\s*(\S+)/g;
+  const blockStarts = [];
+  let m;
+  while ((m = blockPattern.exec(yamlText)) !== null) {
+    blockStarts.push({ index: m.index, id: m[1] });
+  }
+
+  for (let i = 0; i < blockStarts.length; i++) {
+    const start = blockStarts[i].index;
+    const end = i + 1 < blockStarts.length ? blockStarts[i + 1].index : yamlText.length;
+    const section = yamlText.substring(start, end);
+
+    const block = {
+      id: blockStarts[i].id,
+      role: 'system',
+      condition: '',
+      position: 'system',
+      content: '',
+      enabled: true,
+    };
+
+    const roleM = section.match(/role:\s*(\S+)/);
+    if (roleM) block.role = roleM[1];
+
+    const condM = section.match(/condition:\s*"?([^"\n]*)"?/);
+    if (condM) block.condition = condM[1];
+
+    const posM = section.match(/position:\s*(\S+)/);
+    if (posM) block.position = posM[1];
+
+    const enabledM = section.match(/enabled:\s*(false|true)/);
+    if (enabledM) block.enabled = enabledM[1] !== 'false';
+
+    // 解析 content（| 块）
+    const contentM = section.match(/content:\s*\|\n([\s\S]*?)(?=\n\s{2,4}\w|\n\s*$|$)/);
+    if (contentM) {
+      // 去掉每行前面的统一缩进
+      const rawLines = contentM[1].split('\n');
+      const stripped = rawLines.map(l => l.replace(/^ {4,6}/, '')).join('\n').trim();
+      block.content = stripped;
+    }
+
+    data.blocks.push(block);
+  }
+
+  return data;
+}
+
+// ==================== 渲染 ====================
+
+function renderBlocks() {
+  blockList.innerHTML = '';
+  if (!presetData || !presetData.blocks) return;
+
+  document.getElementById('metaName').value = presetData.name || '';
+  document.getElementById('metaDesc').value = presetData.description || '';
+
+  presetData.blocks.forEach((b, idx) => {
+    const card = document.createElement('div');
+    card.className = 'block-card' + (b.enabled === false ? ' disabled' : '');
+    card.dataset.idx = idx;
+
+    // 标签信息
+    let tags = '';
+    if (b.condition) tags += `<span class="block-cond" title="条件: ${b.condition}">条件: ${b.condition}</span> `;
+    if (b.position === 'after_history') tags += `<span class="block-pos">📌 历史之后注入</span> `;
+
+    card.innerHTML = `
+      <div class="block-header">
+        <span class="drag-handle">⠿</span>
+        <span class="block-id">${b.id}</span>
+        ${tags}
+        <div class="block-actions">
+          <label><input type="checkbox" ${b.enabled !== false ? 'checked' : ''} onchange="toggleBlock(${idx}, this.checked)"> 启用</label>
+          <button class="small" onclick="moveBlock(${idx}, -1)">↑</button>
+          <button class="small" onclick="moveBlock(${idx}, 1)">↓</button>
+          <button class="small danger" onclick="removeBlock(${idx})">✕</button>
+        </div>
+      </div>
+      <div class="block-body">
+        <textarea data-idx="${idx}" spellcheck="false">${escHtml(b.content || '')}</textarea>
+      </div>
+    `;
+    blockList.appendChild(card);
+  });
+
+  // 自动调高 textarea
+  blockList.querySelectorAll('textarea').forEach(ta => {
+    autoResize(ta);
+    ta.addEventListener('input', () => autoResize(ta));
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = ta.selectionStart;
+        ta.value = ta.value.substring(0, s) + '  ' + ta.value.substring(ta.selectionEnd);
+        ta.selectionStart = ta.selectionEnd = s + 2;
+      }
+    });
+  });
+}
+
+function autoResize(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(60, ta.scrollHeight) + 'px';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ==================== 操作 ====================
+
+function collectFromForm() {
+  if (!presetData) return;
+  presetData.name = document.getElementById('metaName').value.trim();
+  presetData.description = document.getElementById('metaDesc').value.trim();
+  blockList.querySelectorAll('textarea[data-idx]').forEach(ta => {
+    const idx = parseInt(ta.dataset.idx);
+    if (presetData.blocks[idx]) {
+      presetData.blocks[idx].content = ta.value;
+    }
+  });
+}
+
+function toggleBlock(idx, enabled) {
+  if (presetData && presetData.blocks[idx]) {
+    presetData.blocks[idx].enabled = enabled;
+    renderBlocks();
+  }
+}
+
+function moveBlock(idx, dir) {
+  if (!presetData) return;
+  collectFromForm();
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= presetData.blocks.length) return;
+  const arr = presetData.blocks;
+  [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+  renderBlocks();
+}
+
+function removeBlock(idx) {
+  if (!presetData) return;
+  if (!confirm('删除区块 "' + presetData.blocks[idx].id + '"？')) return;
+  collectFromForm();
+  presetData.blocks.splice(idx, 1);
+  renderBlocks();
+}
+
+function addBlock() {
+  const id = document.getElementById('newBlockId').value.trim();
+  if (!id) { showStatus('请输入区块ID', false); return; }
+  if (!/^[a-zA-Z_]\w*$/.test(id)) { showStatus('ID只能含英文、数字和下划线', false); return; }
+  if (!presetData) return;
+  collectFromForm();
+  presetData.blocks.push({
+    id, role: 'system', condition: '', position: 'system', content: '', enabled: true
+  });
+  renderBlocks();
+  document.getElementById('newBlockId').value = '';
+  // 滚动到底部
+  blockList.lastElementChild?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleRaw() {
+  const area = document.getElementById('rawArea');
+  if (area.style.display === 'none' || !area.style.display) {
+    collectFromForm();
+    document.getElementById('rawYaml').value = blocksToYaml();
+    area.style.display = 'block';
+  } else {
+    area.style.display = 'none';
+  }
+}
+
+function applyRaw() {
+  const yamlText = document.getElementById('rawYaml').value;
+  presetData = yamlToBlocks(yamlText);
+  renderBlocks();
+  showStatus('已从原始YAML同步到表单');
+}
+
+// ==================== API ====================
+
+async function refreshList() {
+  try {
+    const r = await fetch(API + '/presets');
+    const d = await r.json();
+    sel.innerHTML = '<option value="">-- 选择预设 --</option>';
+    for (const p of d.presets) {
+      const opt = document.createElement('option');
+      opt.value = p.file;
+      opt.textContent = `${p.name} (${p.file})`;
+      sel.appendChild(opt);
+    }
+    if (currentName) sel.value = currentName;
+  } catch (e) {
+    showStatus('加载预设列表失败: ' + e.message, false);
+  }
+}
+
+async function loadPreset() {
+  const name = sel.value;
+  if (!name) { editorArea.style.display = 'none'; currentName = ''; return; }
+  try {
+    const r = await fetch(API + '/presets/' + name);
+    if (!r.ok) throw new Error(r.statusText);
+    const d = await r.json();
+    currentName = name;
+    presetData = yamlToBlocks(d.content);
+    editorArea.style.display = 'block';
+    document.getElementById('rawArea').style.display = 'none';
+    renderBlocks();
+    showStatus('已加载: ' + name);
+  } catch (e) {
+    showStatus('加载失败: ' + e.message, false);
+  }
+}
+
+async function savePreset() {
+  if (!currentName || !presetData) { showStatus('请先选择或创建一个预设', false); return; }
+  collectFromForm();
+  const yaml = blocksToYaml();
+  try {
+    const r = await fetch(API + '/presets/' + currentName, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: yaml })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '保存失败');
+    showStatus('✅ 已保存: ' + currentName);
+    // 同步 raw area
+    const rawEl = document.getElementById('rawYaml');
+    if (document.getElementById('rawArea').style.display === 'block') rawEl.value = yaml;
+  } catch (e) {
+    showStatus('❌ ' + e.message, false);
+  }
+}
+
+function downloadPreset() {
+  if (!currentName || !presetData) { showStatus('无内容可下载', false); return; }
+  collectFromForm();
+  const yaml = blocksToYaml();
+  const blob = new Blob([yaml], { type: 'text/yaml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = currentName + '.yaml';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showStatus('已下载: ' + currentName + '.yaml');
+}
+
+async function createPreset() {
+  const name = document.getElementById('newName').value.trim();
+  if (!name) { showStatus('请输入预设名称', false); return; }
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showStatus('名称只能含字母、数字、下划线和连字符', false); return; }
+
+  presetData = {
+    name: name,
+    description: '',
+    blocks: [
+      { id: 'identity', role: 'system', condition: '', position: 'system', content: '你正在扮演 {{char}}，与 {{user}} 对话。\n当前时间：{{time}}', enabled: true },
+      { id: 'persona', role: 'system', condition: '{{persona}}', position: 'system', content: '【{{char}} 的人设】\n{{persona}}', enabled: true },
+      { id: 'rules', role: 'system', condition: '', position: 'system', content: '【对话规则】\n1. 回复简短自然\n2. 保持角色身份', enabled: true },
+    ]
+  };
+  currentName = name;
+  const yaml = blocksToYaml();
+
+  try {
+    const r = await fetch(API + '/presets/' + name, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: yaml })
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail); }
+    editorArea.style.display = 'block';
+    renderBlocks();
+    await refreshList();
+    showStatus('✅ 已创建: ' + name);
+    document.getElementById('newName').value = '';
+  } catch (e) {
+    showStatus('❌ ' + e.message, false);
+  }
+}
+
+async function deletePreset() {
+  if (!currentName) { showStatus('请先选择预设', false); return; }
+  if (!confirm('确定删除预设 "' + currentName + '" ？')) return;
+  try {
+    const r = await fetch(API + '/presets/' + currentName, { method: 'DELETE' });
+    if (!r.ok) throw new Error('删除失败');
+    presetData = null;
+    editorArea.style.display = 'none';
+    currentName = '';
+    await refreshList();
+    showStatus('已删除');
+  } catch (e) {
+    showStatus('❌ ' + e.message, false);
+  }
+}
+
+function importPreset() { document.getElementById('importFile').click(); }
+
+async function handleImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const name = file.name.replace(/\.(yaml|yml)$/, '');
+  const content = await file.text();
+  try {
+    const r = await fetch(API + '/presets/' + name, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    if (!r.ok) { const d = await r.json(); throw new Error(d.detail); }
+    currentName = name;
+    presetData = yamlToBlocks(content);
+    editorArea.style.display = 'block';
+    renderBlocks();
+    await refreshList();
+    showStatus('✅ 已导入: ' + name);
+  } catch (e) {
+    showStatus('❌ ' + e.message, false);
+  }
+  event.target.value = '';
+}
+
+// 初始化
+refreshList();
+</script>
+</body>
+</html>

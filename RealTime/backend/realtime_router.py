@@ -84,6 +84,7 @@ async def interrupt():
     }
 
 
+
 @router.get("/ref_audio")
 async def get_ref_audio(char_name: Optional[str] = Query(None)):
     """
@@ -101,6 +102,82 @@ async def get_ref_audio(char_name: Optional[str] = Query(None)):
         raise HTTPException(status_code=404, detail="未找到参考音频配置")
     
     return ref
+
+@router.get("/characters")
+async def list_characters():
+    """
+    列出所有可用角色及其参考音频
+    
+    扫描 MyCharacters 目录，返回每个角色的 default 情感参考音频。
+    
+    Returns:
+        {characters: [{name, ref_audio_path, prompt_text, lang}, ...]}
+    """
+    import os
+    from config import load_json, SETTINGS_FILE
+    
+    settings = load_json(SETTINGS_FILE)
+    base_dir = settings.get("base_dir", "")
+    
+    if not base_dir or not os.path.isdir(base_dir):
+        return {"characters": []}
+    
+    characters = []
+    
+    for name in sorted(os.listdir(base_dir)):
+        char_dir = os.path.join(base_dir, name)
+        if not os.path.isdir(char_dir):
+            continue
+        
+        # 跳过隐藏目录
+        if name.startswith('.'):
+            continue
+        
+        # 查找模型权重文件 (.ckpt = GPT, .pth = SoVITS)
+        gpt_path = None
+        sovits_path = None
+        for f in os.listdir(char_dir):
+            if f.endswith('.ckpt') and gpt_path is None:
+                gpt_path = os.path.join(char_dir, f)
+            elif f.endswith('.pth') and sovits_path is None:
+                sovits_path = os.path.join(char_dir, f)
+        
+        # 查找参考音频: Chinese/emotions 优先
+        for lang_dir, lang_code in [("Chinese", "zh"), ("Japanese", "ja"), ("English", "en")]:
+            emotions_dir = os.path.join(char_dir, "reference_audios", lang_dir, "emotions")
+            if not os.path.isdir(emotions_dir):
+                continue
+            
+            # 优先找 default 情感的音频
+            default_audio = None
+            any_audio = None
+            for f in os.listdir(emotions_dir):
+                if not f.endswith('.wav'):
+                    continue
+                if any_audio is None:
+                    any_audio = f
+                if f.startswith('default_'):
+                    default_audio = f
+                    break
+            
+            audio_file = default_audio or any_audio
+            if audio_file:
+                audio_path = os.path.join(emotions_dir, audio_file)
+                # 从文件名提取 prompt_text: "emotion_文本内容.wav" -> "文本内容"
+                base_name = os.path.splitext(audio_file)[0]
+                prompt_text = base_name.split('_', 1)[1] if '_' in base_name else base_name
+                
+                characters.append({
+                    "name": name,
+                    "ref_audio_path": audio_path,
+                    "prompt_text": prompt_text,
+                    "lang": lang_code,
+                    "gpt_path": gpt_path,
+                    "sovits_path": sovits_path
+                })
+                break  # 只取第一个可用语言
+    
+    return {"characters": characters}
 
 
 @router.get("/health")
@@ -146,6 +223,13 @@ async def chat_stream(request: ChatStreamRequest):
             user_input=request.user_input,
             event_type=None
         )
+        
+        # 如果独立的小组件前端传来了自己的聊天记录，则使用前端的历史记录覆盖后端的陈旧历史
+        if request.messages is not None:
+            # 保留 session_manager 精心构造的系统人设 prompt
+            systems = [m for m in messages if m.get("role") == "system"]
+            # 重组：系统人设 + 前端发来的历史上下文 + 当前的最新提问
+            messages = systems + request.messages + [{"role": "user", "content": request.user_input}]
         
         print(f"[RealtimeRouter] 📝 使用 prompt 模块构建消息: {len(messages)} 条")
 
@@ -586,3 +670,79 @@ async def context_status():
         "message_count": 0,
         "source": ""
     }
+
+
+# ===================== 预设管理接口 =====================
+
+from .prompt.preset_loader import PresetLoader
+from pydantic import BaseModel as PydanticBaseModel
+from fastapi.responses import HTMLResponse
+import os
+
+_PRESETS_DIR = os.path.join(os.path.dirname(__file__), "prompt", "presets")
+
+
+class SavePresetRequest(PydanticBaseModel):
+    content: str  # YAML 内容
+
+
+@router.get("/presets")
+async def list_presets():
+    """列出所有可用预设"""
+    presets = PresetLoader.list_presets()
+    return {"presets": presets}
+
+
+@router.get("/presets/{name}")
+async def get_preset(name: str):
+    """获取预设内容（原始 YAML 文本）"""
+    preset_path = os.path.join(_PRESETS_DIR, f"{name}.yaml")
+    if not os.path.exists(preset_path):
+        raise HTTPException(status_code=404, detail=f"预设不存在: {name}")
+
+    with open(preset_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    return {"name": name, "content": content}
+
+
+@router.put("/presets/{name}")
+async def save_preset(name: str, request: SavePresetRequest):
+    """保存预设内容"""
+    import yaml
+
+    # 校验 YAML 语法
+    try:
+        yaml.safe_load(request.content)
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"YAML 语法错误: {e}")
+
+    os.makedirs(_PRESETS_DIR, exist_ok=True)
+    preset_path = os.path.join(_PRESETS_DIR, f"{name}.yaml")
+
+    with open(preset_path, "w", encoding="utf-8") as f:
+        f.write(request.content)
+
+    return {"success": True, "message": f"预设 {name} 已保存"}
+
+
+@router.delete("/presets/{name}")
+async def delete_preset(name: str):
+    """删除预设"""
+    preset_path = os.path.join(_PRESETS_DIR, f"{name}.yaml")
+    if not os.path.exists(preset_path):
+        raise HTTPException(status_code=404, detail=f"预设不存在: {name}")
+
+    os.remove(preset_path)
+    return {"success": True, "message": f"预设 {name} 已删除"}
+
+
+@router.get("/preset_editor", response_class=HTMLResponse)
+async def preset_editor_page():
+    """预设编辑器 HTML 页面"""
+    html_path = os.path.join(os.path.dirname(__file__), "prompt", "preset_editor.html")
+    if not os.path.exists(html_path):
+        return HTMLResponse("<h1>编辑器页面不存在</h1>", status_code=404)
+
+    with open(html_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(f.read())

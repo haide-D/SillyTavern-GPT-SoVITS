@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时对话</title>
+    <link rel="stylesheet" href="widget.css">
+</head>
+<body>
+    <div class="widget-shell">
+        <!-- 标题栏 (拖拽区域) -->
+        <div class="title-bar">
+            <div class="title">
+                <span class="dot" id="status-dot"></span>
+                <span id="status-text">连接中...</span>
+            </div>
+            <div class="title-controls">
+                <button id="btn-settings" title="设置">⚙</button>
+                <button class="close" id="btn-close" title="关闭" onclick="window.close()">✕</button>
+            </div>
+        </div>
+
+        <!-- 设置面板 (折叠) -->
+        <div class="settings-panel" id="settings">
+            <label>角色模型</label>
+            <div style="display: flex; gap: 6px;">
+                <select id="cfg-character" style="flex: 1;">
+                    <option value="">-- 加载中 --</option>
+                </select>
+                <button class="btn-sm secondary" id="btn-refresh-chars" style="width: auto; padding: 7px 10px;">↻</button>
+            </div>
+            <label>参考音频路径</label>
+            <input type="text" id="cfg-ref-audio" placeholder="自动从后端加载">
+            <div class="settings-row">
+                <div>
+                    <label>语言</label>
+                    <select id="cfg-lang">
+                        <option value="zh">中文</option>
+                        <option value="ja">日语</option>
+                        <option value="en">英语</option>
+                    </select>
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button class="btn-sm" id="btn-warmup">🔥 预热模型</button>
+                </div>
+            </div>
+            <button class="btn-sm secondary" id="btn-clear" style="margin-top: 4px;">🗑 清空对话</button>
+        </div>
+
+        <!-- 对话区 -->
+        <div class="chat-container" id="chat">
+            <div class="msg assistant">你好~ 有什么想聊的吗？</div>
+        </div>
+
+        <!-- 语音识别状态 -->
+        <div class="stt-indicator" id="stt-bar">
+            🎙️ <span>正在聆听...</span>
+        </div>
+
+        <!-- 输入区 -->
+        <div class="input-bar">
+            <button class="btn-circle btn-mic" id="btn-mic" title="语音输入">🎤</button>
+            <input type="text" id="input" placeholder="说点什么..." autocomplete="off">
+            <button class="btn-circle btn-send" id="btn-send" title="发送">➤</button>
+            <button class="btn-circle btn-interrupt" id="btn-interrupt" title="打断">⏹</button>
+        </div>
+
+        <!-- 底部状态条 -->
+        <div class="status-strip">
+            <span>实时对话</span>
+            <div class="latency">
+                <span>首Token <span class="val" id="lat-first">-</span></span>
+                <span>首音频 <span class="val" id="lat-audio">-</span></span>
+            </div>
+        </div>
+    </div>
+
+    <script src="widget.js"></script>
+</body>
+</html>
