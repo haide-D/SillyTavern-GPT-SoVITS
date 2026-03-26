@@ -9,6 +9,7 @@
 # - 每次调用时从文件读取，修改预设后无需重启
 
 import re
+import json
 from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
@@ -19,6 +20,9 @@ import yaml
 
 # 预设目录（与本文件同级的 presets/ 文件夹）
 _PRESETS_DIR = Path(__file__).parent / "presets"
+
+# 激活预设状态文件
+_ACTIVE_FILE = _PRESETS_DIR / "_active.json"
 
 # 变量匹配：{{variable_name}}
 _VAR_PATTERN = re.compile(r"\{\{(\w+)\}\}")
@@ -126,6 +130,47 @@ class PresetLoader:
                 pass
 
         return presets
+
+    @staticmethod
+    def get_active() -> str:
+        """
+        获取当前激活的预设名称
+
+        Returns:
+            预设名称（不含扩展名），默认 "roleplay"
+        """
+        if _ACTIVE_FILE.exists():
+            try:
+                data = json.loads(_ACTIVE_FILE.read_text(encoding="utf-8"))
+                name = data.get("active", "roleplay")
+                # 验证对应文件存在
+                if (_PRESETS_DIR / f"{name}.yaml").exists():
+                    return name
+            except Exception:
+                pass
+        return "roleplay"
+
+    @staticmethod
+    def set_active(preset_name: str) -> bool:
+        """
+        设置当前激活的预设
+
+        Args:
+            preset_name: 预设名称（不含扩展名）
+
+        Returns:
+            是否成功
+        """
+        preset_path = _PRESETS_DIR / f"{preset_name}.yaml"
+        if not preset_path.exists():
+            return False
+
+        _PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+        _ACTIVE_FILE.write_text(
+            json.dumps({"active": preset_name}, ensure_ascii=False),
+            encoding="utf-8"
+        )
+        return True
 
 
 class PromptAssembler:

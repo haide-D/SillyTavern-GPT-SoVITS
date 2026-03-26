@@ -28,6 +28,11 @@ class RoleplayBuilder(BasePromptBuilder):
     def scene_name(self) -> str:
         return "角色扮演"
 
+    @property
+    def active_preset_name(self) -> str:
+        """动态获取当前激活的预设名称"""
+        return PresetLoader.get_active()
+
     def _load_and_assemble(self, ctx: PromptContext):
         """
         加载预设并组装提示词
@@ -37,8 +42,9 @@ class RoleplayBuilder(BasePromptBuilder):
         Returns:
             AssembledPrompt 实例
         """
+        preset_name = self.active_preset_name
         try:
-            preset = PresetLoader.load(self.PRESET_NAME)
+            preset = PresetLoader.load(preset_name)
         except FileNotFoundError:
             print(f"[RoleplayBuilder] ⚠️ 预设文件不存在，使用内置默认值")
             return None

@@ -17,6 +17,9 @@
   button.danger { background: #5c1a1a; border-color: #5c1a1a; }
   button.danger:hover { background: #7a2222; }
   button.primary { background: #1b6b3a; border-color: #1b6b3a; }
+  button.active-btn { background: #6b4f1b; border-color: #6b4f1b; }
+  button.active-btn:hover { background: #8a6522; }
+  button.active-btn.is-active { background: #1b6b3a; border-color: #1b6b3a; cursor: default; }
   button.primary:hover { background: #238c4e; }
   button.small { font-size: 12px; padding: 3px 8px; }
   .status { font-size: 12px; color: #888; margin-left: auto; white-space: nowrap; }
@@ -89,6 +92,7 @@
     <option value="">-- 选择预设 --</option>
   </select>
   <button class="primary" onclick="savePreset()">💾 保存 (Ctrl+S)</button>
+  <button class="active-btn" id="activateBtn" onclick="activatePreset()" style="display:none;">⚡ 激活</button>
   <button onclick="downloadPreset()">⬇ 下载</button>
   <span class="sep">|</span>
   <input id="newName" placeholder="新预设名称">
@@ -143,6 +147,7 @@ const editorArea = document.getElementById('editorArea');
 const blockList = document.getElementById('blockList');
 const statusEl = document.getElementById('status');
 let currentName = '';
+let activeName = ''; // 当前激活的预设
 let presetData = null; // { name, description, blocks: [...] }
 
 // Ctrl+S
@@ -392,16 +397,51 @@ async function refreshList() {
   try {
     const r = await fetch(API + '/presets');
     const d = await r.json();
+    activeName = d.active || '';
     sel.innerHTML = '<option value="">-- 选择预设 --</option>';
     for (const p of d.presets) {
       const opt = document.createElement('option');
       opt.value = p.file;
-      opt.textContent = `${p.name} (${p.file})`;
+      const tag = p.file === activeName ? '⚡' : '';
+      opt.textContent = `${tag}${p.name} (${p.file})`;
       sel.appendChild(opt);
     }
     if (currentName) sel.value = currentName;
+    updateActivateBtn();
   } catch (e) {
     showStatus('加载预设列表失败: ' + e.message, false);
+  }
+}
+
+function updateActivateBtn() {
+  const btn = document.getElementById('activateBtn');
+  if (!currentName) { btn.style.display = 'none'; return; }
+  btn.style.display = 'inline-block';
+  if (currentName === activeName) {
+    btn.textContent = '✅ 已激活';
+    btn.classList.add('is-active');
+  } else {
+    btn.textContent = '⚡ 激活';
+    btn.classList.remove('is-active');
+  }
+}
+
+async function activatePreset() {
+  if (!currentName || currentName === activeName) return;
+  try {
+    const r = await fetch(API + '/presets/active', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentName })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '激活失败');
+    activeName = currentName;
+    showStatus('⚡ 已激活: ' + currentName);
+    updateActivateBtn();
+    await refreshList();
+  } catch (e) {
+    showStatus('❌ ' + e.message, false);
   }
 }
 
@@ -418,6 +458,7 @@ async function loadPreset() {
     document.getElementById('rawArea').style.display = 'none';
     renderBlocks();
     showStatus('已加载: ' + name);
+    updateActivateBtn();
   } catch (e) {
     showStatus('加载失败: ' + e.message, false);
   }

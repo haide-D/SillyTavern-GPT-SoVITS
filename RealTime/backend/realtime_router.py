@@ -690,7 +690,27 @@ class SavePresetRequest(PydanticBaseModel):
 async def list_presets():
     """列出所有可用预设"""
     presets = PresetLoader.list_presets()
-    return {"presets": presets}
+    active = PresetLoader.get_active()
+    return {"presets": presets, "active": active}
+
+
+@router.get("/presets/active")
+async def get_active_preset():
+    """获取当前激活的预设名称"""
+    return {"active": PresetLoader.get_active()}
+
+
+class SetActivePresetRequest(PydanticBaseModel):
+    name: str
+
+
+@router.put("/presets/active")
+async def set_active_preset(request: SetActivePresetRequest):
+    """设置当前激活的预设"""
+    success = PresetLoader.set_active(request.name)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"预设不存在: {request.name}")
+    return {"success": True, "active": request.name, "message": f"已激活预设: {request.name}"}
 
 
 @router.get("/presets/{name}")
