@@ -7,6 +7,29 @@
     <link rel="stylesheet" href="widget.css">
 </head>
 <body>
+    <!-- 简易调试控制台：用于捕获 oh-my-live2d 的报错 -->
+    <div id="debug-console" style="display:none; position:fixed; top:0; left:0; right:0; max-height:150px; overflow-y:auto; background:rgba(100,0,0,0.8); color:#fff; z-index:9999; font-size:10px; padding:4px; pointer-events:none;"></div>
+    <script>
+        (function() {
+            var dbg = document.getElementById('debug-console');
+            var oldErr = console.error;
+            console.error = function() {
+                dbg.style.display = 'block';
+                var msg = Array.from(arguments).join(' ');
+                dbg.innerHTML += '<div>❌ ' + msg + '</div>';
+                oldErr.apply(console, arguments);
+            };
+            window.addEventListener('error', function(e) {
+                dbg.style.display = 'block';
+                dbg.innerHTML += '<div>❌ window.error: ' + e.message + '</div>';
+            });
+            window.addEventListener('unhandledrejection', function(e) {
+                dbg.style.display = 'block';
+                dbg.innerHTML += '<div>❌ unhandled promise: ' + Object.prototype.toString.call(e.reason)==='[object Error]'?e.reason.message:e.reason + '</div>';
+            });
+        })();
+    </script>
+
     <div class="widget-shell">
         <!-- 标题栏 (拖拽区域) -->
         <div class="title-bar">
@@ -48,6 +71,8 @@
             <button class="btn-sm secondary" id="btn-clear" style="margin-top: 4px;">🗑 清空对话</button>
         </div>
 
+
+
         <!-- 对话区 -->
         <div class="chat-container" id="chat">
             <div class="msg assistant">你好~ 有什么想聊的吗？</div>
@@ -75,6 +100,7 @@
             </div>
         </div>
     </div>
+
 
     <script src="widget.js"></script>
 </body>

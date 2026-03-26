@@ -80,6 +80,7 @@ class StreamingAudioPlayer {
         // Web Audio 调度
         this._nextTime = 0;
         this._sources = [];
+        this._playbackWaiters = [];
         // 配置
         this.minBufferBytes = 4096;
     }
@@ -89,6 +90,13 @@ class StreamingAudioPlayer {
             this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (this.audioCtx.state === 'suspended') await this.audioCtx.resume();
+        // 创建 AnalyserNode 用于 Live2D lip-sync
+        if (!this.analyserNode) {
+            this.analyserNode = this.audioCtx.createAnalyser();
+            this.analyserNode.fftSize = 256;
+            this.analyserNode.smoothingTimeConstant = 0.6;
+            this.analyserNode.connect(this.audioCtx.destination);
+        }
         return this;
     }
 
@@ -224,7 +232,12 @@ class StreamingAudioPlayer {
         }
         const src = this.audioCtx.createBufferSource();
         src.buffer = buf;
-        src.connect(this.audioCtx.destination);
+        // 连接到 AnalyserNode（顺带输出到扬声器，因为 analyser 已连 destination）
+        if (this.analyserNode) {
+            src.connect(this.analyserNode);
+        } else {
+            src.connect(this.audioCtx.destination);
+        }
         const t = Math.max(this._nextTime, this.audioCtx.currentTime);
         src.start(t);
         this._nextTime = t + buf.duration;
@@ -232,6 +245,10 @@ class StreamingAudioPlayer {
         src.onended = () => {
             const idx = this._sources.indexOf(src);
             if (idx > -1) this._sources.splice(idx, 1);
+            if (this._sources.length === 0 && this._pcmPendingBytes === 0) {
+                this._playing = false;
+                this._resolvePlaybackWaiters();
+            }
         };
     }
 
@@ -253,6 +270,23 @@ class StreamingAudioPlayer {
         for (const s of this._sources) { try { s.stop(); } catch(e) {} }
         this._sources = [];
         this._playing = false;
+        this._resolvePlaybackWaiters();
+    }
+
+    waitForPlaybackComplete() {
+        if (this._sources.length === 0 && this._pcmPendingBytes === 0) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => {
+            this._playbackWaiters.push(resolve);
+        });
+    }
+
+    _resolvePlaybackWaiters() {
+        if (this._playbackWaiters.length === 0) return;
+        const waiters = this._playbackWaiters.splice(0, this._playbackWaiters.length);
+        for (const resolve of waiters) resolve();
     }
 
     clear() {
@@ -286,12 +320,20 @@ class Widget {
         // STT
         this.sttManager = null;
         this._sttWasListening = false;
+
+        // Live2D 跨窗口通信
+        this._live2dChannel = null;
+        try { this._live2dChannel = new BroadcastChannel('live2d-sync'); } catch(e) {}
+        this._lipSyncRAF = null;
+        this._lipSyncData = null;
+        this._lipSyncLastSentAt = 0;
     }
 
     // ---- 初始化 ----
 
     async init() {
         this._bindUI();
+
         this._setStatus('offline', '等待后端...');
         this._addSystem('⏳ 正在等待后端就绪...');
         const ready = await this._waitForBackendReady();
@@ -665,6 +707,7 @@ class Widget {
                                         firstAudio = true;
                                         this.$latAudio.textContent = Math.round(performance.now() - t0) + 'ms';
                                     }
+                                    this._startLipSync();
                                 })
                             );
                         }
@@ -678,6 +721,7 @@ class Widget {
             }
 
             await this._ttsChain;
+            await this.player.waitForPlaybackComplete();
             el.classList.remove('streaming');
             this.history.push({ role: 'assistant', content: full });
         } catch (e) {
@@ -685,6 +729,7 @@ class Widget {
                 this._addSystem('❌ ' + e.message);
             }
         } finally {
+            this._stopLipSync();  // 停止嘴型同步
             this._setStatus('online', '就绪');
             this.$btnSend.style.display = '';
             this.$btnInterrupt.classList.remove('visible');
@@ -695,6 +740,7 @@ class Widget {
         if (this._abort) { this._abort.abort(); this._abort = null; }
         this.chunker.clear();
         this.player.clear();
+        this._stopLipSync();  // 停止嘴型同步
         fetch(`${API_BASE}/api/realtime/interrupt`, { method: 'POST' }).catch(() => {});
         this._addSystem('⏹ 已打断');
     }
@@ -862,6 +908,58 @@ class Widget {
     _setStatus(state, text) {
         this.$dot.className = 'dot' + (state === 'online' ? ' online' : state === 'streaming' ? ' streaming' : '');
         this.$statusText.textContent = text;
+    }
+
+    // ---- Live2D（通过 BroadcastChannel 发信号给独立窗口） ----
+
+    _startLipSync() {
+        if (!this.player?.analyserNode || this._lipSyncRAF) {
+            this._live2dChannel?.postMessage({ type: 'start-lipsync' });
+            return;
+        }
+
+        const analyser = this.player.analyserNode;
+        this._lipSyncData = this._lipSyncData && this._lipSyncData.length === analyser.frequencyBinCount
+            ? this._lipSyncData
+            : new Uint8Array(analyser.frequencyBinCount);
+        this._lipSyncLastSentAt = 0;
+        this._live2dChannel?.postMessage({ type: 'start-lipsync' });
+
+        const tick = (now) => {
+            this._lipSyncRAF = requestAnimationFrame(tick);
+
+            if (!this.player?._playing || this.player?._stopped) {
+                return;
+            }
+
+            analyser.getByteFrequencyData(this._lipSyncData);
+
+            let sum = 0;
+            const count = Math.min(16, this._lipSyncData.length);
+            for (let i = 0; i < count; i++) sum += this._lipSyncData[i];
+
+            const raw = count > 0 ? (sum / count) / 180 : 0;
+            const volume = Math.max(0, Math.min(1, raw * 1.35));
+
+            if (now - this._lipSyncLastSentAt >= 33) {
+                this._live2dChannel?.postMessage({
+                    type: 'lipsync-data',
+                    value: Number(volume.toFixed(4)),
+                });
+                this._lipSyncLastSentAt = now;
+            }
+        };
+
+        this._lipSyncRAF = requestAnimationFrame(tick);
+    }
+
+    _stopLipSync() {
+        if (this._lipSyncRAF) {
+            cancelAnimationFrame(this._lipSyncRAF);
+            this._lipSyncRAF = null;
+        }
+        this._lipSyncLastSentAt = 0;
+        this._live2dChannel?.postMessage({ type: 'stop-lipsync' });
     }
 }
 

@@ -13,43 +13,25 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 # 窗口配置
-WIDTH = 380
-HEIGHT = 580
-TITLE = '实时对话'
+CHAT_WIDTH = 380
+CHAT_HEIGHT = 580
+CHAT_TITLE = '实时对话'
+
+LIVE2D_WIDTH = 400
+LIVE2D_HEIGHT = 500
+LIVE2D_TITLE = 'Live2D'
 
 def main():
     # 定位 HTML 文件
     here = os.path.dirname(os.path.abspath(__file__))
     html_path = os.path.join(here, 'widget.html')
+    live2d_path = os.path.join(here, 'live2d.html')
 
     if not os.path.exists(html_path):
         print(f'[Widget] ❌ 找不到 {html_path}')
         sys.exit(1)
 
-    # 创建窗口
-    window = webview.create_window(
-        TITLE,
-        url=html_path,
-        width=WIDTH,
-        height=HEIGHT,
-        resizable=True,
-        frameless=True,       # 无系统边框（用自定义标题栏）
-        on_top=True,          # 窗口置顶
-        easy_drag=True,       # 允许拖拽标题栏
-        text_select=False,    # 禁止文本选择
-        min_size=(320, 400),
-    )
-
-    print(f'[Widget] 启动桌面小组件 ({WIDTH}x{HEIGHT})')
-    print(f'[Widget] 确保后端已运行: python manager.py')
-
-    # 配置浏览器引擎权限 (使用全局 webview 对象)
-    try:
-        webview.settings['ALLOW_FILE_ACCESS_FROM_FILES'] = True
-    except Exception:
-        pass
-
-    # 读取代理配置注入引擎（解决国内 Web Speech API 报 network 错误）
+    # 读取代理配置注入引擎（需要在创建窗口前设置环境变量）
     import json
     try:
         settings_path = os.path.join(here, '..', '..', 'system_settings.json')
@@ -58,17 +40,58 @@ def main():
             proxy_cfg = cfg.get("telegram", {}).get("proxy", {})
             if proxy_cfg.get("enabled") and proxy_cfg.get("http"):
                 proxy_url = proxy_cfg["http"]
-                # 为 WebView2 强制设置代理
                 os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = f"--proxy-server={proxy_url}"
                 print(f"[Widget] 🌍 已为浏览器引擎注入代理: {proxy_url}")
     except Exception as e:
         print(f"[Widget] ⚠️ 读取代理配置失败: {e}")
 
-    # 启动 GUI 事件循环，加入命令行参数允许直接使用麦克风
+    # 配置浏览器引擎权限
+    try:
+        webview.settings['ALLOW_FILE_ACCESS_FROM_FILES'] = True
+    except Exception:
+        pass
+
+    # 创建聊天窗口
+    chat_window = webview.create_window(
+        CHAT_TITLE,
+        url=html_path,
+        width=CHAT_WIDTH,
+        height=CHAT_HEIGHT,
+        resizable=True,
+        frameless=True,
+        on_top=True,
+        easy_drag=True,
+        text_select=False,
+        min_size=(320, 400),
+    )
+
+    # 创建 Live2D 独立窗口
+    if os.path.exists(live2d_path):
+        live2d_window = webview.create_window(
+            LIVE2D_TITLE,
+            url=live2d_path,
+            width=LIVE2D_WIDTH,
+            height=LIVE2D_HEIGHT,
+            resizable=True,
+            frameless=True,
+            on_top=True,
+            easy_drag=True,
+            text_select=False,
+            transparent=True,
+            min_size=(200, 250),
+        )
+        print(f'[Widget] Live2D 独立窗口 ({LIVE2D_WIDTH}x{LIVE2D_HEIGHT})')
+    else:
+        print(f'[Widget] ⚠️ Live2D 页面不存在，跳过: {live2d_path}')
+
+    print(f'[Widget] 启动桌面小组件 ({CHAT_WIDTH}x{CHAT_HEIGHT})')
+    print(f'[Widget] 确保后端已运行: python manager.py')
+
+    # 启动 GUI 事件循环
     webview.start(
-        debug=False,
+        debug=True,
         private_mode=False,
-        http_server=True, # 采用内置 HTTP 协议替代 file:// 协议，有助于唤起 Web API
+        http_server=True,
     )
 
 

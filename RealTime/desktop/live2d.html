@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live2D</title>
+    <link rel="stylesheet" href="live2d_window.css">
+    <script src="vendor/pixi.min.js"></script>
+    <script src="vendor/live2d.min.js"></script>
+    <script src="vendor/live2dcubismcore.min.js"></script>
+    <script src="vendor/pixi-live2d-display.min.js"></script>
+</head>
+<body>
+    <div class="live2d-shell">
+        <div class="drag-bar"></div>
+
+        <main class="live2d-stage-wrap">
+            <div id="live2d-stage" class="live2d-stage"></div>
+            <div id="live2d-status" class="live2d-status">加载中...</div>
+        </main>
+
+        <div class="live2d-toolbar">
+            <button id="btn-model-prev" title="上一个模型">◀</button>
+            <span id="live2d-model-name">-</span>
+            <button id="btn-model-next" title="下一个模型">▶</button>
+        </div>
+    </div>
+
+    <script src="live2d_manager.js"></script>
+    <script>
+        const live2d = new Live2DManager();
+
+        async function init() {
+            const container = document.getElementById('live2d-stage');
+            const ok = await live2d.init(container);
+            if (ok) updateName();
+
+            document.getElementById('btn-model-prev')?.addEventListener('click', () => switchModel(-1));
+            document.getElementById('btn-model-next')?.addEventListener('click', () => switchModel(1));
+
+            try {
+                const bc = new BroadcastChannel('live2d-sync');
+                bc.onmessage = (e) => {
+                    const { type, value } = e.data || {};
+                    if (type === 'start-lipsync') live2d.beginRemoteLipSync();
+                    if (type === 'lipsync-data') live2d.applyLipSyncValue(Number(value) || 0);
+                    if (type === 'stop-lipsync') live2d.stopLipSync();
+                };
+            } catch (err) {}
+
+            window.addEventListener('beforeunload', () => live2d.destroy(), { once: true });
+        }
+
+        async function switchModel(direction) {
+            const total = live2d.models.length;
+            if (total === 0) return;
+            const next = (live2d.currentIndex + direction + total) % total;
+            const ok = await live2d.switchModel(next);
+            if (ok) updateName();
+        }
+
+        function updateName() {
+            const el = document.getElementById('live2d-model-name');
+            if (el && live2d.currentModel) el.textContent = live2d.currentModel.name;
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

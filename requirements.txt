@@ -9,3 +9,4 @@ httpx
 py7zr
 psutil
 python-telegram-bot[httpx]
+pywebview
