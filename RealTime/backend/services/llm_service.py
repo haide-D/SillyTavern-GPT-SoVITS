@@ -30,7 +30,8 @@ class LLMService:
                 "api_key": llm_config.get("api_key", ""),
                 "model": llm_config.get("model", ""),
                 "temperature": llm_config.get("temperature", 0.8),
-                "max_tokens": llm_config.get("max_tokens", 2048)
+                "max_tokens": llm_config.get("max_tokens", 2048),
+                "enable_thinking": llm_config.get("enable_thinking", True)
             }
             print(f"[LLMService] ✅ 配置已加载: model={self._config['model']}")
         except Exception as e:
@@ -82,28 +83,22 @@ class LLMService:
             "stream": True
         }
         
+        # 尝试向下游 API 传递禁用思考环节的标志参数
+        if not cfg.get("enable_thinking", True):
+            request_body["chat_template_args"] = {"enable_thinking": False}
+        
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream"
         }
         
-        print(f"[LLMService] 🚀 流式请求: {model}")
         print(f"[LLMService] 📝 消息数: {len(messages)}")
         print(f"[LLMService] ════════════ LLM 请求详情 ════════════")
         print(f"[LLMService] API URL: {api_url}")
-        print(f"[LLMService] Model: {model}")
-        print(f"[LLMService] Temperature: {cfg.get('temperature', 0.8)}")
-        print(f"[LLMService] Max Tokens: {cfg.get('max_tokens', 2048)}")
-        print(f"[LLMService] ──────────── Messages ────────────")
-        for i, msg in enumerate(messages):
-            role = msg.get('role', 'unknown')
-            content = msg.get('content', '')
-            # 限制每条消息的显示长度
-            content_preview = content[:500] + '...' if len(content) > 500 else content
-            print(f"[LLMService] [{i}] {role}:")
-            for line in content_preview.split('\n'):
-                print(f"[LLMService]     {line}")
+        print(f"[LLMService] ───────── 完整 Request Body ─────────")
+        # 直接序列化并打印提交给 LMStudio 的完整 JSON 数据
+        print(json.dumps(request_body, ensure_ascii=False, indent=2))
         print(f"[LLMService] ════════════════════════════════════")
 
         
@@ -118,11 +113,11 @@ class LLMService:
                     error_text = await response.aread()
                     raise Exception(f"LLM API 错误 {response.status_code}: {error_text.decode()[:200]}")
                 
+                print(f"[{model}] ⬅️ 返回状态码: {response.status_code}")
                 # 解析 SSE 流
                 async for line in response.aiter_lines():
                     if not line:
-                        continue
-                    
+                        continue                
                     if line.startswith("data: "):
                         data = line[6:]
                         
