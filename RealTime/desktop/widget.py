@@ -65,24 +65,8 @@ def main():
         min_size=(320, 400),
     )
 
-    # 创建 Live2D 独立窗口
-    if os.path.exists(live2d_path):
-        live2d_window = webview.create_window(
-            LIVE2D_TITLE,
-            url=live2d_path,
-            width=LIVE2D_WIDTH,
-            height=LIVE2D_HEIGHT,
-            resizable=True,
-            frameless=True,
-            on_top=True,
-            easy_drag=True,
-            text_select=False,
-            transparent=True,
-            min_size=(200, 250),
-        )
-        print(f'[Widget] Live2D 独立窗口 ({LIVE2D_WIDTH}x{LIVE2D_HEIGHT})')
-    else:
-        print(f'[Widget] ⚠️ Live2D 页面不存在，跳过: {live2d_path}')
+    # 旧版本地 Live2D 窗口已废弃，现在使用 VTube Studio 注入
+    # if os.path.exists(live2d_path): ...
 
     print(f'[Widget] 启动桌面小组件 ({CHAT_WIDTH}x{CHAT_HEIGHT})')
     print(f'[Widget] 确保后端已运行: python manager.py')

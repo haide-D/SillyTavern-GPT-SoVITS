@@ -94,6 +94,7 @@
         <!-- 底部状态条 -->
         <div class="status-strip">
             <span>实时对话</span>
+            <span id="vts-status" style="margin-left: 8px; font-size: 0.9em; cursor: pointer;" title="点击重连VTS">VTS: 🔴</span>
             <div class="latency">
                 <span>首Token <span class="val" id="lat-first">-</span></span>
                 <span>首音频 <span class="val" id="lat-audio">-</span></span>
@@ -102,6 +103,7 @@
     </div>
 
 
+    <script src="vts_manager.js"></script>
     <script src="widget.js"></script>
 </body>
 </html>

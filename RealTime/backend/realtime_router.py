@@ -234,19 +234,54 @@ async def chat_stream(request: ChatStreamRequest):
         print(f"[RealtimeRouter] 📝 使用 prompt 模块构建消息: {len(messages)} 条")
 
         
+        import re
         try:
             # 流式调用 LLM
+            in_tag = False
+            tag_buffer = ""
+            
             async for token in _llm.call_stream(messages):
                 full_response += token
-                text_buffer += token
                 
-                # 发送 token 事件
-                yield f"event: token\ndata: {json.dumps({'content': token}, ensure_ascii=False)}\n\n"
+                valid_text = ""
+                for c in token:
+                    if not in_tag and c == '[':
+                        in_tag = True
+                        tag_buffer = "["
+                    elif in_tag:
+                        tag_buffer += c
+                        if c == ']':
+                            in_tag = False
+                            # Broaden regex to catch ANY [key:value] tag to prevent speech leakage
+                            m = re.match(r'^\[([^:\]]+):([^\]]+)\]$', tag_buffer)
+                            if m:
+                                yield f"event: control\ndata: {json.dumps({'type': m.group(1), 'name': m.group(2)}, ensure_ascii=False)}\n\n"
+                            else:
+                                valid_text += tag_buffer
+                            tag_buffer = ""
+                        elif len(tag_buffer) > 40:
+                            in_tag = False
+                            valid_text += tag_buffer
+                            tag_buffer = ""
+                    else:
+                        valid_text += c
                 
-                # 尝试分段
-                chunks = _chunker.feed(token)
+                if valid_text:
+                    text_buffer += valid_text
+                    # 发送 token 事件
+                    yield f"event: token\ndata: {json.dumps({'content': valid_text}, ensure_ascii=False)}\n\n"
+                    
+                    # 尝试分段
+                    chunks = _chunker.feed(valid_text)
+                    for chunk in chunks:
+                        # 发送 TTS 开始事件
+                        yield f"event: tts_start\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
+            
+            if tag_buffer:
+                text_buffer += tag_buffer
+                yield f"event: token\ndata: {json.dumps({'content': tag_buffer}, ensure_ascii=False)}\n\n"
+                chunks = _chunker.feed(tag_buffer)
                 for chunk in chunks:
-                    # 发送 TTS 开始事件
                     yield f"event: tts_start\ndata: {json.dumps({'text': chunk}, ensure_ascii=False)}\n\n"
             
             # 刷新剩余内容

@@ -321,12 +321,19 @@ class Widget {
         this.sttManager = null;
         this._sttWasListening = false;
 
-        // Live2D 跨窗口通信
-        this._live2dChannel = null;
-        try { this._live2dChannel = new BroadcastChannel('live2d-sync'); } catch(e) {}
+        // VTube Studio WebSocket 客户端
+        this.vtsManager = new VTSManager();
+        this.vtsManager.onConnected = () => {
+            const el = document.getElementById('vts-status');
+            if (el) el.textContent = 'VTS: 🟢';
+        };
+        this.vtsManager.onDisconnected = () => {
+            const el = document.getElementById('vts-status');
+            if (el) el.textContent = 'VTS: 🔴';
+        };
+
         this._lipSyncRAF = null;
         this._lipSyncData = null;
-        this._lipSyncLastSentAt = 0;
     }
 
     // ---- 初始化 ----
@@ -346,6 +353,9 @@ class Widget {
         this._initSTT();
         this._setStatus('online', '就绪');
         this._addSystem('🟢 小组件已连接后端');
+        
+        // 自动连接 VTS
+        this.vtsManager.connect();
     }
 
     _sleep(ms) {
@@ -401,6 +411,15 @@ class Widget {
         this.$charSelect = document.getElementById('cfg-character');
         this.$charSelect?.addEventListener('change', () => this._switchCharacter());
         document.getElementById('btn-refresh-chars')?.addEventListener('click', () => this._loadCharacters());
+
+        // 绑定 VTS 状态按钮 (点击重连)
+        const vtsStatus = document.getElementById('vts-status');
+        if (vtsStatus) {
+            vtsStatus.addEventListener('click', () => {
+                this.vtsManager.connect();
+                this._addSystem('🔌 尝试重新连接 VTube Studio...');
+            });
+        }
     }
 
     async _loadConfig() {
@@ -650,6 +669,7 @@ class Widget {
         this._abort = new AbortController();
         this._ttsChain = Promise.resolve();
         this._isFirstTTS = true;
+        this._pendingEmotions = []; // 用于收集等候随着音频播放一起触发的情绪
         // 确保 AudioContext 已初始化（首次需要用户手势）
         await this.player.init();
         this.player.startSession();
@@ -687,7 +707,10 @@ class Widget {
                     try {
                         const d = JSON.parse(line.slice(6));
 
-                        if (d.content) {
+                        if (d.type && d.name) {
+                            // 将表情推入队列，暂不执行，等到接下来的音频实际开始播放时再发给 VTS
+                            this._pendingEmotions.push(d.name);
+                        } else if (d.content) {
                             full += d.content;
                             el.textContent += d.content;
                             this.$chat.scrollTop = this.$chat.scrollHeight;
@@ -701,11 +724,20 @@ class Widget {
                             const chunk = d.text;
                             const isFirst = this._isFirstTTS;
                             this._isFirstTTS = false;
+                            
+                            // 提取这句台词之前积攒的所有动作/表情标签
+                            const targetEmotions = this._pendingEmotions.splice(0, this._pendingEmotions.length);
+
                             this._ttsChain = this._ttsChain.then(() =>
                                 this._tts(chunk, isFirst, () => {
                                     if (!firstAudio) {
                                         firstAudio = true;
                                         this.$latAudio.textContent = Math.round(performance.now() - t0) + 'ms';
+                                    }
+                                    // 音频实际开始出声时，执行动作
+                                    for (const eName of targetEmotions) {
+                                        this.vtsManager.triggerHotkey(eName);
+                                        this.vtsManager.injectParameter(`Emotion_${eName}`, 1.0);
                                     }
                                     this._startLipSync();
                                 })
@@ -718,6 +750,17 @@ class Widget {
                         if (pe.message && !pe.message.includes('JSON')) throw pe;
                     }
                 }
+            }
+
+            // 处理结尾可能残留的情绪标签
+            if (this._pendingEmotions.length > 0) {
+                const targetEmotions = this._pendingEmotions.splice(0, this._pendingEmotions.length);
+                this._ttsChain = this._ttsChain.then(() => {
+                    for (const eName of targetEmotions) {
+                        this.vtsManager.triggerHotkey(eName);
+                        this.vtsManager.injectParameter(`Emotion_${eName}`, 1.0);
+                    }
+                });
             }
 
             await this._ttsChain;
@@ -910,11 +953,10 @@ class Widget {
         this.$statusText.textContent = text;
     }
 
-    // ---- Live2D（通过 BroadcastChannel 发信号给独立窗口） ----
+    // ---- VTube Studio 参数注入控制 ----
 
     _startLipSync() {
         if (!this.player?.analyserNode || this._lipSyncRAF) {
-            this._live2dChannel?.postMessage({ type: 'start-lipsync' });
             return;
         }
 
@@ -922,10 +964,8 @@ class Widget {
         this._lipSyncData = this._lipSyncData && this._lipSyncData.length === analyser.frequencyBinCount
             ? this._lipSyncData
             : new Uint8Array(analyser.frequencyBinCount);
-        this._lipSyncLastSentAt = 0;
-        this._live2dChannel?.postMessage({ type: 'start-lipsync' });
 
-        const tick = (now) => {
+        const tick = () => {
             this._lipSyncRAF = requestAnimationFrame(tick);
 
             if (!this.player?._playing || this.player?._stopped) {
@@ -941,13 +981,8 @@ class Widget {
             const raw = count > 0 ? (sum / count) / 180 : 0;
             const volume = Math.max(0, Math.min(1, raw * 1.35));
 
-            if (now - this._lipSyncLastSentAt >= 33) {
-                this._live2dChannel?.postMessage({
-                    type: 'lipsync-data',
-                    value: Number(volume.toFixed(4)),
-                });
-                this._lipSyncLastSentAt = now;
-            }
+            // 送入 VTS Manager，设定参数名为 MouthOpenAudio
+            this.vtsManager.injectParameter('MouthOpenAudio', Number(volume.toFixed(4)));
         };
 
         this._lipSyncRAF = requestAnimationFrame(tick);
@@ -958,8 +993,8 @@ class Widget {
             cancelAnimationFrame(this._lipSyncRAF);
             this._lipSyncRAF = null;
         }
-        this._lipSyncLastSentAt = 0;
-        this._live2dChannel?.postMessage({ type: 'stop-lipsync' });
+        // 嘴型归零
+        this.vtsManager.injectParameter('MouthOpenAudio', 0);
     }
 }
 
