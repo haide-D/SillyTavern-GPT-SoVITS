@@ -361,6 +361,19 @@ html, body {
     border-color: var(--accent);
 }
 
+.settings-panel .settings-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 10px;
+    color: var(--text);
+}
+
+.settings-panel .settings-check input {
+    width: auto;
+    margin: 0;
+}
+
 .settings-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -387,5 +400,4 @@ html, body {
     background: var(--bg-input);
     border: 1px solid var(--border);
 }
-
 

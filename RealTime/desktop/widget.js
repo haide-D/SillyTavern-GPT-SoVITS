@@ -321,16 +321,9 @@ class Widget {
         this.sttManager = null;
         this._sttWasListening = false;
 
-        // VTube Studio WebSocket 客户端
-        this.vtsManager = new VTSManager();
-        this.vtsManager.onConnected = () => {
-            const el = document.getElementById('vts-status');
-            if (el) el.textContent = 'VTS: 🟢';
-        };
-        this.vtsManager.onDisconnected = () => {
-            const el = document.getElementById('vts-status');
-            if (el) el.textContent = 'VTS: 🔴';
-        };
+        // Live2D / VTube Studio 参数注入
+        this.live2dEnabled = true;
+        this.vtsManager = null;
 
         this._lipSyncRAF = null;
         this._lipSyncData = null;
@@ -354,8 +347,12 @@ class Widget {
         this._setStatus('online', '就绪');
         this._addSystem('🟢 小组件已连接后端');
         
-        // 自动连接 VTS
-        this.vtsManager.connect();
+        if (this.live2dEnabled) {
+            this._ensureVTSManager();
+            this.vtsManager?.connect();
+        } else {
+            this._setVTSStatus('VTS: 关闭');
+        }
     }
 
     _sleep(ms) {
@@ -388,6 +385,7 @@ class Widget {
         this.$latFirst = document.getElementById('lat-first');
         this.$latAudio = document.getElementById('lat-audio');
         this.$sttBar = document.getElementById('stt-bar');
+        this.$live2dToggle = document.getElementById('cfg-live2d-enabled');
 
         this.$btnSend.addEventListener('click', () => this.send());
         this.$input.addEventListener('keydown', (e) => {
@@ -412,14 +410,85 @@ class Widget {
         this.$charSelect?.addEventListener('change', () => this._switchCharacter());
         document.getElementById('btn-refresh-chars')?.addEventListener('click', () => this._loadCharacters());
 
+        this.$live2dToggle?.addEventListener('change', () => {
+            this._setLive2DEnabled(this.$live2dToggle.checked, { persist: true });
+        });
+
         // 绑定 VTS 状态按钮 (点击重连)
         const vtsStatus = document.getElementById('vts-status');
         if (vtsStatus) {
             vtsStatus.addEventListener('click', () => {
-                this.vtsManager.connect();
+                if (!this.live2dEnabled) {
+                    this._addSystem('Live2D / VTube Studio 当前已关闭');
+                    return;
+                }
+                this._ensureVTSManager();
+                this.vtsManager?.connect();
                 this._addSystem('🔌 尝试重新连接 VTube Studio...');
             });
         }
+    }
+
+    _setVTSStatus(text) {
+        const el = document.getElementById('vts-status');
+        if (el) el.textContent = text;
+    }
+
+    _ensureVTSManager() {
+        if (this.vtsManager || !window.VTSManager) return this.vtsManager;
+
+        this.vtsManager = new VTSManager();
+        this.vtsManager.onConnected = () => this._setVTSStatus('VTS: 🟢');
+        this.vtsManager.onDisconnected = () => {
+            if (this.live2dEnabled) this._setVTSStatus('VTS: 🔴');
+        };
+        return this.vtsManager;
+    }
+
+    async _setLive2DEnabled(enabled, { persist = false } = {}) {
+        const nextEnabled = enabled !== false;
+        if (!nextEnabled && this.live2dEnabled) {
+            this._stopLipSync();
+        }
+
+        this.live2dEnabled = nextEnabled;
+        if (this.$live2dToggle) this.$live2dToggle.checked = this.live2dEnabled;
+
+        if (this.live2dEnabled) {
+            this._setVTSStatus('VTS: 🔴');
+            this._ensureVTSManager();
+            this.vtsManager?.connect();
+        } else {
+            this._setVTSStatus('VTS: 关闭');
+        }
+
+        if (!persist) return;
+        try {
+            await fetch(`${API_BASE}/api/admin/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    desktop_widget: {
+                        live2d_enabled: this.live2dEnabled
+                    }
+                })
+            });
+            this._addSystem(this.live2dEnabled
+                ? 'Live2D / VTube Studio 已开启'
+                : 'Live2D / VTube Studio 已关闭');
+        } catch (e) {
+            this._addSystem('⚠️ 保存 Live2D 开关失败: ' + e.message);
+        }
+    }
+
+    _injectVTSParameter(name, value) {
+        if (!this.live2dEnabled) return;
+        this._ensureVTSManager()?.injectParameter(name, value);
+    }
+
+    _triggerVTSHotkey(name) {
+        if (!this.live2dEnabled) return;
+        this._ensureVTSManager()?.triggerHotkey(name);
     }
 
     async _loadConfig() {
@@ -439,6 +508,7 @@ class Widget {
                 }
                 // 读取默认角色配置
                 this._defaultCharacter = (s.desktop_widget?.default_character || '').trim();
+                await this._setLive2DEnabled(s.desktop_widget?.live2d_enabled !== false);
                 console.log('[Widget] 默认角色配置:', this._defaultCharacter || '(未配置)');
             }
         } catch (e) {
@@ -736,8 +806,8 @@ class Widget {
                                     }
                                     // 音频实际开始出声时，执行动作
                                     for (const eName of targetEmotions) {
-                                        this.vtsManager.triggerHotkey(eName);
-                                        this.vtsManager.injectParameter(`Emotion_${eName}`, 1.0);
+                                        this._triggerVTSHotkey(eName);
+                                        this._injectVTSParameter(`Emotion_${eName}`, 1.0);
                                     }
                                     this._startLipSync();
                                 })
@@ -757,8 +827,8 @@ class Widget {
                 const targetEmotions = this._pendingEmotions.splice(0, this._pendingEmotions.length);
                 this._ttsChain = this._ttsChain.then(() => {
                     for (const eName of targetEmotions) {
-                        this.vtsManager.triggerHotkey(eName);
-                        this.vtsManager.injectParameter(`Emotion_${eName}`, 1.0);
+                        this._triggerVTSHotkey(eName);
+                        this._injectVTSParameter(`Emotion_${eName}`, 1.0);
                     }
                 });
             }
@@ -956,6 +1026,9 @@ class Widget {
     // ---- VTube Studio 参数注入控制 ----
 
     _startLipSync() {
+        if (!this.live2dEnabled) {
+            return;
+        }
         if (!this.player?.analyserNode || this._lipSyncRAF) {
             return;
         }
@@ -982,7 +1055,7 @@ class Widget {
             const volume = Math.max(0, Math.min(1, raw * 1.35));
 
             // 送入 VTS Manager，设定参数名为 MouthOpenAudio
-            this.vtsManager.injectParameter('MouthOpenAudio', Number(volume.toFixed(4)));
+            this._injectVTSParameter('MouthOpenAudio', Number(volume.toFixed(4)));
         };
 
         this._lipSyncRAF = requestAnimationFrame(tick);
@@ -994,7 +1067,7 @@ class Widget {
             this._lipSyncRAF = null;
         }
         // 嘴型归零
-        this.vtsManager.injectParameter('MouthOpenAudio', 0);
+        this._injectVTSParameter('MouthOpenAudio', 0);
     }
 }
 

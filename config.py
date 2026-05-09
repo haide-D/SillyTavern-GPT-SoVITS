@@ -123,6 +123,19 @@ def init_settings():
         if deep_merge(message_processing_defaults, settings["message_processing"]):
             dirty = True
 
+    desktop_widget_defaults = {
+        "default_character": "",
+        "live2d_enabled": True,
+    }
+    if "desktop_widget" not in settings or not isinstance(
+        settings["desktop_widget"], dict
+    ):
+        settings["desktop_widget"] = desktop_widget_defaults
+        dirty = True
+    else:
+        if deep_merge(desktop_widget_defaults, settings["desktop_widget"]):
+            dirty = True
+
     # phone_call 配置 - 使用深度合并,只补充缺失字段,不覆盖用户设置
     phone_call_defaults = {
         "enabled": True,
