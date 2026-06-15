@@ -65,11 +65,11 @@ async function loadDashboard() {
             const statusEl = document.getElementById('sovits-status');
 
             if (sovits.accessible) {
-                statusEl.textContent = '运行中';
+                statusEl.textContent = window.t('运行中');
                 statusEl.className = 'status-badge status-success';
                 document.getElementById('sovits-state').textContent = '可访问';
             } else {
-                statusEl.textContent = '未运行';
+                statusEl.textContent = window.t('未运行');
                 statusEl.className = 'status-badge status-error';
                 document.getElementById('sovits-state').textContent = sovits.error || '无法连接';
             }
@@ -109,6 +109,7 @@ function renderModels(models) {
 
     if (models.length === 0) {
         container.innerHTML = '<p class="placeholder">暂无模型,点击右上角创建新模型</p>';
+        if (window.translateDOM) window.translateDOM(container);
         return;
     }
 
@@ -146,6 +147,7 @@ function renderModels(models) {
             </div>
         </div>
     `).join('');
+    if (window.translateDOM) window.translateDOM(container);
 }
 
 
@@ -235,7 +237,7 @@ async function createModel() {
         progressContainer.style.display = 'block';
         progressBar.style.width = '0%';
         progressPercent.textContent = '0%';
-        progressText.textContent = '正在创建模型...';
+        progressText.textContent = window.t('正在创建模型...');
 
         // 使用XMLHttpRequest以支持进度监控
         const xhr = new XMLHttpRequest();
@@ -248,9 +250,9 @@ async function createModel() {
                 progressPercent.textContent = percentComplete + '%';
 
                 if (percentComplete < 100) {
-                    progressText.textContent = '正在上传文件...';
+                    progressText.textContent = window.t('正在上传文件...');
                 } else {
-                    progressText.textContent = '处理中...';
+                    progressText.textContent = window.t('处理中...');
                 }
             }
         });
@@ -294,7 +296,7 @@ async function createModel() {
 // ==================== 音频管理 ====================
 function populateModelSelect() {
     const select = document.getElementById('audio-model-select');
-    select.innerHTML = '<option value="">选择模型...</option>' +
+    select.innerHTML = '<option value="">' + window.t('选择模型...') + '</option>' +
         currentModels.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
 }
 
@@ -306,6 +308,7 @@ async function loadAudios() {
 
     if (!modelName) {
         container.innerHTML = '<p class="placeholder">请先选择一个模型</p>';
+        if (window.translateDOM) window.translateDOM(container);
         uploadBtn.disabled = true;
         batchEmotionBtn.disabled = true;
         return;
@@ -323,6 +326,7 @@ async function loadAudios() {
     } catch (error) {
         console.error('加载音频失败:', error);
         container.innerHTML = '<p class="placeholder">加载失败</p>';
+        if (window.translateDOM) window.translateDOM(container);
     }
 }
 
@@ -331,6 +335,7 @@ function renderAudios(audios) {
 
     if (audios.length === 0) {
         container.innerHTML = '<p class="placeholder">该模型暂无参考音频</p>';
+        if (window.translateDOM) window.translateDOM(container);
         return;
     }
 
@@ -355,6 +360,7 @@ function renderAudios(audios) {
             </div>
         </div>
     `).join('');
+    if (window.translateDOM) window.translateDOM(container);
 }
 
 function showUploadDialog() {
@@ -776,7 +782,7 @@ function bindFetchModelsButton() {
 
         // 禁用按钮并显示加载状态
         btn.disabled = true;
-        btn.textContent = '获取中...';
+        btn.textContent = window.t('获取中...');
 
         try {
             console.log('[管理面板] 开始获取模型列表...', { apiUrl, apiKey: '***' });
@@ -787,7 +793,8 @@ function bindFetchModelsButton() {
             models.sort((a, b) => a.localeCompare(b));
 
             // 清空并重新填充下拉框
-            modelSelect.innerHTML = '<option value="">请选择模型...</option>';
+            modelSelect.innerHTML = '<option value="">' + window.t('请选择模型...') + '</option>';
+        if (window.translateDOM) window.translateDOM(modelSelect);
             models.forEach(model => {
                 const option = document.createElement('option');
                 option.value = model;
@@ -810,7 +817,7 @@ function bindFetchModelsButton() {
         } finally {
             // 恢复按钮状态
             btn.disabled = false;
-            btn.textContent = '🔄 获取模型列表';
+            btn.textContent = window.t('🔄 获取模型列表');
         }
     });
 }
@@ -838,7 +845,7 @@ function bindTestConnectionButton() {
 
         // 禁用按钮并显示加载状态
         btn.disabled = true;
-        btn.textContent = '测试中...';
+        btn.textContent = window.t('测试中...');
 
         try {
             console.log('[管理面板] 开始测试 LLM 连接...', { apiUrl, model, apiKey: '***' });
@@ -854,7 +861,7 @@ function bindTestConnectionButton() {
         } finally {
             // 恢复按钮状态
             btn.disabled = false;
-            btn.textContent = '🧪 测试连接';
+            btn.textContent = window.t('🧪 测试连接');
         }
     });
 }
@@ -876,13 +883,14 @@ function bindAnalysisLLMButtons() {
 
             const currentValue = modelSelect.value;
             fetchBtn.disabled = true;
-            fetchBtn.textContent = '获取中...';
+            fetchBtn.textContent = window.t('获取中...');
 
             try {
                 const models = await fetchLLMModels(apiUrl, apiKey);
                 models.sort((a, b) => a.localeCompare(b));
 
-                modelSelect.innerHTML = '<option value="">请选择模型...</option>';
+                modelSelect.innerHTML = '<option value="">' + window.t('请选择模型...') + '</option>';
+        if (window.translateDOM) window.translateDOM(modelSelect);
                 models.forEach(model => {
                     const option = document.createElement('option');
                     option.value = model;
@@ -901,7 +909,7 @@ function bindAnalysisLLMButtons() {
                 showNotification(`获取模型失败: ${error.message}`, 'error');
             } finally {
                 fetchBtn.disabled = false;
-                fetchBtn.textContent = '🔄 获取模型列表';
+                fetchBtn.textContent = window.t('🔄 获取模型列表');
             }
         });
     }
@@ -926,7 +934,7 @@ function bindAnalysisLLMButtons() {
             }
 
             testBtn.disabled = true;
-            testBtn.textContent = '测试中...';
+            testBtn.textContent = window.t('测试中...');
 
             try {
                 const content = await testLLMConnection(apiUrl, apiKey, model, temperature);
@@ -935,7 +943,7 @@ function bindAnalysisLLMButtons() {
                 showNotification(`❌ 连接失败: ${error.message}`, 'error');
             } finally {
                 testBtn.disabled = false;
-                testBtn.textContent = '🧪 测试连接';
+                testBtn.textContent = window.t('🧪 测试连接');
             }
         });
     }
@@ -1021,6 +1029,7 @@ function formatFileSize(bytes) {
 }
 
 function showNotification(message, type = 'info') {
+    if (window.t) message = window.t(message);
     // 简单的通知实现
     const colors = {
         success: '#10b981',
@@ -1082,7 +1091,7 @@ async function checkVersion() {
         const data = await response.json();
 
         if (!data.success) {
-            statusEl.textContent = '检测失败';
+            statusEl.textContent = window.t('检测失败');
             statusEl.className = 'status-badge status-error';
             currentVersionEl.textContent = data.error || '未知错误';
             return;
@@ -1100,18 +1109,18 @@ async function checkVersion() {
         // 如果是 Git 仓库
         if (data.is_git_repo) {
             // 显示 Git 仓库提示
-            gitRepoNotice.textContent = '💡 检测到 Git 仓库,点击更新将自动执行 git pull';
+            gitRepoNotice.textContent = window.t('💡 检测到 Git 仓库,点击更新将自动执行 git pull');
             gitRepoNotice.style.display = 'block';
 
             // 根据是否有更新来显示状态和按钮
             if (data.has_update) {
-                statusEl.textContent = '有新版本';
+                statusEl.textContent = window.t('有新版本');
                 statusEl.className = 'status-badge status-warning';
                 updateBadge.style.display = 'inline-block';
                 navUpdateBadge.style.display = 'inline-block';
                 updateActions.style.display = 'block';
             } else {
-                statusEl.textContent = '已是最新';
+                statusEl.textContent = window.t('已是最新');
                 statusEl.className = 'status-badge status-success';
                 updateBadge.style.display = 'none';
                 navUpdateBadge.style.display = 'none';
@@ -1123,13 +1132,13 @@ async function checkVersion() {
         // ZIP 用户的显示逻辑
         // 检查是否有更新
         if (data.has_update) {
-            statusEl.textContent = '有新版本';
+            statusEl.textContent = window.t('有新版本');
             statusEl.className = 'status-badge status-warning';
             updateBadge.style.display = 'inline-block';
             navUpdateBadge.style.display = 'inline-block';
             updateActions.style.display = 'block';
         } else {
-            statusEl.textContent = '已是最新';
+            statusEl.textContent = window.t('已是最新');
             statusEl.className = 'status-badge status-success';
             updateBadge.style.display = 'none';
             navUpdateBadge.style.display = 'none';
@@ -1138,9 +1147,9 @@ async function checkVersion() {
 
     } catch (error) {
         console.error('检查版本失败:', error);
-        statusEl.textContent = '检测失败';
+        statusEl.textContent = window.t('检测失败');
         statusEl.className = 'status-badge status-error';
-        currentVersionEl.textContent = '网络错误';
+        currentVersionEl.textContent = window.t('网络错误');
     }
 }
 
@@ -1161,7 +1170,7 @@ async function performUpdate() {
         updateActions.style.display = 'none';
         updateProgress.style.display = 'block';
         progressBar.style.width = '0%';
-        progressText.textContent = '正在准备更新...';
+        progressText.textContent = window.t('正在准备更新...');
 
         // 模拟进度(因为后端更新是同步的)
         let progress = 0;
@@ -1183,7 +1192,7 @@ async function performUpdate() {
 
         if (response.ok && data.success) {
             progressBar.style.width = '100%';
-            progressText.textContent = '更新完成!';
+            progressText.textContent = window.t('更新完成!');
 
             // 检查是否需要重启
             if (data.should_restart) {
@@ -1192,17 +1201,17 @@ async function performUpdate() {
                 // 倒计时重启
                 let countdown = 3;
                 const countdownInterval = setInterval(() => {
-                    progressText.textContent = `${countdown} 秒后自动重启服务...`;
+                    progressText.textContent = window.t(`${countdown} 秒后自动重启服务...`);
                     countdown--;
 
                     if (countdown < 0) {
                         clearInterval(countdownInterval);
-                        progressText.textContent = '正在重启服务...';
+                        progressText.textContent = window.t('正在重启服务...');
 
                         // 调用重启 API
                         fetch(`${API_BASE}/restart`, { method: 'POST' })
                             .then(() => {
-                                progressText.textContent = '服务正在重启,5秒后刷新页面...';
+                                progressText.textContent = window.t('服务正在重启,5秒后刷新页面...');
                                 // 等待服务重启,然后刷新页面
                                 setTimeout(() => {
                                     window.location.reload();
@@ -1270,10 +1279,10 @@ async function loadSovitsConfig() {
         // 更新状态徽章
         const statusBadge = document.getElementById('sovits-install-status');
         if (config.installed && config.install_path) {
-            statusBadge.textContent = '已配置';
+            statusBadge.textContent = window.t('已配置');
             statusBadge.className = 'status-badge status-success';
         } else {
-            statusBadge.textContent = '未配置';
+            statusBadge.textContent = window.t('未配置');
             statusBadge.className = 'status-badge status-warning';
         }
     } catch (error) {
@@ -1338,7 +1347,7 @@ async function extractSovitsPackage() {
 
     progressDiv.style.display = 'block';
     progressBar.style.width = '0%';
-    progressText.textContent = '正在解压，请稍候（文件较大，可能需要几分钟）...';
+    progressText.textContent = window.t('正在解压，请稍候（文件较大，可能需要几分钟）...');
 
     try {
         const response = await fetch('/api/sovits/extract', {
@@ -1355,7 +1364,7 @@ async function extractSovitsPackage() {
 
         if (response.ok) {
             progressBar.style.width = '100%';
-            progressText.textContent = `解压完成！路径: ${data.extracted_path}`;
+            progressText.textContent = window.t(`解压完成！路径: ${data.extracted_path}`);
 
             // 自动填充安装路径
             document.getElementById('sovits-install-path').value = data.extracted_path;
@@ -1366,12 +1375,12 @@ async function extractSovitsPackage() {
             document.querySelector('input[name="install-mode"][value="manual"]').checked = true;
             toggleInstallMode();
         } else {
-            progressText.textContent = '解压失败';
+            progressText.textContent = window.t('解压失败');
             showNotification(data.detail || '解压失败', 'error');
         }
     } catch (error) {
         console.error('解压失败:', error);
-        progressText.textContent = '解压失败';
+        progressText.textContent = window.t('解压失败');
         showNotification('解压失败，请检查路径是否正确', 'error');
     }
 }
@@ -1461,13 +1470,13 @@ async function loadSovitsStatus() {
         // 更新安装状态徽章
         const statusBadge = document.getElementById('sovits-install-status');
         if (status.api_reachable) {
-            statusBadge.textContent = '运行中';
+            statusBadge.textContent = window.t('运行中');
             statusBadge.className = 'status-badge status-success';
         } else if (status.installed && status.install_path) {
-            statusBadge.textContent = '已配置';
+            statusBadge.textContent = window.t('已配置');
             statusBadge.className = 'status-badge status-warning';
         } else {
-            statusBadge.textContent = '未配置';
+            statusBadge.textContent = window.t('未配置');
             statusBadge.className = 'status-badge';
         }
     } catch (error) {
