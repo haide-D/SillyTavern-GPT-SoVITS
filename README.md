@@ -1,5 +1,7 @@
 # SillyTavern-GPT-SoVITS Middleware
 
+[**English**](./README_EN.md) | [**简体中文**](./README.md)
+
 ![License](https://img.shields.io/badge/license-MIT-blue) ![Python](https://img.shields.io/badge/python-3.8+-yellow) ![SillyTavern](https://img.shields.io/badge/SillyTavern-Extension-purple)
 
 赞助我，支持插件继续开发更多功能：https://afdian.com/a/2742159495abc
@@ -7,6 +9,16 @@
 这是一个为 **SillyTavern (酒馆)** 量身打造的 **GPT-SoVITS** 深度集成插件。
 
 它不仅仅是一个简单的 TTS 连接器，它包含一个 Python 后端管理器和一个前端 JS 插件，提供了模型自动切换、音频缓存、以及**多达 12 种不同风格**的沉浸式语音气泡体验。
+
+---
+
+## 🚀 项目架构与分支说明 (Architecture & Branches)
+
+本项目采用高度**模块化与可扩展**的全栈架构设计。主干网络提供稳定可靠的基础模型管理与前端 UI，而针对不同商业场景的高级扩展功能被剥离在独立的分支中，以便于持续集成与系统解耦：
+
+* **`main` 分支**：稳定版核心引擎，包含模型调度、UI 渲染、哈希缓存机制等。
+* **`fe_RealTime` 分支**：🔥 **实时语音对话系统 (Real-time Voice Chat)**。基于 WebSocket 实现了极低延迟的流式音频通信与 VAD (静音检测) 中断机制，专为高拟真 AI 对话场景设计。
+* **`fe_tg_bot` 分支**：🤖 **Telegram 智能机器人集成**。将核心引擎接入 Telegram Bot API，允许通过移动端进行远程调度与状态机管理。
 
 ---
 
