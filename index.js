@@ -22,7 +22,6 @@ import './frontend/js/telegram_import_ui.js';
 import { LLM_Client } from './frontend/js/llm_client.js';
 import { TTS_Mobile } from './frontend/js/mobile_ui.js';
 import { WebSocketManager } from './frontend/js/websocket_manager.js';
-import { AutoPhoneCallListener } from './frontend/js/auto_phone_call_listener.js';
 import { ContextCollector } from './frontend/js/context_collector.js';  // 上下文收集器
 
 import { ChatEventListener } from './frontend/js/chat_event_listener.js';
