@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 模拟手机 UI 核心框架 (非真实移动端)
  *
  * 注意: 这是在浏览器中渲染的一个"虚拟小手机"界面，
@@ -16,6 +16,7 @@ import * as LlmTestApp from './mobile_apps/llm_test_app.js';
 import * as PhoneCallApp from './mobile_apps/phone_call_app.js';
 import * as RealtimeApp from './mobile_apps/realtime_app.js';
 import * as EavesdropApp from './mobile_apps/eavesdrop_app.js';
+import { t } from './i18n.js';
 
 if (!window.TTS_Mobile) {
     window.TTS_Mobile = {};
@@ -35,7 +36,7 @@ export const TTS_Mobile = window.TTS_Mobile;
         const $nav = $(`
             <div class="mobile-app-navbar">
                 <div class="nav-left" style="display:flex; align-items:center;">
-                    <span style="font-size:20px; margin-right:5px;">←</span> 返回
+                    <span style="font-size:20px; margin-right:5px;">←</span> ${t('nav_back')}
                 </div>
                 <div class="nav-title">${title}</div>
                 <div class="nav-right" style="width:40px;"></div>
@@ -50,7 +51,7 @@ export const TTS_Mobile = window.TTS_Mobile;
     // ==================== App 注册表 ====================
     const APPS = {
         'incoming_call': {
-            name: '来电',
+            get name() { return t('app_incoming_call'); },
             icon: '📞',
             bg: '#667eea',
             render: async (container) => {
@@ -58,7 +59,7 @@ export const TTS_Mobile = window.TTS_Mobile;
             }
         },
         'settings': {
-            name: '系统设置',
+            get name() { return t('app_settings'); },
             icon: '⚙️',
             bg: '#333',
             render: async (container) => {
@@ -66,7 +67,7 @@ export const TTS_Mobile = window.TTS_Mobile;
             }
         },
         'favorites': {
-            name: '收藏夹',
+            get name() { return t('app_favorites'); },
             icon: '❤️',
             bg: 'var(--s-ready-bg, #e11d48)',
             render: async (container) => {
@@ -74,7 +75,7 @@ export const TTS_Mobile = window.TTS_Mobile;
             }
         },
         'llm_test': {
-            // name: 'LLM测试',  // 注释掉则不在主屏显示
+            // get name() { return t('app_llm_test'); },  // 注释掉则不在主屏显示
             icon: '🤖',
             bg: '#8b5cf6',
             render: async (container) => {
@@ -82,7 +83,7 @@ export const TTS_Mobile = window.TTS_Mobile;
             }
         },
         'phone_call': {
-            // name: '主动电话',  // 注释掉则不在主屏显示
+            // get name() { return t('app_phone_call'); },  // 注释掉则不在主屏显示
             icon: '📞',
             bg: '#10b981',
             render: async (container) => {
@@ -90,7 +91,7 @@ export const TTS_Mobile = window.TTS_Mobile;
             }
         },
         'eavesdrop': {
-            name: '对话追踪',
+            get name() { return t('app_eavesdrop'); },
             icon: '🎧',
             bg: '#22c55e',
             render: async (container) => {
@@ -98,7 +99,7 @@ export const TTS_Mobile = window.TTS_Mobile;
             }
         },
         'realtime': {
-            name: '实时对话',
+            get name() { return t('app_realtime'); },
             icon: '🎙️',
             bg: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
             render: async (container) => {

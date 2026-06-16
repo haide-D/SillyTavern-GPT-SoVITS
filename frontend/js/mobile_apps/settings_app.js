@@ -3,6 +3,8 @@
  * 加载并渲染 TTS 配置 Dashboard
  */
 
+import { t } from '../i18n.js';
+
 /**
  * 渲染设置 App
  * @param {jQuery} container - App 容器
@@ -12,7 +14,7 @@ export async function render(container, createNavbar) {
     container.html(`
         <div style="display:flex; flex-direction:column; height:100%; align-items:center; justify-content:center; color:#888;">
             <div style="font-size:24px; margin-bottom:10px;">⚙️</div>
-            <div>正在同步配置...</div>
+            <div>${t('settings_syncing')}</div>
         </div>
     `);
 
@@ -38,7 +40,7 @@ export async function render(container, createNavbar) {
     } catch (e) { console.error("刷新数据失败", e); }
 
     if (!window.TTS_UI || !window.TTS_UI.Templates || !window.TTS_UI.CTX) {
-        container.html('<div style="padding:20px; text-align:center;">⚠️ 核心UI模块未就绪</div>');
+        container.html(`<div style="padding:20px; text-align:center;">${t('settings_core_ui_error')}</div>`);
         return;
     }
 
@@ -46,7 +48,7 @@ export async function render(container, createNavbar) {
 
     // 安全检查: 确保 CACHE 已初始化
     if (!CTX.CACHE) {
-        container.html('<div style="padding:20px; text-align:center;">⚠️ 数据缓存未初始化</div>');
+        container.html(`<div style="padding:20px; text-align:center;">${t('settings_cache_error')}</div>`);
         return;
     }
 
@@ -76,7 +78,7 @@ export async function render(container, createNavbar) {
     $panel.addClass('mobile-settings-content');
     $panel.removeAttr('id');
 
-    const $navBar = createNavbar("系统配置");
+    const $navBar = createNavbar(t('app_settings'));
 
     container.empty();
     container.append($navBar);

@@ -1,4 +1,6 @@
 // 文件: ui_dashboard.js
+import { setLang } from './i18n.js';
+
 if (!window.TTS_UI) {
     window.TTS_UI = {};
 }
@@ -62,6 +64,12 @@ export const TTS_UI = window.TTS_UI;
             localStorage.setItem('tts_plugin_remote_config', JSON.stringify({ useRemote: true, ip: ip }));
             alert("设置已保存,即将刷新");
             location.reload();
+        });
+
+        $('#tts-lang-switch').change(function () {
+            const lang = $(this).val();
+            setLang(lang);
+            location.reload(); // Reload to apply language change across the board
         });
 
         $('#tts-master-switch').change(function () { CTX.Callbacks.toggleMasterSwitch($(this).is(':checked')); });
