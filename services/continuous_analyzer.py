@@ -134,6 +134,9 @@ class ContinuousAnalyzer:
             
             return {
                 "type": "continuous_analysis_request",
+                "context": context,
+                "character_persona": character_persona,
+                "world_info": world_info,
                 "chat_branch": chat_branch,
                 "floor": floor,
                 "context_fingerprint": context_fingerprint,

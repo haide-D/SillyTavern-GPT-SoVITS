@@ -297,6 +297,10 @@ class EavesdropService:
                             print(f"[EavesdropService] [WARN] Segment {original_index} ({speaker}) TTS failed: {e}")
                             continue
         
+        missing = [i + 1 for i in range(len(segments)) if not audio_results.get(i)]
+        if missing:
+            raise RuntimeError(f"窃听语音合成不完整，失败片段: {missing}，请重试")
+
         # 4. 按原始顺序重组音频列表
         audio_bytes_list = []
         valid_segments = []

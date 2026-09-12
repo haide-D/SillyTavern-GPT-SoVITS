@@ -1,7 +1,7 @@
 {
     "name": "SillyTavern-GPT-SoVITS",
     "display_name": "SillyTavern-GPT-SoVITS",
-    "version": "3.2.3",
+    "version": "3.2.4",
     "author": "haide-D",
     "description": "Adds deep integration for GPT-SoVITS with voice bubbles, creative workshop, multiple flagship themes, auto-switching models, and non-blocking audio caching.",
     "loading_location": "before_body",

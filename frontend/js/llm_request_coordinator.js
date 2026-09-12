@@ -12,6 +12,8 @@ import { LLM_Client } from './llm_client.js';
 import { PhoneCallAPIClient } from './phone_call_api_client.js';
 
 // ✅ 用于去重的记录ID集合
+const _processingCallIds = new Set();
+const _processedCallIds = new Set();
 const _processingEavesdropIds = new Set();
 const _processedEavesdropIds = new Set();
 const MAX_PROCESSED_IDS = 100;  // 最多保留的已处理ID数量
@@ -32,6 +34,9 @@ export class LLMRequestCoordinator {
         console.log('[LLMRequestCoordinator] 📥 收到 LLM 请求:', data);
 
         const { call_id, char_name, caller, prompt, llm_config, speakers, chat_branch } = data;
+        const requestKey = `${chat_branch}:${call_id}`;
+        if (_processingCallIds.has(requestKey) || _processedCallIds.has(requestKey)) return;
+        _processingCallIds.add(requestKey);
 
         try {
             // 显示通知: 使用 caller（实际打电话的人），回退到 speakers[0] 或 char_name
@@ -61,6 +66,8 @@ export class LLMRequestCoordinator {
                 speakers: speakers,
                 char_name: char_name
             });
+            _processedCallIds.add(requestKey);
+            if (_processedCallIds.size > MAX_PROCESSED_IDS) _processedCallIds.delete(_processedCallIds.values().next().value);
 
         } catch (error) {
             console.error('[LLMRequestCoordinator] ❌ 处理失败:', error);
@@ -82,6 +89,8 @@ export class LLMRequestCoordinator {
                 : `📞 电话生成失败: API 已重试 ${retries} 次均失败 (${error.message})`;
 
             this.showNotification(notifyMsg, 'error');
+        } finally {
+            _processingCallIds.delete(requestKey);
         }
     }
 

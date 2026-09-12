@@ -942,7 +942,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>创建新模型</h3>
-                <button class="close-btn" onclick="closeDialog('create-model-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="create-model-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="form-group">
@@ -985,7 +985,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('create-model-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="create-model-dialog">取消</button>
                 <button class="btn btn-primary" id="create-model-btn" onclick="createModel()">创建</button>
             </div>
         </div>
@@ -996,7 +996,7 @@
         <div class="dialog" style="max-width: 580px;">
             <div class="dialog-header">
                 <h3>⬆️ 上传参考音频 (支持批量)</h3>
-                <button class="close-btn" onclick="closeDialog('upload-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="upload-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="form-group">
@@ -1042,7 +1042,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('upload-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="upload-dialog">取消</button>
                 <button class="btn btn-primary" id="confirm-upload-btn" onclick="uploadAudio()">开始上传</button>
             </div>
         </div>
@@ -1053,7 +1053,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>重命名音频</h3>
-                <button class="close-btn" onclick="closeDialog('rename-audio-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="rename-audio-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="form-group">
@@ -1063,7 +1063,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('rename-audio-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="rename-audio-dialog">取消</button>
                 <button class="btn btn-primary" onclick="confirmRename()">确认</button>
             </div>
         </div>
@@ -1074,7 +1074,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>批量修改情感前缀</h3>
-                <button class="close-btn" onclick="closeDialog('batch-emotion-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="batch-emotion-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="form-group">
@@ -1089,7 +1089,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('batch-emotion-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="batch-emotion-dialog">取消</button>
                 <button class="btn btn-primary" onclick="confirmBatchEmotion()">确认</button>
             </div>
         </div>
@@ -1130,7 +1130,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-primary" onclick="closeDialog('notice-dialog')">我知道了</button>
+                <button class="btn btn-primary" data-close-dialog="notice-dialog">我知道了</button>
             </div>
         </div>
     </div>
@@ -1140,7 +1140,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>⚠️ 确认删除模型</h3>
-                <button class="close-btn" onclick="closeDialog('delete-model-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="delete-model-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="danger-box">
@@ -1151,7 +1151,7 @@
                 <p class="unbound-notice">⚡ 提示：删除后系统将自动解除 <code>character_mappings.json</code> 中指向这些模型的角色绑定。</p>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('delete-model-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="delete-model-dialog">取消</button>
                 <button class="btn btn-danger" id="confirm-delete-model-btn" onclick="executeModelDeletion()">确认永久删除</button>
             </div>
         </div>
@@ -1162,7 +1162,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>⚠️ 确认删除参考音频</h3>
-                <button class="close-btn" onclick="closeDialog('delete-audio-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="delete-audio-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="danger-box">
@@ -1172,7 +1172,7 @@
                 <div class="delete-target-list" id="delete-audio-list"></div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('delete-audio-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="delete-audio-dialog">取消</button>
                 <button class="btn btn-danger" id="confirm-delete-audio-btn" onclick="executeAudioDeletion()">确认删除</button>
             </div>
         </div>
@@ -1183,7 +1183,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>🏷️ 批量修改选中音频情感</h3>
-                <button class="close-btn" onclick="closeDialog('batch-selected-emotion-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="batch-selected-emotion-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
@@ -1196,7 +1196,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('batch-selected-emotion-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="batch-selected-emotion-dialog">取消</button>
                 <button class="btn btn-primary" onclick="confirmBatchSelectedEmotion()">确认修改</button>
             </div>
         </div>
@@ -1207,7 +1207,7 @@
         <div class="dialog dialog-lg">
             <div class="dialog-header">
                 <h3 id="preset-modal-title">✨ 新建场景预设</h3>
-                <button class="close-btn" onclick="closeDialog('preset-editor-modal')">✕</button>
+                <button class="close-btn" data-close-dialog="preset-editor-modal">✕</button>
             </div>
             <div class="dialog-body">
                 <form id="preset-form" onsubmit="event.preventDefault(); savePresetForm();">
@@ -1278,7 +1278,7 @@
                 </form>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('preset-editor-modal')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="preset-editor-modal">取消</button>
                 <button class="btn btn-primary" id="save-preset-btn" onclick="savePresetForm()">💾 保存预设</button>
             </div>
         </div>
@@ -1289,7 +1289,7 @@
         <div class="dialog">
             <div class="dialog-header">
                 <h3>⚠️ 确认删除场景预设</h3>
-                <button class="close-btn" onclick="closeDialog('delete-preset-dialog')">✕</button>
+                <button class="close-btn" data-close-dialog="delete-preset-dialog">✕</button>
             </div>
             <div class="dialog-body">
                 <div class="danger-box">
@@ -1297,7 +1297,7 @@
                 </div>
             </div>
             <div class="dialog-footer">
-                <button class="btn btn-secondary" onclick="closeDialog('delete-preset-dialog')">取消</button>
+                <button class="btn btn-secondary" data-close-dialog="delete-preset-dialog">取消</button>
                 <button class="btn btn-danger" id="confirm-delete-preset-btn" onclick="executePresetDeletion()">确认删除</button>
             </div>
         </div>
@@ -1330,6 +1330,7 @@
     <!-- 全局 Toast 容器 -->
     <div id="toast-container" class="toast-container"></div>
 
+    <script src="js/dialog-controls.js" defer></script>
     <script type="module" src="js/admin.js"></script>
 </body>
 

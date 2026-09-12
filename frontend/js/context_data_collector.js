@@ -223,15 +223,16 @@ export class ContextDataCollector {
             // 计算楼层
             const currentFloor = this.calculateCurrentFloor(chat);
 
-            // 提取上下文消息 (最近 10 条)
-            const contextMessages = this.extractContextMessages(chat, 10);
+            // 提取上下文消息 (最近 20 条)
+            const contextMessages = this.extractContextMessages(chat, 20);
 
             // 生成指纹
             const contextFingerprint = this.generateContextFingerprint(currentFloor);
 
             // 提取角色人设与世界书设定
             const characterPersona = WorldInfoExtractor.getCharacterPersona(charInfo.charName);
-            const worldInfo = WorldInfoExtractor.getWorldInfo();
+            const worldInfo = await WorldInfoExtractor.refreshWorldInfo();
+            if (chatBranch !== this.getCurrentChatBranch()) return null;
 
             console.log('[ContextDataCollector] 📊 数据采集完成 (含世界书与人设):');
             console.log('  - chat_branch:', chatBranch);

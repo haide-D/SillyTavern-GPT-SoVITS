@@ -67,6 +67,7 @@ export async function getContextInfo() {
     }
 
     // 2. 通过标准提取器获取 SillyTavern 角色卡、世界书与轻量化上下文
+    await WorldInfoExtractor.refreshWorldInfo();
     const enriched = WorldInfoExtractor.getEnrichedContext({ maxMessages: 12 });
 
     // 过滤出真正已绑定 TTS 模型的有效 Speakers

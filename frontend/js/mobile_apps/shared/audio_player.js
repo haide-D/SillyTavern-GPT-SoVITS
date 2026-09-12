@@ -140,6 +140,10 @@ export class AudioPlayer {
         // 绑定事件
         this.audio.addEventListener('loadedmetadata', () => this._onLoadedMetadata());
         this.audio.addEventListener('timeupdate', () => this._onTimeUpdate());
+        this.audio.addEventListener('playing', () => this._startSubtitleClock());
+        this.audio.addEventListener('pause', () => this._stopSubtitleClock());
+        this.audio.addEventListener('waiting', () => this._stopSubtitleClock());
+        this.audio.addEventListener('seeked', () => this._onTimeUpdate());
         this.audio.addEventListener('ended', () => this._onEnded());
         this.audio.addEventListener('error', (e) => this._onAudioError(e));
 
@@ -181,6 +185,7 @@ export class AudioPlayer {
      * 清理资源
      */
     cleanup() {
+        this._stopSubtitleClock();
         if (this.audio) {
             this.audio.pause();
             this.audio.currentTime = 0;
@@ -268,6 +273,21 @@ export class AudioPlayer {
      * 同步字幕与说话人切换
      * @private
      */
+    _startSubtitleClock() {
+        this._stopSubtitleClock();
+        const tick = () => {
+            if (!this.audio || this.audio.paused || this.audio.ended) return;
+            this._syncSubtitle(this.audio.currentTime);
+            this._subtitleFrame = requestAnimationFrame(tick);
+        };
+        tick();
+    }
+
+    _stopSubtitleClock() {
+        if (this._subtitleFrame != null) cancelAnimationFrame(this._subtitleFrame);
+        this._subtitleFrame = null;
+    }
+
     _syncSubtitle(currentTime) {
         if (!this.segments || !this.segments.length) return;
 

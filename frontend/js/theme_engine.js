@@ -450,6 +450,10 @@ if (!window.TTS_ThemeEngine) {
      * 切换面板开关
      */
     engine.toggle = function () {
+        // Notifications may arrive while an earlier item is still waiting.
+        const queue = window.TTS_CallQueueManager;
+        const current = queue?.getCurrent();
+        if (current) queue._syncLegacyGlobals(current);
         // 优先检查来电
         if (window.TTS_IncomingCall) {
             console.log('[ThemeEngine] 检测到来电，打开来电界面');

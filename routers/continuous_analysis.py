@@ -29,6 +29,8 @@ class ContinuousAnalysisCompleteRequest(BaseModel):
     llm_response: Optional[str] = None  # ✅ 改为可选，允许前端在 LLM 失败时传 null
     speakers: List[str]
     context: Optional[List[Dict]] = None  # ✅ 新增: 对话上下文，用于 eavesdrop prompt 构建
+    character_persona: Optional[str] = None
+    world_info: Optional[str] = None
     user_name: Optional[str] = None  # 用户名，用于 Prompt 构建
     char_name: Optional[str] = None  # 主角色卡名称，用于 WebSocket 推送路由
     error: Optional[str] = None  # ✅ 新增: 前端 LLM 调用错误信息
@@ -150,13 +152,15 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                     chat_branch=req.chat_branch,
                     speakers=[caller],  # 打电话的角色
                     trigger_floor=req.floor,
-                    context=[],  # 上下文由 PhoneCallService 根据 chat_branch 提取
+                    context=req.context or [],  # 使用触发时采集的最新聊天上下文
                     context_fingerprint=req.context_fingerprint,
                     user_name=req.user_name,
                     char_name=req.char_name,  # ✅ 修复: 使用主角色卡名称进行 WebSocket 路由
                     call_reason=call_reason,  # 传递电话原因
                     call_tone=call_tone,  # 传递通话氛围
-                    preset_id=selected_preset  # ✅ 注入 AI 剧情总导演选中的剧本 ID
+                    preset_id=selected_preset,
+                    character_persona=req.character_persona,
+                    world_info=req.world_info
                 )
                 trigger_result = {
                     "action": "phone_call",
@@ -212,7 +216,9 @@ async def complete_continuous_analysis(req: ContinuousAnalysisCompleteRequest):
                     user_name=req.user_name,
                     char_name=req.char_name,  # 使用主角色卡名称进行 WebSocket 路由
                     scene_description=trigger_reason,
-                    eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题、框架与选定剧本
+                    eavesdrop_config=eavesdrop_config,
+                    character_persona=req.character_persona or "",
+                    world_info=req.world_info or ""
                 )
                 trigger_result = {
                     "action": "eavesdrop",

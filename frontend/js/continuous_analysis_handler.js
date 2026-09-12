@@ -49,10 +49,10 @@ export class ContinuousAnalysisHandler {
         }
 
         // ✅ 采集当前对话上下文（用于 eavesdrop prompt 构建）
-        let context = [];
+        let context = Array.isArray(message.context) ? message.context : [];
         try {
             const stContext = window.SillyTavern?.getContext?.();
-            if (stContext?.chat) {
+            if (!Array.isArray(message.context) && stContext?.chat) {
                 const charInfo = {
                     charName: stContext.characters?.find(c => c.avatar === stContext.characterId)?.name || stContext.name2,
                     userName: stContext.name1
@@ -91,6 +91,8 @@ export class ContinuousAnalysisHandler {
                 speakers,
                 user_name,
                 char_name,
+                character_persona: message.character_persona || "",
+                world_info: message.world_info || "",
                 context,  // ✅ 新增: 传递对话上下文给后端
                 llm_response: llmResponse
             });
@@ -116,6 +118,8 @@ export class ContinuousAnalysisHandler {
                 speakers,
                 user_name,
                 char_name,
+                character_persona: message.character_persona || "",
+                world_info: message.world_info || "",
                 context,  // ✅ 即使失败也传递上下文
                 llm_response: null,
                 error: error.message,

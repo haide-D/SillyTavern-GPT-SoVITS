@@ -10,6 +10,44 @@
 
 export class WorldInfoExtractor {
 
+    static _worldInfoCache = null;
+
+    static _chatKey(ctx) {
+        return JSON.stringify([ctx?.characterId, ctx?.groupId, ctx?.chatId, ctx?.name1]);
+    }
+
+    static async refreshWorldInfo() {
+        const ctx = this.getSTContext();
+        if (!ctx?.getWorldInfoPrompt) return this.getWorldInfo();
+        const key = this._chatKey(ctx);
+        const character = ctx.characters?.[ctx.characterId] || {};
+        try {
+            // Dry run: respect the host activation rules without modifying timed effects.
+            const result = await ctx.getWorldInfoPrompt(
+                (ctx.chat || []).map(msg => msg.mes || '').reverse(),
+                Number(ctx.maxContext) || 8192, true,
+                { trigger: 'normal', personaDescription: ctx.powerUserSettings?.persona_description || '',
+                  characterDescription: character.description || '', characterPersonality: character.personality || '',
+                  characterDepthPrompt: character.data?.extensions?.depth_prompt?.prompt || '',
+                  scenario: character.scenario || '', creatorNotes: character.data?.creator_notes || '' }
+            );
+            const parts = [result.worldInfoBefore, result.worldInfoAfter];
+            for (const list of [result.worldInfoExamples, result.worldInfoDepth, result.anBefore, result.anAfter, ...Object.values(result.outletEntries || {})]) {
+                for (const entry of (Array.isArray(list) ? list : [list])) {
+                    parts.push(typeof entry === 'string' ? entry : entry?.content);
+                }
+            }
+            const text = [...new Set(parts.filter(part => typeof part === 'string' && part.trim()))].join('\n---\n');
+            if (this._chatKey(this.getSTContext()) !== key) return '';
+            this._worldInfoCache = { key, text };
+            return text;
+        } catch (error) {
+            this._worldInfoCache = null;
+            console.warn('[WorldInfoExtractor] 原生世界书扫描失败:', error);
+            return '';
+        }
+    }
+
     /**
      * 获取 SillyTavern 原生 Context 对象
      */
@@ -85,6 +123,7 @@ export class WorldInfoExtractor {
         const ctx = this.getSTContext();
         if (!ctx) return "";
 
+        if (this._worldInfoCache?.key === this._chatKey(ctx)) return this._worldInfoCache.text;
         const entries = [];
 
         try {

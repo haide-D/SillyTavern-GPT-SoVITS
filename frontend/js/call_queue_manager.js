@@ -35,11 +35,17 @@ export class CallQueueManager {
             return;
         }
 
+        const caller = item.selected_speaker || item.char_name || item.caller || item.callerName
+            || item.speakers?.filter(Boolean).join(' & ') || item.segments?.find(seg => seg.speaker)?.speaker || '未知角色';
         const queueItem = {
+            ...item,
+            char_name: caller,
+            selected_speaker: item.selected_speaker || caller,
+            call_id: item.call_id || (itemType === 'phone_call' ? itemId : undefined),
             id: itemId,
             type: itemType,
-            caller: item.selected_speaker || item.char_name || (item.speakers ? item.speakers.join(' & ') : '未知角色'),
-            speakers: item.speakers || [item.selected_speaker || item.char_name],
+            caller,
+            speakers: item.speakers?.filter(Boolean).length ? item.speakers.filter(Boolean) : [caller],
             avatar_url: item.avatar_url || null,
             audio_url: item.audio_url,
             audio_path: item.audio_path,
@@ -190,11 +196,11 @@ export class CallQueueManager {
         }
 
         if (item.type === 'phone_call') {
-            window.TTS_IncomingCall = item.rawData || item;
+            window.TTS_IncomingCall = item;
             window.TTS_EavesdropData = null;
             window.TTS_EavesdropReady = null;
         } else if (item.type === 'eavesdrop') {
-            window.TTS_EavesdropData = item.rawData || item;
+            window.TTS_EavesdropData = item;
             window.TTS_EavesdropReady = window.TTS_EavesdropData;
             window.TTS_IncomingCall = null;
         }

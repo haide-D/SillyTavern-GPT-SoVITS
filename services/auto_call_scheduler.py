@@ -14,10 +14,10 @@ class AutoCallScheduler:
         self.phone_call_service = PhoneCallService()
         self.settings = load_json(SETTINGS_FILE)
         
-        # 正在执行的任务集合 (char_name, floor)
+        # 本实例正在构建提示词的任务 ID；跨实例去重由数据库唯一记录负责
         self._running_tasks = set()
     
-    async def schedule_auto_call(self, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], context_fingerprint: str, user_name: str = None, char_name: str = None, call_reason: str = "", call_tone: str = "", preset_id: Optional[str] = None) -> Optional[int]:
+    async def schedule_auto_call(self, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], context_fingerprint: str, user_name: str = None, char_name: str = None, call_reason: str = "", call_tone: str = "", preset_id: Optional[str] = None, character_persona: Optional[str] = None, world_info: Optional[str] = None) -> Optional[int]:
         """
         调度自动电话生成任务
         
@@ -36,21 +36,14 @@ class AutoCallScheduler:
         Returns:
             任务ID,如果已存在或正在执行则返回 None
         """
-        # 使用指纹作为任务标识
-        task_key = f"{chat_branch}#{context_fingerprint}"
         
-        # 检查是否正在执行
-        if task_key in self._running_tasks:
-            print(f"[AutoCallScheduler] 任务已在执行中: {chat_branch}#{context_fingerprint[:8]}")
-            return None
         
         # 检查数据库是否已生成
         if self.db.is_auto_call_generated(chat_branch, context_fingerprint):
             print(f"[AutoCallScheduler] 该上下文已生成过: {chat_branch}#{context_fingerprint[:8]}")
             return None
         
-        # 检查是否存在卡住的记录 (generating/pending 状态)
-        # 如果存在,删除后重新创建,允许重试
+        # 正在生成的记录保持不动；只有明确失败的记录可以重试
         conn = self.db._get_connection()
         cursor = conn.cursor()
         try:
@@ -62,10 +55,9 @@ class AutoCallScheduler:
             
             if existing:
                 existing_id, existing_status = existing
-                if existing_status in ['generating', 'pending']:
-                    print(f"[AutoCallScheduler] 检测到卡住的记录: ID={existing_id}, status={existing_status}, 删除后重试")
-                    cursor.execute("DELETE FROM auto_phone_calls WHERE id = ?", (existing_id,))
-                    conn.commit()
+                if existing_status in ['generating', 'pending', 'synthesizing']:
+                    print(f"[AutoCallScheduler] 任务仍在等待或生成中: ID={existing_id}")
+                    return None
                 elif existing_status == 'failed':
                     print(f"[AutoCallScheduler] 检测到失败的记录: ID={existing_id}, 删除后重试")
                     cursor.execute("DELETE FROM auto_phone_calls WHERE id = ?", (existing_id,))
@@ -92,11 +84,11 @@ class AutoCallScheduler:
             print(f"[AutoCallScheduler] 📞 电话详情: reason={call_reason}, tone={call_tone}, 选定剧本={preset_id or '自动匹配'}")
         
         # 异步执行生成任务 (传递所有说话人、用户名、主角色名、电话详情与剧本ID)
-        asyncio.create_task(self._execute_generation(call_id, chat_branch, speakers, trigger_floor, context, user_name, char_name, call_reason, call_tone, preset_id))
+        asyncio.create_task(self._execute_generation(call_id, chat_branch, speakers, trigger_floor, context, user_name, char_name, call_reason, call_tone, preset_id, character_persona, world_info))
         
         return call_id
     
-    async def _execute_generation(self, call_id: int, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], user_name: str = None, char_name: str = None, call_reason: str = "", call_tone: str = "", preset_id: Optional[str] = None):
+    async def _execute_generation(self, call_id: int, chat_branch: str, speakers: List[str], trigger_floor: int, context: List[Dict], user_name: str = None, char_name: str = None, call_reason: str = "", call_tone: str = "", preset_id: Optional[str] = None, character_persona: Optional[str] = None, world_info: Optional[str] = None):
         """
         执行生成任务(异步) - 新架构
         
@@ -106,7 +98,7 @@ class AutoCallScheduler:
         3. 前端调用LLM后,通过API将结果发回
         4. 解析并生成音频
         """
-        task_key = trigger_floor
+        task_key = call_id
         self._running_tasks.add(task_key)
         
         try:
@@ -117,10 +109,11 @@ class AutoCallScheduler:
             
             # 查询通话历史（用于二次电话差异化）
             last_call_info = None
-            call_history = self.db.get_auto_call_history_by_chat_branch(chat_branch, limit=1)
+            call_history = self.db.get_auto_call_history_by_chat_branch(chat_branch, limit=20)
             if call_history:
-                last_call_info = call_history[0]
-                print(f"[AutoCallScheduler] 📞 检测到上次通话: {last_call_info.get('char_name')}")
+                last_call_info = next((call for call in call_history if call.get("status") == "completed" and call.get("char_name") == (speakers[0] if speakers else char_name)), None)
+                if last_call_info:
+                    print(f"[AutoCallScheduler] 📞 检测到上次通话: {last_call_info.get('char_name')}")
             
             # 第一阶段: 构建prompt (传入 preset_id)
             target_char = speakers[0] if speakers else (char_name or "未知")
@@ -128,7 +121,14 @@ class AutoCallScheduler:
                 char_name=target_char,
                 context=context,
                 user_name=user_name,
-                preset_id=preset_id
+                preset_id=preset_id,
+                caller=target_char,
+                call_reason=call_reason,
+                call_tone=call_tone,
+                character_persona=character_persona,
+                world_info=world_info,
+                chat_branch=chat_branch,
+                last_call_info=last_call_info
             )
 
             
@@ -171,6 +171,7 @@ class AutoCallScheduler:
                 error_message=str(e)
             )
             # 移除运行中标记
+        finally:
             self._running_tasks.discard(task_key)
     
     async def _save_audio(self, call_id: int, char_name: str, audio_data: bytes, audio_format: str) -> tuple:

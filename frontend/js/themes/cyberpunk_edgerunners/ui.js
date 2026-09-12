@@ -75,6 +75,7 @@ export function bindDragAndClick() {
 
     $trigger.off('pointerdown pointermove pointerup pointercancel click');
 
+    let suppressNativeClick = false;
     const triggerClick = function () {
         const now = Date.now();
         if (now - (ThemeState.drag.lastTapTime || 0) < 350) return;
@@ -89,6 +90,9 @@ export function bindDragAndClick() {
     };
 
     $trigger.on('pointerdown', function (e) {
+        e = e.originalEvent || e;
+        if (e.button !== undefined && e.button !== 0) return;
+        suppressNativeClick = false;
         if (e.isPrimary === false) return;
 
         ThemeState.drag.isDragging = true;
@@ -107,6 +111,7 @@ export function bindDragAndClick() {
     });
 
     $trigger.on('pointermove', function (e) {
+        e = e.originalEvent || e;
         if (!ThemeState.drag.isDragging) return;
         const dx = e.clientX - ThemeState.drag.startX;
         const dy = e.clientY - ThemeState.drag.startY;
@@ -127,10 +132,11 @@ export function bindDragAndClick() {
     });
 
     $trigger.on('pointerup pointercancel', function (e) {
+        e = e.originalEvent || e;
         if (!ThemeState.drag.isDragging) return;
         ThemeState.drag.isDragging = false;
+        suppressNativeClick = true;
 
-        const duration = Date.now() - (ThemeState.drag.startTime || 0);
         const dx = (e.clientX !== undefined ? e.clientX : ThemeState.drag.startX) - ThemeState.drag.startX;
         const dy = (e.clientY !== undefined ? e.clientY : ThemeState.drag.startY) - ThemeState.drag.startY;
         const moveDist = Math.hypot(dx, dy);
@@ -139,7 +145,7 @@ export function bindDragAndClick() {
             try { $trigger[0].releasePointerCapture(e.pointerId); } catch (_) {}
         }
 
-        if (!ThemeState.drag.hasMoved || (duration < 350 && moveDist < 20)) {
+        if (e.type !== 'pointercancel' && !ThemeState.drag.hasMoved && moveDist < DRAG_THRESHOLD) {
             triggerClick();
         } else {
             // 自由停放：持久化保存当前拖拽停止的坐标
@@ -153,6 +159,7 @@ export function bindDragAndClick() {
     });
 
     $trigger.on('click', function () {
+        if (suppressNativeClick) { suppressNativeClick = false; return; }
         if (!ThemeState.drag.hasMoved) {
             triggerClick();
         }

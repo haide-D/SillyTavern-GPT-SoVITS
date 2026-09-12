@@ -384,7 +384,7 @@ ${dialogueContent}
 
             // 刷新 DOM 显示
             if (updateMessageBlock) {
-                updateMessageBlock(lastAIIndex, targetMessage);
+                await this._refreshMessage(context, lastAIIndex, targetMessage);
             }
 
             // 保存聊天记录和元数据
@@ -475,7 +475,7 @@ ${dialogueContent}
 
                 // 刷新 DOM
                 if (updateMessageBlock) {
-                    updateMessageBlock(idx, targetMessage);
+                    await this._refreshMessage(context, idx, targetMessage);
                 }
 
                 // 更新 pendingPhoneContents（保持最新）
@@ -503,6 +503,16 @@ ${dialogueContent}
      * @param {Array} chat - 聊天记录数组
      * @returns {number} 消息索引，未找到返回 -1
      */
+    async _refreshMessage(context, index, message) {
+        await context.updateMessageBlock(index, message);
+        // Follow the host edit lifecycle to restore regex and HTML extension rendering.
+        for (const type of ['MESSAGE_UPDATED', 'CHARACTER_MESSAGE_RENDERED']) {
+            if (context.eventSource && context.eventTypes?.[type]) {
+                await context.eventSource.emit(context.eventTypes[type], index);
+            }
+        }
+    },
+
     _findLastAIMessageIndex(chat) {
         if (!chat || chat.length === 0) {
             return -1;

@@ -574,8 +574,8 @@ export function ensureCSS() {
     align-items: center;
 }
 #tts-dh-modal .mobile-settings-content .select-options {
-    position: absolute;
-    top: 100%;
+    position: relative;
+    top: 0;
     left: 0;
     width: 100%;
     max-height: 200px;
@@ -1086,6 +1086,7 @@ export function bindDragAndClick() {
 
     $trigger.off('pointerdown pointermove pointerup pointercancel click');
 
+    let suppressNativeClick = false;
     const triggerClick = function () {
         const now = Date.now();
         if (now - (ThemeState.dragState.lastTapTime || 0) < 350) return;
@@ -1096,6 +1097,9 @@ export function bindDragAndClick() {
     };
 
     $trigger.on('pointerdown', function (e) {
+        e = e.originalEvent || e;
+        if (e.button !== undefined && e.button !== 0) return;
+        suppressNativeClick = false;
         // 忽略多点触控非主要触点
         if (e.isPrimary === false) return;
 
@@ -1117,6 +1121,7 @@ export function bindDragAndClick() {
     });
 
     $trigger.on('pointermove', function (e) {
+        e = e.originalEvent || e;
         if (!ThemeState.dragState.isDragging) return;
         const dx = e.clientX - ThemeState.dragState.startX;
         const dy = e.clientY - ThemeState.dragState.startY;
@@ -1154,10 +1159,11 @@ export function bindDragAndClick() {
     });
 
     const endDrag = function (e) {
+        e = e.originalEvent || e;
         if (!ThemeState.dragState.isDragging) return;
         ThemeState.dragState.isDragging = false;
+        suppressNativeClick = true;
 
-        const duration = Date.now() - (ThemeState.dragState.startTime || 0);
         const dx = (e.clientX !== undefined ? e.clientX : ThemeState.dragState.startX) - ThemeState.dragState.startX;
         const dy = (e.clientY !== undefined ? e.clientY : ThemeState.dragState.startY) - ThemeState.dragState.startY;
         const moveDist = Math.hypot(dx, dy);
@@ -1166,8 +1172,8 @@ export function bindDragAndClick() {
             try { $trigger[0].releasePointerCapture(e.pointerId); } catch (_) {}
         }
 
-        // 移动端轻触判定：未真正发生拖拽，或轻触时间很短且位移在轻触容忍度内
-        if (!ThemeState.dragState.hasMoved || (duration < 350 && moveDist < 20)) {
+        // 只有正常抬起且未拖动才算轻触；取消事件不打开面板
+        if (e.type !== 'pointercancel' && !ThemeState.dragState.hasMoved && moveDist < DRAG_THRESHOLD) {
             triggerClick();
         } else {
             // 恢复悬浮粒子动画
@@ -1184,6 +1190,7 @@ export function bindDragAndClick() {
 
     // 针对部分浏览器原生 click 事件兜底
     $trigger.on('click', function (e) {
+        if (suppressNativeClick) { suppressNativeClick = false; return; }
         if (!ThemeState.dragState.hasMoved) {
             triggerClick();
         }

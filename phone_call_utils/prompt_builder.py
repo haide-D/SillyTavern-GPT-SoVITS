@@ -426,6 +426,14 @@ class PromptBuilder:
             elif "**近期对话上下文:**" in prompt:
                 prompt = prompt.replace("**近期对话上下文:**", f"{call_context_section}\n**近期对话上下文:**")
         
+        if call_context_section and "{{call_context}}" not in template and "**Conversation History:**" not in template and "**近期对话上下文:**" not in template:
+            prompt += "\n" + call_context_section
+        if "{{context}}" not in template:
+            prompt += "\n**近期对话上下文:**\n" + formatted_context
+        if last_call_info and "{{last_call_summary}}" not in template:
+            prompt += "\n**上次已完成的通话（避免复述）:**\n" + last_call_summary + "\n" + followup_call_instructions
+        prompt += "\n【称呼连续性】通话对象名称用于识别身份，不代表必须直呼其名。优先沿用近期对话中该角色对接听者实际使用的昵称、爱称或敬称，并遵循角色卡与世界书的关系设定；不要把 User、用户名或身份标签机械地念出来。若没有明确称呼依据，使用自然的第二人称，不要凭空编造昵称。\n"
+
         print(f"[PromptBuilder] 构建提示词: {len(prompt)} 字符, {message_count} 条消息, 发起人={effective_caller}, 接听人={effective_target}")
         
         return prompt
@@ -812,5 +820,18 @@ class PromptBuilder:
             elif "**机密背景**:" in prompt:
                 prompt = prompt.replace("**机密背景**:", f"**机密背景**:\n{extra_section}")
         
+        # Apply to basic, automatic/enhanced and workshop templates alike.
+        prompt += f"""
+
+**配音原文与中文字幕逐段一致（输出前必须核对）**：
+- 每个 segment 的 text 是唯一会送去配音的完整台词，必须使用{lang_display}；translation 仅用于显示简体中文字幕，不会被朗读。
+- 先写完整 text，再只翻译这一段 text。两者的语义、信息量、分句顺序必须一一对应，不得摘要、扩写、补剧情、漏译或只翻译前半句。
+- text 中每个分句（尤其最后一个分句）、否定、条件、转折、人物、称呼、数字与情绪语气，都必须在本段 translation 中有对应；translation 的任何信息也必须能在本段 text 中找到依据。
+- 一段只放一个完整短句或紧密相连的短分句。长台词请拆成多个 segment，每段分别填写 speaker、emotion、text、translation；不得把多段的中文合并到某一段，也不得把其他说话人的台词或舞台动作写进译文。
+- 如果 text 是中文，translation 必须与 text 完全相同。跨语言不要求字数相等，不要为了凑字数增加或删除意思。
+- 例如 text 为「先に帰って。私はここで待つ。」时，translation 应为“你先回去。我在这里等。”；不得只配音「先に帰って。」却保留这两句中文字幕。
+- 输出前逐段双向核对 text 与 translation，包括句尾；发现不一致时修正对应字段，再输出规定的 JSON。不要输出核对过程。
+"""
+
         return prompt
 

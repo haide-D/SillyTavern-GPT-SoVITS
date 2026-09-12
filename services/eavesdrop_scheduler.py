@@ -31,7 +31,9 @@ class EavesdropScheduler:
         user_name: str = None,
         char_name: str = None,
         scene_description: str = None,
-        eavesdrop_config: Dict = None  # 分析 LLM 提供的对话主题和框架
+        eavesdrop_config: Dict = None,  # 分析 LLM 提供的对话主题和框架
+        character_persona: str = "",
+        world_info: str = ""
     ) -> Optional[int]:
         """
         调度对话追踪任务
@@ -107,7 +109,7 @@ class EavesdropScheduler:
         asyncio.create_task(self._execute_generation(
             record_id, chat_branch, speakers, trigger_floor, context, 
             context_fingerprint, user_name, char_name, scene_description,
-            eavesdrop_config
+            eavesdrop_config, character_persona, world_info
         ))
         
         return record_id
@@ -123,7 +125,9 @@ class EavesdropScheduler:
         user_name: str = None, 
         char_name: str = None,
         scene_description: str = None,
-        eavesdrop_config: Dict = None
+        eavesdrop_config: Dict = None,
+        character_persona: str = "",
+        world_info: str = ""
     ):
         """
         执行生成任务(异步)
@@ -159,6 +163,8 @@ class EavesdropScheduler:
                 user_name=user_name,
                 text_lang=text_lang,  # ✅ 传递语言配置
                 scene_description=scene_description,
+                character_persona=character_persona,
+                world_info=world_info,
                 eavesdrop_config=eavesdrop_config  # ✅ 传递对话主题和框架
             )
             

@@ -16,6 +16,7 @@ from routers import (
 # 导入自定义中间件
 from middleware.logging_middleware import LoggingMiddleware
 from middleware.auth_middleware import AuthMiddleware
+from middleware.ui_static_files import UIStaticFiles
 
 # 初始化配置(确保 system_settings.json 和目录存在)
 init_settings()
@@ -70,15 +71,15 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 # 2. 挂载静态文件 (前端界面)
 if os.path.exists(FRONTEND_DIR):
-    app.mount("/static", CORSStaticFiles(directory=FRONTEND_DIR), name="static")
+    app.mount("/static", UIStaticFiles(directory=FRONTEND_DIR), name="static")
 else:
     print(f"Warning: 'frontend' folder not found at {FRONTEND_DIR}")
 
 # 挂载管理面板静态文件
 admin_dir = os.path.join(os.path.dirname(__file__), "admin")
 if os.path.exists(admin_dir):
-    app.mount("/admin/static", CORSStaticFiles(directory=admin_dir), name="admin_static")
-    app.mount("/admin", StaticFiles(directory=admin_dir, html=True), name="admin")
+    app.mount("/admin/static", UIStaticFiles(directory=admin_dir), name="admin_static")
+    app.mount("/admin", UIStaticFiles(directory=admin_dir, html=True), name="admin")
 else:
     print(f"Warning: 'admin' folder not found at {admin_dir}")
 

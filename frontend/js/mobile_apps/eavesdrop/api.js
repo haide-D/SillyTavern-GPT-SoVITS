@@ -4,6 +4,7 @@
 
 import { getApiHost, getChatBranch, getAuthHeaders } from '../shared/utils.js';
 import { getEavesdropStatusTexts } from '../../themes/theme_status_helper.js';
+import { WorldInfoExtractor } from '../../world_info_extractor.js';
 import { NotificationHandler } from '../../notification_handler.js';
 
 let _boundSpeakersCache = [];
@@ -115,7 +116,7 @@ export async function generateAndLaunchEavesdrop({ speakers, presetId, reason, t
         call_reason: reason,
         call_tone: tone,
         character_persona: enriched.characterPersona,
-        world_info: enriched.worldInfo
+        world_info: await WorldInfoExtractor.refreshWorldInfo()
     };
 
     const buildRes = await fetch(`${apiHost}/api/eavesdrop/build_prompt`, {

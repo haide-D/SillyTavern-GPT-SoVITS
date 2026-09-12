@@ -61,8 +61,7 @@ export class SubtitleRenderer {
             this.$subtitleText.html(chars);
 
             // 触发显示动画
-            this.$subtitleLine.removeClass('visible');
-            setTimeout(() => this.$subtitleLine.addClass('visible'), 50);
+            this.$subtitleLine.addClass('visible');
         }
 
         // 更新逐字高亮

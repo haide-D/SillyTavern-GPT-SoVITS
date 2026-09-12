@@ -298,6 +298,9 @@ async def message_webhook(req: MessageWebhookRequest):
         char_name=ws_target,
         message={
             "type": "continuous_analysis_request",
+            "context": analysis_data["context"],
+            "character_persona": analysis_data["character_persona"],
+            "world_info": analysis_data["world_info"],
             "request_id": request_id,
             "chat_branch": req.chat_branch,
             "floor": req.current_floor,

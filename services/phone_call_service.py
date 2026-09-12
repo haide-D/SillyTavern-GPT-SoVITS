@@ -49,7 +49,8 @@ class PhoneCallService:
         world_info: Optional[str] = None,
         story_summary: Optional[str] = None,
         chat_branch: Optional[str] = None,
-        text_lang: Optional[str] = None
+        text_lang: Optional[str] = None,
+        last_call_info: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """
         构建 LLM 提示词与配置 (深度融合世界书、人设与历史剧情总结)
@@ -133,7 +134,8 @@ class PhoneCallService:
             receiver=effective_target,
             character_persona=character_persona or "",
             world_info=world_info or "",
-            story_summary=effective_summary
+            story_summary=effective_summary,
+            last_call_info=last_call_info
         )
 
         print(f"[PhoneCallService] [SUCCESS] Prompt built: {len(prompt)} chars")
@@ -165,6 +167,14 @@ class PhoneCallService:
         """
         完成自动电话生成：解析 LLM 响应、合成音频、更新数据库并发送推送
         """
+        conn = self.db._get_connection()
+        try:
+            cursor = conn.execute("UPDATE auto_phone_calls SET status = 'synthesizing' WHERE id = ? AND chat_branch = ? AND status IN ('pending', 'generating')", (call_id, chat_branch))
+            conn.commit()
+            if cursor.rowcount == 0:
+                return {"status": "duplicate", "call_id": call_id, "message": "任务已处理或正在合成"}
+        finally:
+            conn.close()
         print(f"\n[PhoneCallService] Received LLM response: call_id={call_id}")
         print(f"[PhoneCallService] LLM response length: {len(llm_response)} chars")
 
